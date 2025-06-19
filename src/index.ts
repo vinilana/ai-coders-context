@@ -16,6 +16,7 @@ import { CLIOptions, LLMConfig } from './types';
 import { CLIInterface } from './utils/cliUI';
 import { LLMClientFactory } from './services/llmClientFactory';
 import { GitService } from './utils/gitService';
+import { ChangeAnalyzer } from './services/changeAnalyzer';
 
 const program = new Command();
 const ui = new CLIInterface();
@@ -82,6 +83,30 @@ program
       await runAnalyze(repoPath, options);
     } catch (error) {
       ui.displayError('Failed to analyze repository', error as Error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('preview')
+  .description('Preview what documentation updates would be made without actually updating')
+  .argument('<repo-path>', 'Path to the repository to analyze')
+  .option('--since <commit>', 'Compare against specific commit/branch (default: last processed commit)')
+  .option('--staged', 'Only analyze staged files (for pre-commit hooks)')
+  .option('--exclude <patterns...>', 'Patterns to exclude from analysis')
+  .option('--include <patterns...>', 'Patterns to include in analysis')
+  .option('-v, --verbose', 'Verbose output with detailed file lists')
+  .addHelpText('after', `
+Examples:
+  $ ai-context preview ./                     # Preview changes since last run
+  $ ai-context preview ./ --staged           # Preview staged files only
+  $ ai-context preview ./ --since HEAD~3     # Preview changes since 3 commits ago
+  $ ai-context preview ./ --verbose          # Show detailed file change lists`)
+  .action(async (repoPath: string, options: any) => {
+    try {
+      await runPreview(repoPath, options);
+    } catch (error) {
+      ui.displayError('Failed to preview updates', error as Error);
       process.exit(1);
     }
   });
@@ -388,6 +413,72 @@ async function runUpdate(repoPath: string, options: any): Promise<void> {
   const usageStats = llmClient.getUsageStats();
   ui.displayGenerationSummary(result.updated, 0, usageStats, true);
   ui.displaySuccess(`Documentation updated! Processed ${result.updated} files.`);
+}
+
+async function runPreview(repoPath: string, options: any): Promise<void> {
+  const resolvedPath = path.resolve(repoPath);
+  
+  // Display welcome
+  ui.displayWelcome('0.1.0');
+  
+  ui.startSpinner('Initializing analysis...');
+
+  // Initialize services
+  const fileMapper = new FileMapper(options.exclude || []);
+  const gitService = new GitService(resolvedPath);
+  const changeAnalyzer = new ChangeAnalyzer(gitService, fileMapper);
+
+  // Check if it's a git repository
+  if (!gitService.isGitRepository()) {
+    ui.updateSpinner('Not a git repository', 'fail');
+    ui.displayError('The specified path is not a git repository. Preview requires git tracking.');
+    process.exit(1);
+  }
+
+  ui.updateSpinner('Mapping repository structure...');
+
+  // Map repository structure
+  const repoStructure = await fileMapper.mapRepository(
+    resolvedPath,
+    options.include
+  );
+
+  ui.updateSpinner('Analyzing changes...');
+
+  // Detect changes
+  let changes;
+  if (options.staged) {
+    // For pre-commit hooks - only staged files
+    const stagedFiles = gitService.getStagedFiles();
+    changes = {
+      added: stagedFiles.filter(f => !fs.existsSync(path.join(resolvedPath, f))),
+      modified: stagedFiles.filter(f => fs.existsSync(path.join(resolvedPath, f))),
+      deleted: [],
+      renamed: []
+    };
+  } else if (options.since) {
+    // Compare against specific commit
+    changes = gitService.getChangedFiles(options.since);
+  } else {
+    // Compare against last processed commit
+    changes = gitService.getChangedFiles();
+  }
+
+  // Analyze the changes
+  const analysis = await changeAnalyzer.analyzeChanges(repoStructure, changes);
+
+  ui.stopSpinner();
+
+  // Display the analysis
+  changeAnalyzer.displayAnalysis(analysis, options.verbose);
+
+  // Summary
+  if (analysis.affectedModules.length > 0) {
+    console.log(chalk.green('\n✅ Ready to proceed with update command'));
+    console.log(chalk.gray('Run the same command with "update" instead of "preview" to apply changes'));
+  } else {
+    console.log(chalk.yellow('\n📄 No updates needed - documentation is up to date'));
+  }
 }
 
 program.parse();

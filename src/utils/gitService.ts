@@ -242,6 +242,36 @@ export class GitService {
     });
   }
 
+  isFileTracked(filePath: string): boolean {
+    try {
+      execSync(`git ls-files --error-unmatch "${filePath}"`, {
+        cwd: this.repoPath,
+        stdio: 'pipe'
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  getTrackedFiles(): string[] {
+    try {
+      const output = execSync('git ls-files', {
+        cwd: this.repoPath,
+        encoding: 'utf8'
+      }).trim();
+
+      return output ? output.split('\n') : [];
+    } catch (error) {
+      throw new Error(`Failed to get tracked files: ${error}`);
+    }
+  }
+
+  filterTrackedFiles(files: string[]): string[] {
+    const trackedFiles = new Set(this.getTrackedFiles());
+    return files.filter(file => trackedFiles.has(file));
+  }
+
   getCommitMessage(commit: string): string {
     try {
       return execSync(`git log --format=%B -n 1 ${commit}`, {

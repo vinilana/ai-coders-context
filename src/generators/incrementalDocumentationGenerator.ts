@@ -45,14 +45,23 @@ export class IncrementalDocumentationGenerator {
       ...changes.renamed.map(r => r.to)
     ];
 
-    // Filter for relevant files only
-    const relevantChangedFiles = allChangedFiles.filter(file => 
-      this.fileMapper.isTextFile(path.join(repoStructure.rootPath, file))
-    );
+    // Filter for tracked and relevant files only
+    const trackedChangedFiles = this.gitService.filterTrackedFiles(allChangedFiles);
+    const relevantChangedFiles = trackedChangedFiles.filter(file => {
+      const fullPath = path.join(repoStructure.rootPath, file);
+      return this.fileMapper.isTextFile(fullPath);
+    });
+
+    if (verbose) {
+      const untrackedFiles = allChangedFiles.filter(file => !trackedChangedFiles.includes(file));
+      if (untrackedFiles.length > 0) {
+        console.log(chalk.gray(`📎 Skipping ${untrackedFiles.length} untracked files`));
+      }
+    }
 
     if (relevantChangedFiles.length === 0) {
       if (verbose) {
-        console.log(chalk.yellow('📄 No relevant file changes detected'));
+        console.log(chalk.yellow('📄 No relevant tracked file changes detected'));
       }
       return { updated: 0, removed: 0 };
     }
@@ -198,7 +207,7 @@ export class IncrementalDocumentationGenerator {
 
   private async createModuleDocumentation(
     module: ModuleGroup,
-    repoStructure: RepoStructure
+    _repoStructure: RepoStructure
   ): Promise<string> {
     const fileContents: string[] = [];
     
@@ -352,7 +361,7 @@ ${topExtensions.map(([ext, count]) => `- **${ext}**: ${count} files (${((count/t
 `;
   }
 
-  private createDocumentationIndex(repoStructure: RepoStructure): string {
+  private createDocumentationIndex(_repoStructure: RepoStructure): string {
     const state = this.gitService.getState();
     const branch = this.gitService.getBranchName();
     
