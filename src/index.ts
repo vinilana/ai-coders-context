@@ -339,6 +339,21 @@ async function runUpdate(repoPath: string, options: any): Promise<void> {
     process.exit(1);
   }
 
+  // Check if context has been initialized
+  if (!gitService.hasContextBeenInitialized(cliOptions.outputDir!)) {
+    ui.displayError('No documentation context found. You should run analyze and generate before updating.');
+    console.log(chalk.bold('\n💡 Getting Started:'));
+    console.log(chalk.gray('─'.repeat(50)));
+    console.log(`${chalk.blue('1. Analyze:')} ai-context analyze ${cliOptions.repoPath}`);
+    console.log(`${chalk.blue('2. Generate:')} ai-context generate ${cliOptions.repoPath}`);
+    console.log(`${chalk.blue('3. Update:')} ai-context update ${cliOptions.repoPath}`);
+    console.log(chalk.gray('─'.repeat(50)));
+    console.log(chalk.gray('The analyze command shows token estimates and costs.'));
+    console.log(chalk.gray('The generate command creates the initial documentation.'));
+    console.log(chalk.gray('The update command incrementally updates existing documentation.'));
+    process.exit(1);
+  }
+
   // Display welcome message
   ui.displayWelcome('0.1.0');
   ui.displayProjectInfo(cliOptions.repoPath, cliOptions.outputDir!, cliOptions.model!, cliOptions.provider);
@@ -366,6 +381,12 @@ async function runUpdate(repoPath: string, options: any): Promise<void> {
 
   // Step 2: Detect changes
   ui.displayStep(2, 4, 'Detecting changes');
+  
+  // Display commit tracking info in verbose mode
+  if (cliOptions.verbose) {
+    gitService.displayCommitTrackingInfo(true);
+  }
+  
   ui.startSpinner('Analyzing git changes...');
 
   let changes;
@@ -403,10 +424,20 @@ async function runUpdate(repoPath: string, options: any): Promise<void> {
 
   ui.updateSpinner(`Updated ${result.updated} files, removed ${result.removed} files`, 'success');
 
-  // Step 4: Save state
+  // Step 4: Save state (only if documentation was actually updated)
   ui.displayStep(4, 4, 'Saving state');
   const currentCommit = gitService.getCurrentCommit();
-  gitService.saveState(currentCommit);
+  
+  if (result.updated > 0 || result.removed > 0) {
+    gitService.saveState(currentCommit);
+    if (cliOptions.verbose) {
+      console.log(chalk.gray(`State saved: tracking commit ${currentCommit.substring(0, 8)}`));
+    }
+  } else {
+    if (cliOptions.verbose) {
+      console.log(chalk.gray('No documentation changes made, state not updated'));
+    }
+  }
 
   // Display summary of changed files
   if (result.updatedFiles.length > 0 || result.removedFiles.length > 0) {
@@ -453,6 +484,23 @@ async function runPreview(repoPath: string, options: any): Promise<void> {
   if (!gitService.isGitRepository()) {
     ui.updateSpinner('Not a git repository', 'fail');
     ui.displayError('The specified path is not a git repository. Preview requires git tracking.');
+    process.exit(1);
+  }
+
+  // Check if context has been initialized
+  const outputDir = path.resolve(options.output || './.context');
+  if (!gitService.hasContextBeenInitialized(outputDir)) {
+    ui.updateSpinner('Context not initialized', 'fail');
+    ui.displayError('No documentation context found. You should run analyze and generate before previewing changes to update.');
+    console.log(chalk.bold('\n💡 Getting Started:'));
+    console.log(chalk.gray('─'.repeat(50)));
+    console.log(`${chalk.blue('1. Analyze:')} ai-context analyze ${repoPath}`);
+    console.log(`${chalk.blue('2. Generate:')} ai-context generate ${repoPath}`);
+    console.log(`${chalk.blue('3. Preview:')} ai-context preview ${repoPath}`);
+    console.log(chalk.gray('─'.repeat(50)));
+    console.log(chalk.gray('The analyze command shows token estimates and costs.'));
+    console.log(chalk.gray('The generate command creates the initial documentation.'));
+    console.log(chalk.gray('The preview command shows what would change in updates.'));
     process.exit(1);
   }
 

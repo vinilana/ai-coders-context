@@ -1,6 +1,7 @@
 import { execSync } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs-extra';
+import chalk from 'chalk';
 
 export interface GitChanges {
   added: string[];
@@ -57,6 +58,17 @@ export class GitService {
           sinceRef = 'HEAD~1';
         } catch {
           // No previous commit, get all tracked files as "added"
+          return this.getAllTrackedFilesAsAdded();
+        }
+      }
+
+      // Validate the reference commit exists
+      if (!this.isValidCommit(sinceRef)) {
+        console.warn(`Warning: Reference commit ${sinceRef} no longer exists, falling back to HEAD~1`);
+        try {
+          execSync('git rev-parse HEAD~1', { cwd: this.repoPath, stdio: 'pipe' });
+          sinceRef = 'HEAD~1';
+        } catch {
           return this.getAllTrackedFilesAsAdded();
         }
       }
@@ -249,6 +261,11 @@ export class GitService {
 
   saveState(commit: string): void {
     try {
+      // Validate that the commit exists
+      if (!this.isValidCommit(commit)) {
+        throw new Error(`Invalid commit hash: ${commit}`);
+      }
+      
       const state: GitState = {
         lastCommit: commit
       };
@@ -366,5 +383,104 @@ export class GitService {
     } catch (error) {
       throw new Error(`Failed to get tracked files: ${error}`);
     }
+  }
+
+  isValidCommit(commit: string): boolean {
+    try {
+      execSync(`git rev-parse --verify ${commit}`, {
+        cwd: this.repoPath,
+        stdio: 'pipe'
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  getCommitsBetween(fromCommit: string, toCommit: string = 'HEAD'): string[] {
+    try {
+      const output = execSync(`git rev-list --reverse ${fromCommit}..${toCommit}`, {
+        cwd: this.repoPath,
+        encoding: 'utf8'
+      }).trim();
+
+      return output ? output.split('\n') : [];
+    } catch (error) {
+      throw new Error(`Failed to get commits between ${fromCommit} and ${toCommit}: ${error}`);
+    }
+  }
+
+  getCommitInfo(commit: string): { hash: string; shortHash: string; message: string; date: string } | null {
+    try {
+      const output = execSync(`git log --format="%H|%h|%s|%ci" -n 1 ${commit}`, {
+        cwd: this.repoPath,
+        encoding: 'utf8'
+      }).trim();
+
+      const [hash, shortHash, message, date] = output.split('|');
+      return { hash, shortHash, message, date };
+    } catch {
+      return null;
+    }
+  }
+
+  displayCommitTrackingInfo(verbose: boolean = false): void {
+    const lastProcessed = this.getLastProcessedCommit();
+    const current = this.getCurrentCommit();
+    
+    if (verbose) {
+      console.log(chalk.bold('\n🔍 Commit Tracking Information:'));
+      console.log(chalk.gray('─'.repeat(50)));
+      
+      if (lastProcessed) {
+        const lastInfo = this.getCommitInfo(lastProcessed);
+        if (lastInfo) {
+          console.log(`${chalk.green('Last documented:')} ${lastInfo.shortHash} - ${lastInfo.message}`);
+          console.log(`${chalk.gray('                  ')} ${lastInfo.date}`);
+        } else {
+          console.log(`${chalk.yellow('Last documented:')} ${lastProcessed.substring(0, 8)} (commit no longer exists)`);
+        }
+      } else {
+        console.log(`${chalk.yellow('Last documented:')} None (first run)`);
+      }
+      
+      const currentInfo = this.getCommitInfo(current);
+      if (currentInfo) {
+        console.log(`${chalk.blue('Current commit: ')} ${currentInfo.shortHash} - ${currentInfo.message}`);
+        console.log(`${chalk.gray('                  ')} ${currentInfo.date}`);
+      }
+      
+      if (lastProcessed && lastProcessed !== current) {
+        const commitsBetween = this.getCommitsBetween(lastProcessed, current);
+        if (commitsBetween.length > 0) {
+          console.log(`${chalk.cyan('Commits to process:')} ${commitsBetween.length}`);
+        }
+      }
+      
+      console.log(chalk.gray('─'.repeat(50)));
+    }
+  }
+
+  hasContextBeenInitialized(outputDir: string): boolean {
+    // Check if state file exists
+    const hasStateFile = fs.existsSync(this.stateFile);
+    
+    // Check if context folder exists and has content
+    const contextDir = path.join(outputDir);
+    const docsDir = path.join(contextDir, 'docs');
+    const hasContextFolder = fs.existsSync(contextDir) && fs.existsSync(docsDir);
+    
+    // Check if docs folder has any content
+    let hasDocumentation = false;
+    if (hasContextFolder) {
+      try {
+        const files = fs.readdirSync(docsDir);
+        hasDocumentation = files.length > 0;
+      } catch {
+        hasDocumentation = false;
+      }
+    }
+    
+    return hasStateFile || (hasContextFolder && hasDocumentation);
   }
 }

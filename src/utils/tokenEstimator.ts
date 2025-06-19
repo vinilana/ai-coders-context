@@ -2,6 +2,92 @@ import { FileInfo, RepoStructure } from '../types';
 import { FileMapper } from './fileMapper';
 import chalk from 'chalk';
 
+// Model pricing per 1M tokens (as of 2024)
+// Update this constant when new models arrive or prices change
+const MODEL_PRICING = {
+  // OpenRouter - Popular models
+  'openrouter-claude-3-haiku': {
+    provider: 'OpenRouter',
+    modelName: 'Claude 3 Haiku',
+    input: 0.25,
+    output: 1.25
+  },
+  'openrouter-claude-3-sonnet': {
+    provider: 'OpenRouter', 
+    modelName: 'Claude 3.5 Sonnet',
+    input: 3.00,
+    output: 15.00
+  },
+  'openrouter-gpt-4o-mini': {
+    provider: 'OpenRouter',
+    modelName: 'GPT-4o Mini',
+    input: 0.15,
+    output: 0.60
+  },
+  'openrouter-llama-3.1-8b': {
+    provider: 'OpenRouter',
+    modelName: 'Llama 3.1 8B',
+    input: 0.05,
+    output: 0.05
+  },
+  
+  // OpenAI Direct
+  'openai-gpt-4o': {
+    provider: 'OpenAI',
+    modelName: 'GPT-4o',
+    input: 2.50,
+    output: 10.00
+  },
+  'openai-gpt-4o-mini': {
+    provider: 'OpenAI',
+    modelName: 'GPT-4o Mini', 
+    input: 0.15,
+    output: 0.60
+  },
+  'openai-gpt-4-turbo': {
+    provider: 'OpenAI',
+    modelName: 'GPT-4 Turbo',
+    input: 10.00,
+    output: 30.00
+  },
+
+  // Anthropic Direct
+  'anthropic-claude-3-haiku': {
+    provider: 'Anthropic',
+    modelName: 'Claude 3 Haiku',
+    input: 0.25,
+    output: 1.25
+  },
+  'anthropic-claude-3-sonnet': {
+    provider: 'Anthropic',
+    modelName: 'Claude 3.5 Sonnet',
+    input: 3.00,
+    output: 15.00
+  },
+
+  // Google AI
+  'gemini-1.5-flash': {
+    provider: 'Google AI',
+    modelName: 'Gemini 1.5 Flash',
+    input: 0.075,
+    output: 0.30
+  },
+  'gemini-1.5-pro': {
+    provider: 'Google AI',
+    modelName: 'Gemini 1.5 Pro',
+    input: 1.25,
+    output: 5.00
+  },
+
+  // Grok (X.AI)
+  'grok-beta': {
+    provider: 'Grok (X.AI)',
+    modelName: 'Grok Beta',
+    input: 5.00,
+    output: 15.00
+  }
+} as const;
+
 export interface TokenEstimate {
   totalFiles: number;
   estimatedInputTokens: number;
@@ -92,94 +178,9 @@ export class TokenEstimator {
   }
 
   private calculateCostEstimates(inputTokens: number, outputTokens: number): TokenEstimate['costEstimates'] {
-    // Pricing per 1M tokens (as of 2024) - specific models
-    const models = {
-      // OpenRouter - Popular models
-      'openrouter-claude-3-haiku': {
-        provider: 'OpenRouter',
-        modelName: 'Claude 3 Haiku',
-        input: 0.25,
-        output: 1.25
-      },
-      'openrouter-claude-3-sonnet': {
-        provider: 'OpenRouter', 
-        modelName: 'Claude 3.5 Sonnet',
-        input: 3.00,
-        output: 15.00
-      },
-      'openrouter-gpt-4o-mini': {
-        provider: 'OpenRouter',
-        modelName: 'GPT-4o Mini',
-        input: 0.15,
-        output: 0.60
-      },
-      'openrouter-llama-3.1-8b': {
-        provider: 'OpenRouter',
-        modelName: 'Llama 3.1 8B',
-        input: 0.05,
-        output: 0.05
-      },
-      
-      // OpenAI Direct
-      'openai-gpt-4o': {
-        provider: 'OpenAI',
-        modelName: 'GPT-4o',
-        input: 2.50,
-        output: 10.00
-      },
-      'openai-gpt-4o-mini': {
-        provider: 'OpenAI',
-        modelName: 'GPT-4o Mini', 
-        input: 0.15,
-        output: 0.60
-      },
-      'openai-gpt-4-turbo': {
-        provider: 'OpenAI',
-        modelName: 'GPT-4 Turbo',
-        input: 10.00,
-        output: 30.00
-      },
-
-      // Anthropic Direct
-      'anthropic-claude-3-haiku': {
-        provider: 'Anthropic',
-        modelName: 'Claude 3 Haiku',
-        input: 0.25,
-        output: 1.25
-      },
-      'anthropic-claude-3-sonnet': {
-        provider: 'Anthropic',
-        modelName: 'Claude 3.5 Sonnet',
-        input: 3.00,
-        output: 15.00
-      },
-
-      // Google AI
-      'gemini-1.5-flash': {
-        provider: 'Google AI',
-        modelName: 'Gemini 1.5 Flash',
-        input: 0.075,
-        output: 0.30
-      },
-      'gemini-1.5-pro': {
-        provider: 'Google AI',
-        modelName: 'Gemini 1.5 Pro',
-        input: 1.25,
-        output: 5.00
-      },
-
-      // Grok (X.AI)
-      'grok-beta': {
-        provider: 'Grok (X.AI)',
-        modelName: 'Grok Beta',
-        input: 5.00,
-        output: 15.00
-      }
-    };
-
     const costEstimates: TokenEstimate['costEstimates'] = {};
 
-    for (const [modelKey, model] of Object.entries(models)) {
+    for (const [modelKey, model] of Object.entries(MODEL_PRICING)) {
       const inputCost = (inputTokens / 1_000_000) * model.input;
       const outputCost = (outputTokens / 1_000_000) * model.output;
       const totalCost = inputCost + outputCost;
