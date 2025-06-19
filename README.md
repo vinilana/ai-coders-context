@@ -187,7 +187,7 @@ ai-context-output/
 
 The tool supports any model available through OpenRouter:
 
-- `anthropic/claude-3-haiku` (default, fast and cost-effective)
+- `google/gemini-2.0-pro` (default, fast and cost-effective)
 - `anthropic/claude-3-sonnet` (balanced performance)
 - `anthropic/claude-3-opus` (highest quality)
 - `openai/gpt-4` (OpenAI's GPT-4)
@@ -208,7 +208,7 @@ The tool supports any model available through OpenRouter:
 Options:
   -o, --output <dir>         Output directory (default: "./ai-copilot-output")
   -k, --api-key <key>        OpenRouter API key
-  -m, --model <model>        LLM model to use (default: "anthropic/claude-3-haiku")
+  -m, --model <model>        LLM model to use (default: "google/gemini-2.0-pro")
   --exclude <patterns...>    Patterns to exclude from analysis
   --include <patterns...>    Patterns to include in analysis
   --docs-only               Generate only documentation

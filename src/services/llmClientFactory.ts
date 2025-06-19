@@ -64,7 +64,7 @@ export class LLMClientFactory {
   static getDefaultModels(): { [key in LLMConfig['provider']]: string[] } {
     return {
       openrouter: [
-        'anthropic/claude-3-haiku',
+        'google/gemini-2.0-pro',
         'anthropic/claude-3-sonnet',
         'anthropic/claude-3-opus',
         'openai/gpt-4',

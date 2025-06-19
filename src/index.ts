@@ -17,6 +17,7 @@ import { CLIInterface } from './utils/cliUI';
 import { LLMClientFactory } from './services/llmClientFactory';
 import { GitService } from './utils/gitService';
 import { ChangeAnalyzer } from './services/changeAnalyzer';
+import { TokenEstimator } from './utils/tokenEstimator';
 
 const program = new Command();
 const ui = new CLIInterface();
@@ -32,7 +33,7 @@ program
   .argument('<repo-path>', 'Path to the repository to analyze')
   .option('-o, --output <dir>', 'Output directory', './.context')
   .option('-k, --api-key <key>', 'API key for the LLM provider')
-  .option('-m, --model <model>', 'LLM model to use', 'anthropic/claude-3-haiku')
+  .option('-m, --model <model>', 'LLM model to use', 'google/gemini-2.0-pro')
   .option('-p, --provider <provider>', 'LLM provider (openrouter, openai, anthropic, gemini, grok)', 'openrouter')
   .option('--exclude <patterns...>', 'Patterns to exclude from analysis')
   .option('--include <patterns...>', 'Patterns to include in analysis')
@@ -54,7 +55,7 @@ program
   .argument('<repo-path>', 'Path to the repository to analyze')
   .option('-o, --output <dir>', 'Output directory', './.context')
   .option('-k, --api-key <key>', 'API key for the LLM provider')
-  .option('-m, --model <model>', 'LLM model to use', 'anthropic/claude-3-haiku')
+  .option('-m, --model <model>', 'LLM model to use', 'google/gemini-2.0-pro')
   .option('-p, --provider <provider>', 'LLM provider (openrouter, openai, anthropic, gemini, grok)', 'openrouter')
   .option('--since <commit>', 'Compare against specific commit/branch (default: last processed commit)')
   .option('--staged', 'Only process staged files (for pre-commit hooks)')
@@ -154,7 +155,7 @@ async function runGenerate(repoPath: string, options: any): Promise<void> {
   const fileMapper = new FileMapper(cliOptions.exclude);
   const llmConfig: LLMConfig = {
     apiKey: cliOptions.apiKey,
-    model: cliOptions.model || 'anthropic/claude-3-haiku',
+    model: cliOptions.model || 'google/gemini-2.0-pro',
     provider: cliOptions.provider || 'openrouter'
   };
   const llmClient = LLMClientFactory.createClient(llmConfig);
@@ -284,6 +285,16 @@ async function runAnalyze(repoPath: string, options: any): Promise<void> {
     });
   }
 
+  // Token estimation for full documentation generation
+  ui.startSpinner('Estimating token usage for full documentation generation...');
+  
+  const tokenEstimator = new TokenEstimator(fileMapper);
+  const tokenEstimate = await tokenEstimator.estimateTokensForFullGeneration(repoStructure);
+  
+  ui.stopSpinner();
+  
+  console.log(tokenEstimator.formatTokenEstimate(tokenEstimate));
+
   ui.displaySuccess('Analysis complete!');
 }
 
@@ -336,7 +347,7 @@ async function runUpdate(repoPath: string, options: any): Promise<void> {
   const fileMapper = new FileMapper(cliOptions.exclude);
   const llmConfig: LLMConfig = {
     apiKey: cliOptions.apiKey,
-    model: cliOptions.model || 'anthropic/claude-3-haiku',
+    model: cliOptions.model || 'google/gemini-2.0-pro',
     provider: cliOptions.provider || 'openrouter'
   };
   const llmClient = LLMClientFactory.createClient(llmConfig);
@@ -475,6 +486,68 @@ async function runPreview(repoPath: string, options: any): Promise<void> {
 
   // Display the analysis
   changeAnalyzer.displayAnalysis(analysis, options.verbose);
+
+  // Add token estimation if there are changes to process
+  if (analysis.affectedModules.length > 0) {
+    ui.startSpinner('Estimating token usage and costs for affected changes...');
+    
+    // Create a subset structure with only affected files
+    const affectedFiles = new Set<string>();
+    
+    // Add all files from affected modules
+    for (const module of analysis.affectedModules) {
+      module.affectedFiles.forEach(filePath => {
+        // Convert to absolute path to match repoStructure.files format
+        const absolutePath = path.resolve(resolvedPath, filePath);
+        if (fileMapper.isTextFile(absolutePath)) {
+          affectedFiles.add(absolutePath);
+        }
+      });
+    }
+    
+    // Also add directly changed files
+    [...changes.added, ...changes.modified].forEach(filePath => {
+      const fullPath = path.resolve(resolvedPath, filePath);
+      if (fileMapper.isTextFile(fullPath)) {
+        affectedFiles.add(fullPath);
+      }
+    });
+    
+    // Debug: Log the affected files and available files for comparison
+    if (options.verbose) {
+      console.log(chalk.gray(`\nDebug: Found ${affectedFiles.size} affected files:`));
+      for (const file of Array.from(affectedFiles).slice(0, 5)) {
+        const relativePath = path.relative(resolvedPath, file);
+        console.log(chalk.gray(`  - ${relativePath}`));
+      }
+      if (affectedFiles.size > 5) {
+        console.log(chalk.gray(`  ... and ${affectedFiles.size - 5} more`));
+      }
+    }
+    
+    // Create a reduced repo structure for estimation
+    const matchedFiles = repoStructure.files.filter(file => affectedFiles.has(file.path));
+    
+    const affectedRepoStructure = {
+      ...repoStructure,
+      files: matchedFiles,
+      totalFiles: matchedFiles.length
+    };
+    
+    if (options.verbose) {
+      console.log(chalk.gray(`Debug: Matched ${matchedFiles.length} files from repo structure`));
+    }
+    
+    const tokenEstimator = new TokenEstimator(fileMapper);
+    const tokenEstimate = await tokenEstimator.estimateTokensForFullGeneration(affectedRepoStructure);
+    
+    ui.stopSpinner();
+    
+    // Display the token estimate
+    console.log(chalk.bold('\n🔮 Token & Cost Estimate for Preview Changes:'));
+    console.log(chalk.gray('═'.repeat(60)));
+    console.log(tokenEstimator.formatTokenEstimate(tokenEstimate));
+  }
 
   // Summary
   if (analysis.affectedModules.length > 0) {
