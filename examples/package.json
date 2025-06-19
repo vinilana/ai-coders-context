@@ -1,0 +1,21 @@
+{
+  "name": "example-project",
+  "version": "1.0.0",
+  "scripts": {
+    "docs:generate": "ai-context generate .",
+    "docs:update": "ai-context update .",
+    "docs:check": "ai-context update . --dry-run",
+    "precommit": "ai-context update . --staged && git add docs/",
+    "docs:ci": "ai-context update . --since HEAD~1 --output ./public/docs",
+    "docs:force": "ai-context update . --force"
+  },
+  "husky": {
+    "hooks": {
+      "pre-commit": "npm run precommit"
+    }
+  },
+  "devDependencies": {
+    "@ai-coders/context": "^0.1.0",
+    "husky": "^8.0.0"
+  }
+}

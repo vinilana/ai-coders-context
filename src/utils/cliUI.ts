@@ -136,12 +136,16 @@ export class CLIInterface {
     });
   }
 
-  displayGenerationSummary(docsGenerated: number, agentsGenerated: number, usageStats?: UsageStats): void {
+  displayGenerationSummary(docsGenerated: number, agentsGenerated: number, usageStats?: UsageStats, isUpdate: boolean = false): void {
     const elapsed = ((Date.now() - this.startTime) / 1000).toFixed(1);
     
-    let summaryText = chalk.bold.green('✨ Generation Complete!\n\n') +
-      `${chalk.blue('Documentation:')} ${chalk.white(docsGenerated + ' files')}\n` +
-      `${chalk.blue('Agent Prompts:')} ${chalk.white(agentsGenerated + ' files')}\n` +
+    const title = isUpdate ? '🔄 Update Complete!' : '✨ Generation Complete!';
+    const docLabel = isUpdate ? 'Updated Files:' : 'Documentation:';
+    const agentLabel = isUpdate ? 'Agent Prompts:' : 'Agent Prompts:';
+    
+    let summaryText = chalk.bold.green(`${title}\n\n`) +
+      `${chalk.blue(docLabel)} ${chalk.white(docsGenerated + ' files')}\n` +
+      `${chalk.blue(agentLabel)} ${chalk.white(agentsGenerated + ' files')}\n` +
       `${chalk.blue('Time Elapsed:')} ${chalk.white(elapsed + 's')}\n`;
 
     if (usageStats && usageStats.totalCalls > 0) {

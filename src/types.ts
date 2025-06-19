@@ -37,6 +37,9 @@ export interface CLIOptions {
   exclude?: string[];
   include?: string[];
   verbose?: boolean;
+  since?: string;
+  staged?: boolean;
+  force?: boolean;
 }
 
 export interface AgentPrompt {
