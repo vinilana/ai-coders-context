@@ -1,0 +1,42 @@
+# Source files
+src/
+*.ts
+
+# Configuration files
+tsconfig.json
+.env
+.env.*
+!.env.example
+
+# Development files
+node_modules/
+*.log
+.DS_Store
+
+# CI/CD
+.github/
+.gitignore
+
+# Test files
+**/*.test.*
+**/*.spec.*
+coverage/
+jest.config.*
+
+# Build files
+*.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Documentation source
+docs/
+*.md
+!README.md
+
+# Examples
+examples/
+ai-context-output/

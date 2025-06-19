@@ -1,0 +1,64 @@
+{
+  "name": "@ai-coders/context",
+  "version": "0.1.0",
+  "description": "CLI tool for generating codebase documentation and AI agent prompts",
+  "main": "dist/index.js",
+  "bin": {
+    "ai-context": "dist/index.js"
+  },
+  "files": [
+    "dist/**/*",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "test": "jest",
+    "prepublishOnly": "npm run build",
+    "version": "npm run build",
+    "release": "npm version patch && npm publish --access public",
+    "release:minor": "npm version minor && npm publish --access public",
+    "release:major": "npm version major && npm publish --access public"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vinilana/ai-coders-context.git"
+  },
+  "homepage": "https://github.com/vinilana/ai-coders-context#readme",
+  "bugs": {
+    "url": "https://github.com/vinilana/ai-coders-context/issues"
+  },
+  "keywords": ["cli", "ai", "documentation", "openrouter", "llm"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^11.0.0",
+    "glob": "^10.3.0",
+    "axios": "^1.5.0",
+    "fs-extra": "^11.1.1",
+    "chalk": "^4.1.2",
+    "dotenv": "^16.3.1",
+    "ora": "^5.4.1",
+    "cli-progress": "^3.12.0",
+    "boxen": "^5.1.2",
+    "figures": "^3.2.0",
+    "openai": "^4.0.0",
+    "@anthropic-ai/sdk": "^0.24.0",
+    "@google/generative-ai": "^0.15.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/fs-extra": "^11.0.1",
+    "@types/cli-progress": "^3.11.0",
+    "typescript": "^5.0.0",
+    "tsx": "^3.12.0",
+    "jest": "^29.0.0",
+    "@types/jest": "^29.0.0"
+  }
+}
