@@ -19,7 +19,7 @@ export class GitService {
 
   constructor(repoPath: string) {
     this.repoPath = path.resolve(repoPath);
-    this.stateFile = path.join(this.repoPath, '.ai-context-state.json');
+    this.stateFile = path.join(this.repoPath, 'context-log.json');
   }
 
   isGitRepository(): boolean {

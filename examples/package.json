@@ -5,8 +5,8 @@
     "docs:generate": "ai-context generate .",
     "docs:update": "ai-context update .",
     "docs:check": "ai-context update . --dry-run",
-    "precommit": "ai-context update . --staged && git add docs/",
-    "docs:ci": "ai-context update . --since HEAD~1 --output ./public/docs",
+    "precommit": "ai-context update . --staged && git add .context/docs/",
+    "docs:ci": "ai-context update . --since HEAD~1 --output ./public",
     "docs:force": "ai-context update . --force"
   },
   "husky": {

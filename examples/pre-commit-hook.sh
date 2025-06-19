@@ -34,7 +34,6 @@ fi
 echo "📚 Updating documentation for staged files..."
 npx @ai-coders/context update . \
     --staged \
-    --output ./docs \
     --model anthropic/claude-3-haiku \
     --verbose || {
     echo "❌ Documentation update failed. Commit aborted."
@@ -42,11 +41,11 @@ npx @ai-coders/context update . \
 }
 
 # Check if documentation was updated
-if git diff --quiet docs/; then
+if git diff --quiet .context/docs/; then
     echo "✅ Documentation is up to date"
 else
     echo "📝 Documentation updated. Adding to commit..."
-    git add docs/
+    git add .context/docs/
     echo "✅ Documentation changes added to commit"
 fi
 
