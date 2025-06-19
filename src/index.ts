@@ -359,14 +359,8 @@ async function runUpdate(repoPath: string, options: any): Promise<void> {
 
   let changes;
   if (cliOptions.staged) {
-    // For pre-commit hooks - only staged files
-    const stagedFiles = gitService.getStagedFiles();
-    changes = {
-      added: stagedFiles.filter(f => !fs.existsSync(path.join(cliOptions.repoPath, f))),
-      modified: stagedFiles.filter(f => fs.existsSync(path.join(cliOptions.repoPath, f))),
-      deleted: [],
-      renamed: []
-    };
+    // For pre-commit hooks - analyze only staged files
+    changes = gitService.getStagedChanges();
   } else if (cliOptions.since) {
     // Compare against specific commit
     changes = gitService.getChangedFiles(cliOptions.since);
@@ -401,13 +395,29 @@ async function runUpdate(repoPath: string, options: any): Promise<void> {
   // Step 4: Save state
   ui.displayStep(4, 4, 'Saving state');
   const currentCommit = gitService.getCurrentCommit();
-  const processedFiles = [
-    ...changes.added,
-    ...changes.modified,
-    ...changes.renamed.map(r => r.to)
-  ].filter(f => fileMapper.isTextFile(path.join(cliOptions.repoPath, f)));
+  gitService.saveState(currentCommit);
 
-  gitService.saveState(currentCommit, processedFiles);
+  // Display summary of changed files
+  if (result.updatedFiles.length > 0 || result.removedFiles.length > 0) {
+    console.log(chalk.bold('\n📄 Documentation Files Changed:'));
+    console.log(chalk.gray('─'.repeat(50)));
+    
+    if (result.updatedFiles.length > 0) {
+      console.log(chalk.green('\n✅ Updated/Created:'));
+      result.updatedFiles.forEach(file => {
+        console.log(`  ${chalk.green('●')} ${file}`);
+      });
+    }
+    
+    if (result.removedFiles.length > 0) {
+      console.log(chalk.red('\n🗑️  Removed:'));
+      result.removedFiles.forEach(file => {
+        console.log(`  ${chalk.red('●')} ${file}`);
+      });
+    }
+    
+    console.log(chalk.gray('─'.repeat(50)));
+  }
 
   // Get usage statistics
   const usageStats = llmClient.getUsageStats();
@@ -448,14 +458,8 @@ async function runPreview(repoPath: string, options: any): Promise<void> {
   // Detect changes
   let changes;
   if (options.staged) {
-    // For pre-commit hooks - only staged files
-    const stagedFiles = gitService.getStagedFiles();
-    changes = {
-      added: stagedFiles.filter(f => !fs.existsSync(path.join(resolvedPath, f))),
-      modified: stagedFiles.filter(f => fs.existsSync(path.join(resolvedPath, f))),
-      deleted: [],
-      renamed: []
-    };
+    // For pre-commit hooks - analyze only staged files
+    changes = gitService.getStagedChanges();
   } else if (options.since) {
     // Compare against specific commit
     changes = gitService.getChangedFiles(options.since);

@@ -11,8 +11,6 @@ export interface GitChanges {
 
 export interface GitState {
   lastCommit: string;
-  lastRun: string;
-  processedFiles: string[];
 }
 
 export class GitService {
@@ -126,6 +124,54 @@ export class GitService {
     }
   }
 
+  getStagedChanges(): GitChanges {
+    try {
+      const output = execSync('git diff --cached --name-status', {
+        cwd: this.repoPath,
+        encoding: 'utf8'
+      }).trim();
+
+      const changes: GitChanges = {
+        added: [],
+        modified: [],
+        deleted: [],
+        renamed: []
+      };
+
+      if (!output) {
+        return changes;
+      }
+
+      const lines = output.split('\n');
+      for (const line of lines) {
+        const parts = line.split('\t');
+        const status = parts[0];
+        const filePath = parts[1];
+
+        switch (status.charAt(0)) {
+          case 'A':
+            changes.added.push(filePath);
+            break;
+          case 'M':
+            changes.modified.push(filePath);
+            break;
+          case 'D':
+            changes.deleted.push(filePath);
+            break;
+          case 'R':
+            const fromFile = parts[1];
+            const toFile = parts[2];
+            changes.renamed.push({ from: fromFile, to: toFile });
+            break;
+        }
+      }
+
+      return changes;
+    } catch (error) {
+      throw new Error(`Failed to get staged changes: ${error}`);
+    }
+  }
+
   getUncommittedChanges(): GitChanges {
     try {
       // Get both staged and unstaged changes
@@ -201,12 +247,10 @@ export class GitService {
     }
   }
 
-  saveState(commit: string, processedFiles: string[]): void {
+  saveState(commit: string): void {
     try {
       const state: GitState = {
-        lastCommit: commit,
-        lastRun: new Date().toISOString(),
-        processedFiles
+        lastCommit: commit
       };
       fs.writeJsonSync(this.stateFile, state, { spaces: 2 });
     } catch (error) {

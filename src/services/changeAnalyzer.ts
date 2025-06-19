@@ -25,6 +25,7 @@ export interface ChangeAnalysis {
   overviewUpdateNeeded: boolean;
   estimatedProcessingTime: string;
   recommendations: string[];
+  gitChanges?: GitChanges;
 }
 
 export class ChangeAnalyzer {
@@ -40,13 +41,18 @@ export class ChangeAnalyzer {
     // Get changes if not provided
     const gitChanges = changes || this.gitService.getChangedFiles();
     
-    // Get all changed files
+    // Calculate total unique changes
+    const totalChanges = gitChanges.added.length + 
+                        gitChanges.modified.length + 
+                        gitChanges.deleted.length + 
+                        gitChanges.renamed.length; // Count renames as single changes
+
+    // Get all unique changed files for filtering
     const allChangedFiles = [
       ...gitChanges.added,
       ...gitChanges.modified,
       ...gitChanges.deleted,
-      ...gitChanges.renamed.map(r => r.from),
-      ...gitChanges.renamed.map(r => r.to)
+      ...gitChanges.renamed.map(r => r.to) // Only count the target file for filtering
     ];
 
     // Filter for tracked files only
@@ -69,13 +75,14 @@ export class ChangeAnalyzer {
     const recommendations = this.generateRecommendations(moduleImpacts, gitChanges);
 
     return {
-      totalChanges: allChangedFiles.length,
+      totalChanges: totalChanges,
       trackedChanges: trackedChangedFiles.length,
-      untrackedChanges: allChangedFiles.length - trackedChangedFiles.length,
+      untrackedChanges: totalChanges - trackedChangedFiles.length,
       affectedModules: moduleImpacts,
       overviewUpdateNeeded,
       estimatedProcessingTime: estimatedTime,
-      recommendations
+      recommendations,
+      gitChanges // Add this for detailed breakdown in verbose mode
     };
   }
 
@@ -86,6 +93,16 @@ export class ChangeAnalyzer {
     // Summary
     console.log(chalk.bold('\n📊 Change Summary:'));
     console.log(`  Total file changes: ${analysis.totalChanges}`);
+    
+    // Show breakdown in verbose mode
+    if (verbose && analysis.gitChanges) {
+      const gc = analysis.gitChanges;
+      console.log(`    ${chalk.green('Added:')} ${gc.added.length} files`);
+      console.log(`    ${chalk.yellow('Modified:')} ${gc.modified.length} files`);
+      console.log(`    ${chalk.red('Deleted:')} ${gc.deleted.length} files`);
+      console.log(`    ${chalk.blue('Renamed:')} ${gc.renamed.length} files`);
+    }
+    
     console.log(`  Tracked changes: ${chalk.green(analysis.trackedChanges)}`);
     if (analysis.untrackedChanges > 0) {
       console.log(`  Untracked changes: ${chalk.gray(analysis.untrackedChanges)} (will be skipped)`);
@@ -148,11 +165,10 @@ export class ChangeAnalyzer {
     repoStructure: RepoStructure
   ): ModuleImpact[] {
     const moduleMap = new Map<string, ModuleImpact>();
+    const processedFiles = new Set<string>();
 
-    // Process each changed file
-    changedFiles.forEach(file => {
-      const moduleName = this.getModuleNameForFile(file);
-      
+    // Helper function to initialize module if needed
+    const ensureModule = (moduleName: string) => {
       if (!moduleMap.has(moduleName)) {
         moduleMap.set(moduleName, {
           moduleName: this.formatModuleName(moduleName),
@@ -167,26 +183,67 @@ export class ChangeAnalyzer {
           description: this.getModuleDescription(moduleName, repoStructure)
         });
       }
+      return moduleMap.get(moduleName)!;
+    };
 
-      const moduleImpact = moduleMap.get(moduleName)!;
+    // Process added files
+    gitChanges.added.forEach(file => {
+      if (processedFiles.has(file)) return;
+      processedFiles.add(file);
+      
+      const moduleName = this.getModuleNameForFile(file);
+      const moduleImpact = ensureModule(moduleName);
       moduleImpact.affectedFiles.push(file);
+      moduleImpact.changeTypes.added.push(file);
+    });
 
-      // Categorize the change type
-      if (gitChanges.added.includes(file)) {
-        moduleImpact.changeTypes.added.push(file);
-      }
-      if (gitChanges.modified.includes(file)) {
-        moduleImpact.changeTypes.modified.push(file);
-      }
-      if (gitChanges.deleted.includes(file)) {
-        moduleImpact.changeTypes.deleted.push(file);
+    // Process modified files
+    gitChanges.modified.forEach(file => {
+      if (processedFiles.has(file)) return;
+      processedFiles.add(file);
+      
+      const moduleName = this.getModuleNameForFile(file);
+      const moduleImpact = ensureModule(moduleName);
+      moduleImpact.affectedFiles.push(file);
+      moduleImpact.changeTypes.modified.push(file);
+    });
+
+    // Process deleted files
+    gitChanges.deleted.forEach(file => {
+      if (processedFiles.has(file)) return;
+      processedFiles.add(file);
+      
+      const moduleName = this.getModuleNameForFile(file);
+      const moduleImpact = ensureModule(moduleName);
+      moduleImpact.affectedFiles.push(file);
+      moduleImpact.changeTypes.deleted.push(file);
+    });
+
+    // Process renamed files
+    gitChanges.renamed.forEach(rename => {
+      const fromModule = this.getModuleNameForFile(rename.from);
+      const toModule = this.getModuleNameForFile(rename.to);
+      
+      // Add to source module if different from target
+      if (fromModule !== toModule && !processedFiles.has(rename.from)) {
+        const fromModuleImpact = ensureModule(fromModule);
+        fromModuleImpact.affectedFiles.push(rename.from);
+        if (!fromModuleImpact.changeTypes.renamed.some(r => r.from === rename.from)) {
+          fromModuleImpact.changeTypes.renamed.push(rename);
+        }
       }
       
-      // Handle renames
-      const rename = gitChanges.renamed.find(r => r.from === file || r.to === file);
-      if (rename && !moduleImpact.changeTypes.renamed.some(r => r.from === rename.from)) {
-        moduleImpact.changeTypes.renamed.push(rename);
+      // Add to target module
+      if (!processedFiles.has(rename.to)) {
+        const toModuleImpact = ensureModule(toModule);
+        toModuleImpact.affectedFiles.push(rename.to);
+        if (!toModuleImpact.changeTypes.renamed.some(r => r.to === rename.to)) {
+          toModuleImpact.changeTypes.renamed.push(rename);
+        }
       }
+      
+      processedFiles.add(rename.from);
+      processedFiles.add(rename.to);
     });
 
     // Calculate impact levels
