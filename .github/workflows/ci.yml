@@ -29,11 +29,14 @@ jobs:
     - name: Build
       run: npm run build
     
+    - name: Run Tests
+      run: npm test
+    
     - name: Test CLI
       run: |
         node dist/index.js --help
         node dist/index.js analyze --help
-        node dist/index.js generate --help
+        node dist/index.js init --help
         node dist/index.js update --help
         node dist/index.js preview --help
 
