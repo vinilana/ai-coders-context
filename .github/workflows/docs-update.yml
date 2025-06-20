@@ -45,7 +45,7 @@ jobs:
       run: |
         npx @ai-coders/context update . \
           --provider openrouter \
-          --model google/gemini-2.0-pro \
+          --model google/gemini-2.5-flash-preview-05-20 \
           --verbose
       env:
         OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}

@@ -28,23 +28,36 @@ program
   .version('0.1.0');
 
 program
-  .command('generate')
-  .description('Generate documentation and agent prompts for a repository')
+  .command('init')
+  .description('Initialize documentation and agent prompts for a repository')
   .argument('<repo-path>', 'Path to the repository to analyze')
+  .argument('[type]', 'Type to initialize: "docs", "agents", or "both" (default: "both")', 'both')
   .option('-o, --output <dir>', 'Output directory', './.context')
   .option('-k, --api-key <key>', 'API key for the LLM provider')
-  .option('-m, --model <model>', 'LLM model to use', 'google/gemini-2.0-pro')
+  .option('-m, --model <model>', 'LLM model to use', 'google/gemini-2.5-flash-preview-05-20')
   .option('-p, --provider <provider>', 'LLM provider (openrouter, openai, anthropic, gemini, grok)', 'openrouter')
   .option('--exclude <patterns...>', 'Patterns to exclude from analysis')
   .option('--include <patterns...>', 'Patterns to include in analysis')
-  .option('--docs-only', 'Generate only documentation (skip agent prompts)')
-  .option('--agents-only', 'Generate only agent prompts (skip documentation)')
   .option('-v, --verbose', 'Verbose output')
-  .action(async (repoPath: string, options: any) => {
+  .action(async (repoPath: string, type: string, options: any) => {
     try {
+      // Validate type argument
+      if (!['docs', 'agents', 'both'].includes(type)) {
+        ui.displayError(`Invalid type "${type}". Must be "docs", "agents", or "both".`);
+        process.exit(1);
+      }
+      
+      // Set options based on type argument
+      if (type === 'docs') {
+        options.docsOnly = true;
+      } else if (type === 'agents') {
+        options.agentsOnly = true;
+      }
+      // For 'both', neither flag is set
+      
       await runGenerate(repoPath, options);
     } catch (error) {
-      ui.displayError('Failed to generate documentation', error as Error);
+      ui.displayError('Failed to initialize', error as Error);
       process.exit(1);
     }
   });
@@ -55,7 +68,7 @@ program
   .argument('<repo-path>', 'Path to the repository to analyze')
   .option('-o, --output <dir>', 'Output directory', './.context')
   .option('-k, --api-key <key>', 'API key for the LLM provider')
-  .option('-m, --model <model>', 'LLM model to use', 'google/gemini-2.0-pro')
+  .option('-m, --model <model>', 'LLM model to use', 'google/gemini-2.5-flash-preview-05-20')
   .option('-p, --provider <provider>', 'LLM provider (openrouter, openai, anthropic, gemini, grok)', 'openrouter')
   .option('--since <commit>', 'Compare against specific commit/branch (default: last processed commit)')
   .option('--staged', 'Only process staged files (for pre-commit hooks)')
@@ -155,7 +168,7 @@ async function runGenerate(repoPath: string, options: any): Promise<void> {
   const fileMapper = new FileMapper(cliOptions.exclude);
   const llmConfig: LLMConfig = {
     apiKey: cliOptions.apiKey,
-    model: cliOptions.model || 'google/gemini-2.0-pro',
+    model: cliOptions.model || 'google/gemini-2.5-flash-preview-05-20',
     provider: cliOptions.provider || 'openrouter'
   };
   const llmClient = LLMClientFactory.createClient(llmConfig);
@@ -204,7 +217,7 @@ async function runGenerate(repoPath: string, options: any): Promise<void> {
         cliOptions.outputDir!,
         false // We'll handle our own progress display
       );
-      docsGenerated = 7; // Number of doc files generated
+      docsGenerated = 10; // Number of doc files generated (README, STRUCTURE, DEVELOPMENT, API, DEPLOYMENT, TROUBLESHOOTING, configuration + modules)
       ui.updateSpinner('Documentation generated successfully', 'success');
     } catch (error) {
       ui.updateSpinner('Failed to generate documentation', 'fail');
@@ -341,15 +354,15 @@ async function runUpdate(repoPath: string, options: any): Promise<void> {
 
   // Check if context has been initialized
   if (!gitService.hasContextBeenInitialized(cliOptions.outputDir!)) {
-    ui.displayError('No documentation context found. You should run analyze and generate before updating.');
+    ui.displayError('No documentation context found. You should run analyze and init before updating.');
     console.log(chalk.bold('\n💡 Getting Started:'));
     console.log(chalk.gray('─'.repeat(50)));
     console.log(`${chalk.blue('1. Analyze:')} ai-context analyze ${cliOptions.repoPath}`);
-    console.log(`${chalk.blue('2. Generate:')} ai-context generate ${cliOptions.repoPath}`);
+    console.log(`${chalk.blue('2. Initialize:')} ai-context init ${cliOptions.repoPath}`);
     console.log(`${chalk.blue('3. Update:')} ai-context update ${cliOptions.repoPath}`);
     console.log(chalk.gray('─'.repeat(50)));
     console.log(chalk.gray('The analyze command shows token estimates and costs.'));
-    console.log(chalk.gray('The generate command creates the initial documentation.'));
+    console.log(chalk.gray('The init command creates the initial documentation.'));
     console.log(chalk.gray('The update command incrementally updates existing documentation.'));
     process.exit(1);
   }
@@ -362,7 +375,7 @@ async function runUpdate(repoPath: string, options: any): Promise<void> {
   const fileMapper = new FileMapper(cliOptions.exclude);
   const llmConfig: LLMConfig = {
     apiKey: cliOptions.apiKey,
-    model: cliOptions.model || 'google/gemini-2.0-pro',
+    model: cliOptions.model || 'google/gemini-2.5-flash-preview-05-20',
     provider: cliOptions.provider || 'openrouter'
   };
   const llmClient = LLMClientFactory.createClient(llmConfig);
@@ -491,15 +504,15 @@ async function runPreview(repoPath: string, options: any): Promise<void> {
   const outputDir = path.resolve(options.output || './.context');
   if (!gitService.hasContextBeenInitialized(outputDir)) {
     ui.updateSpinner('Context not initialized', 'fail');
-    ui.displayError('No documentation context found. You should run analyze and generate before previewing changes to update.');
+    ui.displayError('No documentation context found. You should run analyze and init before previewing changes to update.');
     console.log(chalk.bold('\n💡 Getting Started:'));
     console.log(chalk.gray('─'.repeat(50)));
     console.log(`${chalk.blue('1. Analyze:')} ai-context analyze ${repoPath}`);
-    console.log(`${chalk.blue('2. Generate:')} ai-context generate ${repoPath}`);
+    console.log(`${chalk.blue('2. Initialize:')} ai-context init ${repoPath}`);
     console.log(`${chalk.blue('3. Preview:')} ai-context preview ${repoPath}`);
     console.log(chalk.gray('─'.repeat(50)));
     console.log(chalk.gray('The analyze command shows token estimates and costs.'));
-    console.log(chalk.gray('The generate command creates the initial documentation.'));
+    console.log(chalk.gray('The init command creates the initial documentation.'));
     console.log(chalk.gray('The preview command shows what would change in updates.'));
     process.exit(1);
   }

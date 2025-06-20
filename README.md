@@ -128,7 +128,7 @@ npx @ai-coders/context generate /path/to/repo [options]
 Options:
   -o, --output <dir>         Output directory (default: "./.context")
   -k, --api-key <key>        API key for the LLM provider
-  -m, --model <model>        LLM model to use (default: "google/gemini-2.0-pro")
+  -m, --model <model>        LLM model to use (default: "google/gemini-2.5-flash-preview-05-20")
   -p, --provider <provider>  LLM provider (openrouter, openai, anthropic, gemini, grok)
   --exclude <patterns...>    Patterns to exclude from analysis
   --include <patterns...>    Patterns to include in analysis
@@ -216,7 +216,7 @@ npx @ai-coders/context preview ./my-project --staged
 # Update documentation in CI for main branch changes
 npx @ai-coders/context update . \
   --provider openrouter \
-  --model google/gemini-2.0-pro \
+  --model google/gemini-2.5-flash-preview-05-20 \
   --verbose
 ```
 
@@ -262,7 +262,7 @@ Access to 100+ models from different providers with competitive pricing:
 export OPENROUTER_API_KEY=your_api_key_here
 
 # Use specific models
-npx @ai-coders/context generate . -m google/gemini-2.0-pro  # Fast & cheap
+npx @ai-coders/context generate . -m google/gemini-2.5-flash-preview-05-20  # Fast & cheap
 npx @ai-coders/context generate . -m anthropic/claude-3-sonnet  # Balanced
 npx @ai-coders/context generate . -m openai/gpt-4  # High quality
 ```
@@ -341,7 +341,7 @@ Create a `.env` file in your project:
 ```bash
 # .env
 OPENROUTER_API_KEY=your_key_here
-DEFAULT_MODEL=google/gemini-2.0-pro
+DEFAULT_MODEL=google/gemini-2.5-flash-preview-05-20
 OUTPUT_DIR=./.context
 ```
 
@@ -355,7 +355,7 @@ npx @ai-coders/context generate . \
 
 # Use fast model for regular updates
 npx @ai-coders/context update . \
-  --model google/gemini-2.0-pro
+  --model google/gemini-2.5-flash-preview-05-20
 ```
 
 ## 🔄 Git Integration & State Tracking
@@ -424,7 +424,7 @@ echo "$STAGED_FILES" | sed 's/^/  - /'
 echo "📚 Updating documentation for staged files..."
 npx @ai-coders/context update . \
     --staged \
-    --model google/gemini-2.0-pro \
+    --model google/gemini-2.5-flash-preview-05-20 \
     --verbose || {
     echo "❌ Documentation update failed. Commit aborted."
     exit 1
@@ -498,7 +498,7 @@ jobs:
       run: |
         npx @ai-coders/context update . \
           --provider openrouter \
-          --model google/gemini-2.0-pro \
+          --model google/gemini-2.5-flash-preview-05-20 \
           --verbose
       env:
         OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -550,7 +550,7 @@ npx @ai-coders/context update . -v
 **High costs**
 ```bash
 # Use cost-effective models
-npx @ai-coders/context generate . --model google/gemini-2.0-pro
+npx @ai-coders/context generate . --model google/gemini-2.5-flash-preview-05-20
 
 # Preview costs first
 npx @ai-coders/context analyze .

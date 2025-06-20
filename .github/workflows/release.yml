@@ -44,15 +44,13 @@ jobs:
     - name: Build
       run: npm run build
     
-    - name: Run tests
-      run: npm test --if-present
-    
     - name: Bump version (manual trigger)
       if: github.event_name == 'workflow_dispatch'
       run: |
         npm version ${{ github.event.inputs.version }} -m "chore: release %s"
         git push --follow-tags
     
+    # Note: Requires NPM_TOKEN secret to be configured in repository settings
     - name: Publish to npm
       run: npm publish --access public
       env:

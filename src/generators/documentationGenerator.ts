@@ -46,6 +46,15 @@ export class DocumentationGenerator {
 
     // Generate configuration guide
     await this.generateConfigurationGuide(repoStructure, docsDir, verbose);
+
+    // Generate development guide
+    await this.generateDevelopmentGuide(repoStructure, docsDir, verbose);
+
+    // Generate deployment guide
+    await this.generateDeploymentGuide(repoStructure, docsDir, verbose);
+
+    // Generate troubleshooting guide
+    await this.generateTroubleshootingGuide(repoStructure, docsDir, verbose);
   }
 
   private async generateMainIndex(
@@ -465,7 +474,7 @@ See the types module for detailed interface definitions.
 
 ### Optional Variables
 
-- \`OPENROUTER_MODEL\`: Override default model (default: \`google/gemini-2.0-pro\`)
+- \`OPENROUTER_MODEL\`: Override default model (default: \`google/gemini-2.5-flash-preview-05-20\`)
 - \`OPENROUTER_BASE_URL\`: Custom API endpoint (rarely needed)
 
 ## Configuration Files
@@ -505,7 +514,7 @@ You can use any model available on OpenRouter:
 - \`anthropic/claude-3-haiku\` - Fast and efficient
 - \`anthropic/claude-3-sonnet\` - Balanced performance
 - \`openai/gpt-4\` - High quality output
-- \`google/gemini-2.0-pro\` - Google's latest model
+- \`google/gemini-2.5-flash-preview-05-20\` - Google's latest model
 
 ### Output Customization
 
@@ -659,5 +668,237 @@ Control what gets generated:
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  }
+
+  private async generateDevelopmentGuide(
+    repoStructure: RepoStructure,
+    docsDir: string,
+    verbose: boolean
+  ): Promise<void> {
+    if (verbose) {
+      console.log(chalk.yellow('🛠️ Generating development guide...'));
+    }
+
+    const developmentGuide = await this.createDevelopmentGuide(repoStructure);
+    const devPath = path.join(docsDir, 'DEVELOPMENT.md');
+    await fs.writeFile(devPath, developmentGuide);
+
+    if (verbose) {
+      console.log(chalk.green(`✅ Development guide saved: ${devPath}`));
+    }
+  }
+
+  private async generateDeploymentGuide(
+    repoStructure: RepoStructure,
+    docsDir: string,
+    verbose: boolean
+  ): Promise<void> {
+    if (verbose) {
+      console.log(chalk.yellow('🚀 Generating deployment guide...'));
+    }
+
+    const deploymentGuide = await this.createDeploymentGuide(repoStructure);
+    const deployPath = path.join(docsDir, 'DEPLOYMENT.md');
+    await fs.writeFile(deployPath, deploymentGuide);
+
+    if (verbose) {
+      console.log(chalk.green(`✅ Deployment guide saved: ${deployPath}`));
+    }
+  }
+
+  private async generateTroubleshootingGuide(
+    repoStructure: RepoStructure,
+    docsDir: string,
+    verbose: boolean
+  ): Promise<void> {
+    if (verbose) {
+      console.log(chalk.yellow('🔧 Generating troubleshooting guide...'));
+    }
+
+    const troubleshootingGuide = await this.createTroubleshootingGuide(repoStructure);
+    const troublePath = path.join(docsDir, 'TROUBLESHOOTING.md');
+    await fs.writeFile(troublePath, troubleshootingGuide);
+
+    if (verbose) {
+      console.log(chalk.green(`✅ Troubleshooting guide saved: ${troublePath}`));
+    }
+  }
+
+  private async createDevelopmentGuide(repoStructure: RepoStructure): Promise<string> {
+    const moduleGroups = this.getModuleGroups(repoStructure);
+    const configFiles = this.getConfigurationFiles(repoStructure);
+    const packageInfo = this.getPackageInfo(repoStructure);
+
+    const context = `Repository: ${repoStructure.rootPath}
+Total Files: ${repoStructure.totalFiles}
+Modules: ${moduleGroups.map(m => m.name).join(', ')}
+Configuration Files: ${configFiles.map(f => path.basename(f.relativePath)).join(', ')}
+Package Info: ${JSON.stringify(packageInfo, null, 2)}
+
+Module Structure:
+${moduleGroups.map(m => `- ${m.name}: ${m.description} (${m.files.length} files)`).join('\n')}`;
+
+    return await this.llmClient.generateText(
+      `Create a comprehensive development guide for this project. Include:
+
+1. Getting Started (setup instructions)
+2. Development Environment Requirements
+3. Project Structure Overview
+4. Development Workflow
+5. Code Style and Standards
+6. Testing Guidelines
+7. Debugging Tips
+8. Build Process
+9. Contributing Guidelines
+
+Format as clean Markdown with proper headings and code blocks.`,
+      context
+    );
+  }
+
+  private async createDeploymentGuide(repoStructure: RepoStructure): Promise<string> {
+    const packageInfo = this.getPackageInfo(repoStructure);
+    const configFiles = this.getConfigurationFiles(repoStructure);
+    const hasDockerfile = repoStructure.files.some(f => f.relativePath.toLowerCase().includes('dockerfile'));
+    const hasKubernetes = repoStructure.files.some(f => f.relativePath.includes('k8s') || f.relativePath.includes('kubernetes'));
+
+    const context = `Repository: ${repoStructure.rootPath}
+Package Info: ${JSON.stringify(packageInfo, null, 2)}
+Configuration Files: ${configFiles.map(f => path.basename(f.relativePath)).join(', ')}
+Has Dockerfile: ${hasDockerfile}
+Has Kubernetes: ${hasKubernetes}
+Project Type: ${this.detectProjectType(repoStructure)}`;
+
+    return await this.llmClient.generateText(
+      `Create a comprehensive deployment guide for this project. Include:
+
+1. Prerequisites and Dependencies
+2. Environment Configuration
+3. Build Process for Production
+4. Deployment Options (based on project type)
+5. Environment Variables and Secrets
+6. Database Setup (if applicable)
+7. Monitoring and Health Checks
+8. Rollback Procedures
+9. Security Considerations
+10. Performance Optimization
+
+Adapt the guide based on the project type and available configuration files.
+Format as clean Markdown with proper headings and code blocks.`,
+      context
+    );
+  }
+
+  private async createTroubleshootingGuide(repoStructure: RepoStructure): Promise<string> {
+    const moduleGroups = this.getModuleGroups(repoStructure);
+    const packageInfo = this.getPackageInfo(repoStructure);
+    const projectType = this.detectProjectType(repoStructure);
+
+    const context = `Repository: ${repoStructure.rootPath}
+Project Type: ${projectType}
+Package Info: ${JSON.stringify(packageInfo, null, 2)}
+Modules: ${moduleGroups.map(m => `${m.name} (${m.files.length} files)`).join(', ')}`;
+
+    return await this.llmClient.generateText(
+      `Create a comprehensive troubleshooting guide for this ${projectType} project. Include:
+
+1. Common Issues and Solutions
+2. Development Environment Problems
+3. Build and Compilation Errors
+4. Runtime Errors and Debugging
+5. Performance Issues
+6. Dependency Problems
+7. Configuration Issues
+8. Testing Problems
+9. Deployment Issues
+10. Debugging Tools and Techniques
+11. Log Analysis
+12. FAQ Section
+
+Focus on practical solutions and include code examples where helpful.
+Format as clean Markdown with proper headings and code blocks.`,
+      context
+    );
+  }
+
+  private detectProjectType(repoStructure: RepoStructure): string {
+    const packageJson = repoStructure.files.find(f => f.relativePath === 'package.json');
+    if (packageJson) {
+      return 'Node.js/JavaScript';
+    }
+    
+    const cargoToml = repoStructure.files.find(f => f.relativePath === 'Cargo.toml');
+    if (cargoToml) {
+      return 'Rust';
+    }
+    
+    const goMod = repoStructure.files.find(f => f.relativePath === 'go.mod');
+    if (goMod) {
+      return 'Go';
+    }
+    
+    const pythonFiles = repoStructure.files.filter(f => f.extension === '.py');
+    if (pythonFiles.length > 0) {
+      return 'Python';
+    }
+    
+    const javaFiles = repoStructure.files.filter(f => f.extension === '.java');
+    if (javaFiles.length > 0) {
+      return 'Java';
+    }
+    
+    return 'Mixed/Other';
+  }
+
+  private getConfigurationFiles(repoStructure: RepoStructure): FileInfo[] {
+    const configPatterns = [
+      'package.json',
+      'tsconfig.json',
+      'jest.config.js',
+      'webpack.config.js',
+      '.env',
+      '.env.example',
+      'docker-compose.yml',
+      'Dockerfile',
+      'cargo.toml',
+      'go.mod',
+      'requirements.txt',
+      'pyproject.toml'
+    ];
+
+    return repoStructure.files.filter((file: FileInfo) => 
+      configPatterns.some(pattern => 
+        file.relativePath.toLowerCase().includes(pattern.toLowerCase())
+      )
+    );
+  }
+
+  private getPackageInfo(repoStructure: RepoStructure): any {
+    const packageJson = repoStructure.files.find(f => f.relativePath === 'package.json');
+    if (packageJson) {
+      try {
+        // Read package.json content - this is a simplified approach
+        // In practice, you might want to read the actual file content
+        return {
+          type: 'Node.js project',
+          configFile: 'package.json',
+          hasScripts: true
+        };
+      } catch {
+        return { type: 'Node.js project', configFile: 'package.json' };
+      }
+    }
+
+    const cargoToml = repoStructure.files.find(f => f.relativePath === 'Cargo.toml');
+    if (cargoToml) {
+      return { type: 'Rust project', configFile: 'Cargo.toml' };
+    }
+
+    const goMod = repoStructure.files.find(f => f.relativePath === 'go.mod');
+    if (goMod) {
+      return { type: 'Go project', configFile: 'go.mod' };
+    }
+
+    return { type: 'Generic project', configFile: 'none' };
   }
 }

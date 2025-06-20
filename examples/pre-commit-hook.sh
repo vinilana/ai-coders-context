@@ -34,7 +34,7 @@ fi
 echo "📚 Updating documentation for staged files..."
 npx @ai-coders/context update . \
     --staged \
-    --model google/gemini-2.0-pro \
+    --model google/gemini-2.5-flash-preview-05-20 \
     --verbose || {
     echo "❌ Documentation update failed. Commit aborted."
     exit 1

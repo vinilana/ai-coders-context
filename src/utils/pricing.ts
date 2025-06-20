@@ -53,7 +53,7 @@ export const MODEL_PRICING: { [key: string]: ModelPricing } = {
     outputPricePerMillion: 1.5,
     description: 'Gemini Pro - Google\'s multimodal model'
   },
-  'google/gemini-2.0-pro': {
+  'google/gemini-2.5-flash-preview-05-20': {
     inputPricePerMillion: 1.25,
     outputPricePerMillion: 5.0,
     description: 'Gemini 2.0 Pro - Latest Google model'
