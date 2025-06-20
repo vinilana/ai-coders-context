@@ -655,4 +655,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-Made with ❤️ by the AI Coders community
+Made with ❤️ by the AI Coders Academy - https://aicoders.academy
