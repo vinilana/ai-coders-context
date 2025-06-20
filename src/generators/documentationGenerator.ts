@@ -62,8 +62,9 @@ export class DocumentationGenerator {
     docsDir: string,
     verbose: boolean
   ): Promise<void> {
+    const fileName = 'README.md';
     if (verbose) {
-      console.log(chalk.yellow('📝 Generating documentation index...'));
+      console.log(chalk.blue(`📄 Creating ${fileName}...`));
     }
 
     const indexContent = `# Documentation Index
@@ -102,11 +103,11 @@ Configuration options, environment variables, and setup guides.
 *Last updated: ${new Date().toISOString()}*
 `;
 
-    const indexPath = path.join(docsDir, 'README.md');
+    const indexPath = path.join(docsDir, fileName);
     await fs.writeFile(indexPath, indexContent);
 
     if (verbose) {
-      console.log(chalk.green(`✅ Documentation index saved: ${indexPath}`));
+      console.log(chalk.green(`✅ Created ${fileName}`));
     }
   }
 
@@ -115,16 +116,17 @@ Configuration options, environment variables, and setup guides.
     docsDir: string,
     verbose: boolean
   ): Promise<void> {
+    const fileName = 'overview.md';
     if (verbose) {
-      console.log(chalk.yellow('📝 Generating project overview...'));
+      console.log(chalk.blue(`📄 Creating ${fileName}...`));
     }
 
     const overview = await this.createEnhancedProjectOverview(repoStructure);
-    const overviewPath = path.join(docsDir, 'overview.md');
+    const overviewPath = path.join(docsDir, fileName);
     await fs.writeFile(overviewPath, overview);
 
     if (verbose) {
-      console.log(chalk.green(`✅ Project overview saved: ${overviewPath}`));
+      console.log(chalk.green(`✅ Created ${fileName}`));
     }
   }
 
@@ -133,16 +135,17 @@ Configuration options, environment variables, and setup guides.
     docsDir: string,
     verbose: boolean
   ): Promise<void> {
+    const fileName = 'architecture.md';
     if (verbose) {
-      console.log(chalk.yellow('🏗️ Generating architecture documentation...'));
+      console.log(chalk.blue(`📄 Creating ${fileName}...`));
     }
 
     const architecture = await this.createArchitectureDocumentation(repoStructure);
-    const archPath = path.join(docsDir, 'architecture.md');
+    const archPath = path.join(docsDir, fileName);
     await fs.writeFile(archPath, architecture);
 
     if (verbose) {
-      console.log(chalk.green(`✅ Architecture documentation saved: ${archPath}`));
+      console.log(chalk.green(`✅ Created ${fileName}`));
     }
   }
 
@@ -675,16 +678,17 @@ Control what gets generated:
     docsDir: string,
     verbose: boolean
   ): Promise<void> {
+    const fileName = 'DEVELOPMENT.md';
     if (verbose) {
-      console.log(chalk.yellow('🛠️ Generating development guide...'));
+      console.log(chalk.blue(`📄 Creating ${fileName}...`));
     }
 
     const developmentGuide = await this.createDevelopmentGuide(repoStructure);
-    const devPath = path.join(docsDir, 'DEVELOPMENT.md');
+    const devPath = path.join(docsDir, fileName);
     await fs.writeFile(devPath, developmentGuide);
 
     if (verbose) {
-      console.log(chalk.green(`✅ Development guide saved: ${devPath}`));
+      console.log(chalk.green(`✅ Created ${fileName}`));
     }
   }
 
@@ -693,16 +697,17 @@ Control what gets generated:
     docsDir: string,
     verbose: boolean
   ): Promise<void> {
+    const fileName = 'DEPLOYMENT.md';
     if (verbose) {
-      console.log(chalk.yellow('🚀 Generating deployment guide...'));
+      console.log(chalk.blue(`📄 Creating ${fileName}...`));
     }
 
     const deploymentGuide = await this.createDeploymentGuide(repoStructure);
-    const deployPath = path.join(docsDir, 'DEPLOYMENT.md');
+    const deployPath = path.join(docsDir, fileName);
     await fs.writeFile(deployPath, deploymentGuide);
 
     if (verbose) {
-      console.log(chalk.green(`✅ Deployment guide saved: ${deployPath}`));
+      console.log(chalk.green(`✅ Created ${fileName}`));
     }
   }
 
@@ -711,16 +716,17 @@ Control what gets generated:
     docsDir: string,
     verbose: boolean
   ): Promise<void> {
+    const fileName = 'TROUBLESHOOTING.md';
     if (verbose) {
-      console.log(chalk.yellow('🔧 Generating troubleshooting guide...'));
+      console.log(chalk.blue(`📄 Creating ${fileName}...`));
     }
 
     const troubleshootingGuide = await this.createTroubleshootingGuide(repoStructure);
-    const troublePath = path.join(docsDir, 'TROUBLESHOOTING.md');
+    const troublePath = path.join(docsDir, fileName);
     await fs.writeFile(troublePath, troubleshootingGuide);
 
     if (verbose) {
-      console.log(chalk.green(`✅ Troubleshooting guide saved: ${troublePath}`));
+      console.log(chalk.green(`✅ Created ${fileName}`));
     }
   }
 

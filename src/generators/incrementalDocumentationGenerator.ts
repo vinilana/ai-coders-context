@@ -222,12 +222,17 @@ export class IncrementalDocumentationGenerator {
     const modulesDir = path.join(docsDir, 'modules');
     await fs.ensureDir(modulesDir);
 
+    const fileName = `${this.slugify(module.name)}.md`;
+    if (verbose) {
+      console.log(chalk.blue(`📄 Updating modules/${fileName}...`));
+    }
+
     const moduleDoc = await this.createModuleDocumentation(module, repoStructure);
-    const modulePath = path.join(modulesDir, `${this.slugify(module.name)}.md`);
+    const modulePath = path.join(modulesDir, fileName);
     await fs.writeFile(modulePath, moduleDoc);
 
     if (verbose) {
-      console.log(chalk.green(`✅ Updated module: ${module.name}`));
+      console.log(chalk.green(`✅ Updated modules/${fileName}`));
     }
 
     return path.relative(docsDir, modulePath);
@@ -326,22 +331,32 @@ ${module.files.map(file => `- \`${file.relativePath}\` - ${this.formatBytes(file
     docsDir: string,
     verbose: boolean
   ): Promise<void> {
-    if (verbose) {
-      console.log(chalk.yellow('📊 Updating overview documents...'));
-    }
-
     // Update project overview
+    const overviewFileName = 'overview.md';
+    if (verbose) {
+      console.log(chalk.blue(`📄 Updating ${overviewFileName}...`));
+    }
+    
     const overview = await this.createEnhancedProjectOverview(repoStructure);
-    const overviewPath = path.join(docsDir, 'overview.md');
+    const overviewPath = path.join(docsDir, overviewFileName);
     await fs.writeFile(overviewPath, overview);
 
+    if (verbose) {
+      console.log(chalk.green(`✅ Updated ${overviewFileName}`));
+    }
+
     // Update main README
+    const indexFileName = 'README.md';
+    if (verbose) {
+      console.log(chalk.blue(`📄 Updating ${indexFileName}...`));
+    }
+    
     const indexContent = this.createDocumentationIndex(repoStructure);
-    const indexPath = path.join(docsDir, 'README.md');
+    const indexPath = path.join(docsDir, indexFileName);
     await fs.writeFile(indexPath, indexContent);
 
     if (verbose) {
-      console.log(chalk.green('✅ Overview documents updated'));
+      console.log(chalk.green(`✅ Updated ${indexFileName}`));
     }
   }
 

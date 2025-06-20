@@ -39,8 +39,9 @@ export class AgentGenerator {
 
     for (const agentType of this.agentTypes) {
       try {
+        const fileName = `${agentType}.md`;
         if (verbose) {
-          console.log(chalk.yellow(`🔧 Generating ${agentType} agent...`));
+          console.log(chalk.blue(`📄 Creating ${fileName}...`));
         }
 
         const agentPrompt = await this.generateAgentPrompt(
@@ -50,11 +51,11 @@ export class AgentGenerator {
           repoStructure
         );
 
-        const agentPath = path.join(agentsDir, `${agentType}.md`);
+        const agentPath = path.join(agentsDir, fileName);
         await fs.writeFile(agentPath, agentPrompt);
 
         if (verbose) {
-          console.log(chalk.green(`✅ Agent prompt generated: ${agentType}.md`));
+          console.log(chalk.green(`✅ Created ${fileName}`));
         }
       } catch (error) {
         if (verbose) {
@@ -327,6 +328,10 @@ Total Files: ${repoStructure.totalFiles}
   }
 
   private async generateAgentIndex(agentsDir: string, verbose: boolean): Promise<void> {
+    const fileName = 'README.md';
+    if (verbose) {
+      console.log(chalk.blue(`📄 Creating ${fileName}...`));
+    }
     const indexContent = `# AI Agents Index
 
 This directory contains specialized AI agent prompts designed for this codebase.
@@ -359,11 +364,11 @@ Each agent prompt is designed to provide context-aware assistance for specific d
 *Generated on: ${new Date().toISOString()}*
 `;
 
-    const indexPath = path.join(agentsDir, 'README.md');
+    const indexPath = path.join(agentsDir, fileName);
     await fs.writeFile(indexPath, indexContent);
 
     if (verbose) {
-      console.log(chalk.green('✅ Agent index generated: README.md'));
+      console.log(chalk.green(`✅ Created ${fileName}`));
     }
   }
 
