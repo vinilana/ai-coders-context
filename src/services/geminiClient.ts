@@ -1,28 +1,29 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 import { LLMConfig } from '../types';
 import { BaseLLMClient } from './baseLLMClient';
 
 export class GeminiClient extends BaseLLMClient {
-  private client: GoogleGenerativeAI;
+  private client: GoogleGenAI;
   private model: string;
 
   constructor(config: LLMConfig) {
     super(config.model);
     this.model = config.model;
-    this.client = new GoogleGenerativeAI(config.apiKey);
+    this.client = new GoogleGenAI({ apiKey: config.apiKey });
   }
 
   async generateText(prompt: string, systemPrompt?: string): Promise<string> {
     try {
-      const model = this.client.getGenerativeModel({ model: this.model });
-      
       const fullPrompt = systemPrompt 
         ? `System: ${systemPrompt}\n\nUser: ${prompt}`
         : prompt;
 
-      const result = await model.generateContent(fullPrompt);
-      const response = result.response;
-      const text = response.text();
+      const response = await this.client.models.generateContent({
+        model: this.model,
+        contents: fullPrompt
+      });
+
+      const text = response.text || '';
 
       // Google AI doesn't provide detailed usage stats in the free tier
       // We'll estimate based on content length
@@ -47,7 +48,8 @@ export class GeminiClient extends BaseLLMClient {
       'gemini-pro': { input: 0.5, output: 1.5 },
       'gemini-1.5-pro': { input: 3.5, output: 10.5 },
       'gemini-1.5-flash': { input: 0.075, output: 0.3 },
-      'gemini-2.0-flash-exp': { input: 0.075, output: 0.3 }
+      'gemini-2.0-flash-exp': { input: 0.075, output: 0.3 },
+      'gemini-2.0-flash-001': { input: 0.075, output: 0.3 }
     };
 
     const pricing = prices[this.model] || prices['gemini-pro']; // fallback
