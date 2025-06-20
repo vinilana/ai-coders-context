@@ -46,6 +46,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.0",
     "@google/genai": "^0.8.0",
+    "@types/inquirer": "^9.0.8",
     "axios": "^1.7.0",
     "boxen": "^5.1.2",
     "chalk": "^4.1.2",
@@ -55,6 +56,7 @@
     "figures": "^3.2.0",
     "fs-extra": "^11.2.0",
     "glob": "^10.4.0",
+    "inquirer": "^12.6.3",
     "openai": "^4.70.0",
     "ora": "^5.4.1"
   },

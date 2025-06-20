@@ -18,6 +18,7 @@ import { LLMClientFactory } from './services/llmClientFactory';
 import { GitService } from './utils/gitService';
 import { ChangeAnalyzer } from './services/changeAnalyzer';
 import { TokenEstimator } from './utils/tokenEstimator';
+import { InteractiveMode } from './utils/interactiveMode';
 
 const program = new Command();
 const ui = new CLIInterface();
@@ -125,7 +126,7 @@ Examples:
     }
   });
 
-async function runGenerate(repoPath: string, options: any): Promise<void> {
+export async function runGenerate(repoPath: string, options: any): Promise<void> {
   const provider = options.provider || LLMClientFactory.detectProviderFromModel(options.model);
   
   // Get API key from options or environment variables
@@ -253,7 +254,7 @@ async function runGenerate(repoPath: string, options: any): Promise<void> {
   ui.displaySuccess(`Output saved to: ${cliOptions.outputDir}`);
 }
 
-async function runAnalyze(repoPath: string, options: any): Promise<void> {
+export async function runAnalyze(repoPath: string, options: any): Promise<void> {
   const resolvedPath = path.resolve(repoPath);
   
   // Display welcome
@@ -311,7 +312,7 @@ async function runAnalyze(repoPath: string, options: any): Promise<void> {
   ui.displaySuccess('Analysis complete!');
 }
 
-async function runUpdate(repoPath: string, options: any): Promise<void> {
+export async function runUpdate(repoPath: string, options: any): Promise<void> {
   const provider = options.provider || LLMClientFactory.detectProviderFromModel(options.model);
   
   // Get API key from options or environment variables
@@ -480,7 +481,7 @@ async function runUpdate(repoPath: string, options: any): Promise<void> {
   ui.displaySuccess(`Documentation updated! Processed ${result.updated} files.`);
 }
 
-async function runPreview(repoPath: string, options: any): Promise<void> {
+export async function runPreview(repoPath: string, options: any): Promise<void> {
   const resolvedPath = path.resolve(repoPath);
   
   // Display welcome
@@ -619,4 +620,13 @@ async function runPreview(repoPath: string, options: any): Promise<void> {
   }
 }
 
-program.parse();
+// Check if no arguments were provided (interactive mode)
+if (process.argv.length === 2) {
+  const interactive = new InteractiveMode();
+  interactive.start().catch((error) => {
+    ui.displayError('Interactive mode failed', error);
+    process.exit(1);
+  });
+} else {
+  program.parse();
+}
