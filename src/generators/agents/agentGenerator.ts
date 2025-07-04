@@ -1,19 +1,18 @@
-import * as fs from 'fs-extra';
 import * as path from 'path';
 import { RepoStructure } from '../../types';
 import { FileMapper } from '../../utils/fileMapper';
 import { BaseLLMClient } from '../../services/baseLLMClient';
-import chalk from 'chalk';
 import { AGENT_TYPES, AgentType } from './agentTypes';
 import { ContextUtils } from './contextUtils';
 import { PromptFormatter } from './promptFormatter';
+import { GeneratorUtils } from '../shared';
 
 export class AgentGenerator {
   private contextUtils: ContextUtils;
   private promptFormatter: PromptFormatter;
 
   constructor(
-    private fileMapper: FileMapper,
+    fileMapper: FileMapper,
     private llmClient: BaseLLMClient
   ) {
     this.contextUtils = new ContextUtils(fileMapper);
@@ -26,11 +25,7 @@ export class AgentGenerator {
     verbose: boolean = false
   ): Promise<void> {
     const agentsDir = path.join(outputDir, 'agents');
-    await fs.ensureDir(agentsDir);
-
-    if (verbose) {
-      console.log(chalk.blue(`🤖 Generating agent prompts in: ${agentsDir}`));
-    }
+    await GeneratorUtils.ensureDirectoryAndLog(agentsDir, verbose, '🤖 Generating agent prompts in');
 
     const repoContext = this.contextUtils.createRepoContext(repoStructure);
     const fileContext = await this.contextUtils.createFileContext(repoStructure);
@@ -38,10 +33,6 @@ export class AgentGenerator {
     for (const agentType of AGENT_TYPES) {
       try {
         const fileName = `${agentType}.md`;
-        if (verbose) {
-          console.log(chalk.blue(`📄 Creating ${fileName}...`));
-        }
-
         const agentPrompt = await this.generateAgentPrompt(
           agentType,
           repoContext,
@@ -50,15 +41,9 @@ export class AgentGenerator {
         );
 
         const agentPath = path.join(agentsDir, fileName);
-        await fs.writeFile(agentPath, agentPrompt);
-
-        if (verbose) {
-          console.log(chalk.green(`✅ Created ${fileName}`));
-        }
+        await GeneratorUtils.writeFileWithLogging(agentPath, agentPrompt, verbose);
       } catch (error) {
-        if (verbose) {
-          console.log(chalk.red(`❌ Error generating ${agentType}: ${error}`));
-        }
+        GeneratorUtils.logError(`Error generating ${agentType}`, error, verbose);
       }
     }
 
@@ -94,17 +79,9 @@ export class AgentGenerator {
 
   private async generateAgentIndex(agentsDir: string, verbose: boolean): Promise<void> {
     const fileName = 'README.md';
-    if (verbose) {
-      console.log(chalk.blue(`📄 Creating ${fileName}...`));
-    }
     const indexContent = this.promptFormatter.generateAgentIndex();
-
     const indexPath = path.join(agentsDir, fileName);
-    await fs.writeFile(indexPath, indexContent);
-
-    if (verbose) {
-      console.log(chalk.green(`✅ Created ${fileName}`));
-    }
+    await GeneratorUtils.writeFileWithLogging(indexPath, indexContent, verbose);
   }
 
 }

@@ -1,24 +1,16 @@
+import { GeneratorUtils } from '../shared';
+
 export class DocumentationUtils {
   static slugify(text: string): string {
-    return text
-      .toLowerCase()
-      .replace(/\s+/g, '-')
-      .replace(/[^a-z0-9-]/g, '');
+    return GeneratorUtils.slugify(text);
   }
 
   static formatBytes(bytes: number): string {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    return GeneratorUtils.formatBytes(bytes);
   }
 
   static formatModuleName(name: string): string {
-    return name
-      .split(/[-_]/)
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
+    return GeneratorUtils.formatModuleName(name);
   }
 
   static getConfigDescription(filePath: string): string {
