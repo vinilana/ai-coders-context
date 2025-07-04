@@ -2,110 +2,29 @@ import { FileInfo, RepoStructure } from '../types';
 import { FileMapper } from './fileMapper';
 import chalk from 'chalk';
 
-// Model pricing per 1M tokens (as of 2024)
-// Update this constant when new models arrive or prices change
-const MODEL_PRICING = {
-  // OpenRouter - Popular models
-  'openrouter-claude-3-haiku': {
-    provider: 'OpenRouter',
-    modelName: 'Claude 3 Haiku',
-    input: 0.25,
-    output: 1.25
-  },
-  'openrouter-claude-3-sonnet': {
-    provider: 'OpenRouter', 
-    modelName: 'Claude 3.5 Sonnet',
-    input: 3.00,
-    output: 15.00
-  },
-  'openrouter-gpt-4o-mini': {
-    provider: 'OpenRouter',
-    modelName: 'GPT-4o Mini',
-    input: 0.15,
-    output: 0.60
-  },
-  'openrouter-llama-3.1-8b': {
-    provider: 'OpenRouter',
-    modelName: 'Llama 3.1 8B',
-    input: 0.05,
-    output: 0.05
-  },
-  
-  // OpenAI Direct
-  'openai-gpt-4o': {
-    provider: 'OpenAI',
-    modelName: 'GPT-4o',
-    input: 2.50,
-    output: 10.00
-  },
-  'openai-gpt-4o-mini': {
-    provider: 'OpenAI',
-    modelName: 'GPT-4o Mini', 
-    input: 0.15,
-    output: 0.60
-  },
-  'openai-gpt-4-turbo': {
-    provider: 'OpenAI',
-    modelName: 'GPT-4 Turbo',
-    input: 10.00,
-    output: 30.00
-  },
+export interface ModelPricing {
+  input: number;  // Cost per 1M input tokens
+  output: number; // Cost per 1M output tokens
+}
 
-  // Anthropic Direct
-  'anthropic-claude-3-haiku': {
-    provider: 'Anthropic',
-    modelName: 'Claude 3 Haiku',
-    input: 0.25,
-    output: 1.25
-  },
-  'anthropic-claude-3-sonnet': {
-    provider: 'Anthropic',
-    modelName: 'Claude 3.5 Sonnet',
-    input: 3.00,
-    output: 15.00
-  },
-
-  // Google AI
-  'gemini-1.5-flash': {
-    provider: 'Google AI',
-    modelName: 'Gemini 1.5 Flash',
-    input: 0.075,
-    output: 0.30
-  },
-  'gemini-1.5-pro': {
-    provider: 'Google AI',
-    modelName: 'Gemini 1.5 Pro',
-    input: 1.25,
-    output: 5.00
-  },
-
-  // Grok (X.AI)
-  'grok-beta': {
-    provider: 'Grok (X.AI)',
-    modelName: 'Grok Beta',
-    input: 5.00,
-    output: 15.00
-  }
-} as const;
 
 export interface TokenEstimate {
   totalFiles: number;
   estimatedInputTokens: number;
   estimatedOutputTokens: number;
   estimatedTotalTokens: number;
-  costEstimates: {
-    [modelKey: string]: {
-      provider: string;
-      modelName: string;
-      inputCost: number;
-      outputCost: number;
-      totalCost: number;
-    };
+  costEstimates?: {
+    inputCost: number;
+    outputCost: number;
+    totalCost: number;
   };
 }
 
 export class TokenEstimator {
-  constructor(private fileMapper: FileMapper) {}
+  constructor(
+    private fileMapper: FileMapper, 
+    private pricing?: ModelPricing
+  ) {}
 
   async estimateTokensForFullGeneration(repoStructure: RepoStructure): Promise<TokenEstimate> {
     const relevantFiles = repoStructure.files.filter(file => 
@@ -144,13 +63,19 @@ export class TokenEstimator {
 
     const estimatedTotalTokens = totalInputWithOverhead + estimatedOutputTokens;
 
-    return {
+    const result: TokenEstimate = {
       totalFiles: relevantFiles.length,
       estimatedInputTokens: totalInputWithOverhead,
       estimatedOutputTokens,
-      estimatedTotalTokens,
-      costEstimates: this.calculateCostEstimates(totalInputWithOverhead, estimatedOutputTokens)
+      estimatedTotalTokens
     };
+
+    // Only calculate cost estimates if pricing is provided
+    if (this.pricing) {
+      result.costEstimates = this.calculateCostEstimates(totalInputWithOverhead, estimatedOutputTokens);
+    }
+
+    return result;
   }
 
   private selectSampleFiles(files: FileInfo[], sampleSize: number): FileInfo[] {
@@ -177,24 +102,20 @@ export class TokenEstimator {
     return Math.ceil(text.length / 4);
   }
 
-  private calculateCostEstimates(inputTokens: number, outputTokens: number): TokenEstimate['costEstimates'] {
-    const costEstimates: TokenEstimate['costEstimates'] = {};
-
-    for (const [modelKey, model] of Object.entries(MODEL_PRICING)) {
-      const inputCost = (inputTokens / 1_000_000) * model.input;
-      const outputCost = (outputTokens / 1_000_000) * model.output;
-      const totalCost = inputCost + outputCost;
-
-      costEstimates[modelKey] = {
-        provider: model.provider,
-        modelName: model.modelName,
-        inputCost: Math.round(inputCost * 100) / 100, // Round to 2 decimal places
-        outputCost: Math.round(outputCost * 100) / 100,
-        totalCost: Math.round(totalCost * 100) / 100
-      };
+  private calculateCostEstimates(inputTokens: number, outputTokens: number): NonNullable<TokenEstimate['costEstimates']> {
+    if (!this.pricing) {
+      throw new Error('Pricing information is required for cost estimation');
     }
 
-    return costEstimates;
+    const inputCost = (inputTokens / 1_000_000) * this.pricing.input;
+    const outputCost = (outputTokens / 1_000_000) * this.pricing.output;
+    const totalCost = inputCost + outputCost;
+
+    return {
+      inputCost: Math.round(inputCost * 100) / 100,
+      outputCost: Math.round(outputCost * 100) / 100,
+      totalCost: Math.round(totalCost * 100) / 100
+    };
   }
 
   formatTokenEstimate(estimate: TokenEstimate): string {
@@ -209,26 +130,41 @@ ${chalk.bold('🔤 Estimated Input Tokens:')} ${chalk.cyan(formatNumber(estimate
 ${chalk.bold('📝 Estimated Output Tokens:')} ${chalk.cyan(formatNumber(estimate.estimatedOutputTokens))}
 ${chalk.bold('🎯 Total Estimated Tokens:')} ${chalk.cyan(formatNumber(estimate.estimatedTotalTokens))}
 
-${chalk.bold.yellow('💰 Cost Estimates by Model:')}
 `;
 
-    // Sort models by total cost
-    const sortedModels = Object.entries(estimate.costEstimates)
-      .sort(([, a], [, b]) => a.totalCost - b.totalCost);
-
-    for (const [, costs] of sortedModels) {
-      const modelDisplay = `${costs.modelName} (${costs.provider})`;
+    if (estimate.costEstimates) {
+      const costs = estimate.costEstimates;
       const totalColor = costs.totalCost < 0.10 ? chalk.green : costs.totalCost < 0.50 ? chalk.yellow : chalk.red;
-      output += `  ${chalk.bold(modelDisplay.padEnd(30))} | Input: ${chalk.gray(formatCost(costs.inputCost).padStart(6))} | Output: ${chalk.gray(formatCost(costs.outputCost).padStart(6))} | Total: ${totalColor(formatCost(costs.totalCost).padStart(6))}\n`;
+      
+      output += `${chalk.bold.yellow('💰 Cost Estimate:')}
+  Input Tokens Cost:  ${chalk.gray(formatCost(costs.inputCost))}
+  Output Tokens Cost: ${chalk.gray(formatCost(costs.outputCost))}
+  ${chalk.bold('Total Estimated Cost:')} ${totalColor(formatCost(costs.totalCost))}
+
+`;
+    } else {
+      output += `${chalk.bold.yellow('💰 Cost Estimation:')}
+  ${chalk.gray('No pricing information provided - cost estimation unavailable')}
+  ${chalk.gray('Use --input-price and --output-price to enable cost estimation')}
+
+`;
     }
 
-    output += `
-${chalk.bold.blue('ℹ️  Notes:')}
+    const notesSection = estimate.costEstimates 
+      ? `${chalk.bold.blue('ℹ️  Notes:')}
 ${chalk.gray('• Token estimates are based on sampling ' + Math.min(estimate.totalFiles, 10) + ' files')}
 ${chalk.gray('• Costs include system prompts and context overhead')}
 ${chalk.gray('• Output tokens estimated at ~40% of input + overhead')}
-${chalk.gray('• Actual costs may vary based on model choice and content complexity')}
-${chalk.gray('• Prices are approximate and may change')}
+${chalk.gray('• Actual costs may vary based on content complexity')}
+${chalk.gray('• Pricing based on your provided model costs')}`
+      : `${chalk.bold.blue('ℹ️  Notes:')}
+${chalk.gray('• Token estimates are based on sampling ' + Math.min(estimate.totalFiles, 10) + ' files')}
+${chalk.gray('• Costs include system prompts and context overhead')}
+${chalk.gray('• Output tokens estimated at ~40% of input + overhead')}
+${chalk.gray('• Provide pricing information to see cost estimates')}`;
+
+    output += `
+${notesSection}
 
 ${chalk.gray('═══════════════════════════════════════════════════════════')}`;
 

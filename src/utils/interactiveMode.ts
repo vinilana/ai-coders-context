@@ -21,6 +21,9 @@ interface InteractiveAnswers {
   teamSize?: string;
   includeExamples?: boolean;
   includeTools?: boolean;
+  inputPrice?: number;
+  outputPrice?: number;
+  usePricing?: boolean;
 }
 
 export class InteractiveMode {
@@ -105,9 +108,12 @@ export class InteractiveMode {
       case 'guidelines':
         specificAnswers = await this.promptGuidelinesParameters();
         break;
+      case 'analyze':
+        specificAnswers = await this.promptAnalyzeParameters();
+        break;
       case 'update':
       case 'preview':
-        // These commands might need additional parameters in the future
+        specificAnswers = await this.promptPreviewParameters();
         break;
     }
 
@@ -269,6 +275,78 @@ export class InteractiveMode {
       ...features,
       ...llmAnswers,
       ...patternAnswers
+    };
+  }
+
+  private async promptAnalyzeParameters(): Promise<Partial<InteractiveAnswers>> {
+    // Ask for custom pricing
+    const pricingAnswers = await this.promptCustomPricing();
+
+    // Ask for patterns
+    const patternAnswers = await this.promptPatterns();
+
+    return {
+      ...pricingAnswers,
+      ...patternAnswers
+    };
+  }
+
+  private async promptPreviewParameters(): Promise<Partial<InteractiveAnswers>> {
+    // Ask for custom pricing
+    const pricingAnswers = await this.promptCustomPricing();
+
+    // Ask for patterns
+    const patternAnswers = await this.promptPatterns();
+
+    return {
+      ...pricingAnswers,
+      ...patternAnswers
+    };
+  }
+
+  private async promptCustomPricing(): Promise<Partial<InteractiveAnswers>> {
+    const { usePricing } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'usePricing',
+        message: 'Do you want to provide pricing for cost estimation?',
+        default: false
+      }
+    ]);
+
+    if (!usePricing) {
+      return { usePricing: false };
+    }
+
+    console.log(chalk.gray('\n💰 Pricing Configuration'));
+    console.log(chalk.gray('Enter your token pricing (per 1M tokens):\n'));
+
+    const pricingAnswers = await inquirer.prompt([
+      {
+        type: 'input',
+        name: 'inputPrice',
+        message: 'Input token price per 1M tokens (e.g., 2.50 for $2.50):',
+        validate: (input: string) => {
+          const num = parseFloat(input);
+          return !isNaN(num) && num >= 0 || 'Please enter a valid positive number';
+        },
+        filter: (input: string) => parseFloat(input)
+      },
+      {
+        type: 'input',
+        name: 'outputPrice',
+        message: 'Output token price per 1M tokens (e.g., 10.00 for $10.00):',
+        validate: (input: string) => {
+          const num = parseFloat(input);
+          return !isNaN(num) && num >= 0 || 'Please enter a valid positive number';
+        },
+        filter: (input: string) => parseFloat(input)
+      }
+    ]);
+
+    return {
+      usePricing: true,
+      ...pricingAnswers
     };
   }
 
@@ -578,6 +656,16 @@ export class InteractiveMode {
       }
     }
 
+    // Add pricing options for analyze and preview commands
+    if ((answers.command === 'analyze' || answers.command === 'preview') && answers.usePricing) {
+      if (answers.inputPrice !== undefined) {
+        args.push('--input-price', answers.inputPrice.toString());
+      }
+      if (answers.outputPrice !== undefined) {
+        args.push('--output-price', answers.outputPrice.toString());
+      }
+    }
+
     // Show the command that will be executed
     console.log(chalk.gray('\n📋 Executing command:'));
     console.log(chalk.cyan(`ai-context ${args.join(' ')}\n`));
@@ -621,7 +709,10 @@ export class InteractiveMode {
         case 'analyze':
           await runAnalyze(answers.repoPath!, {
             include: answers.includePatterns?.split(',').map(p => p.trim()).filter(p => p),
-            exclude: answers.excludePatterns?.split(',').map(p => p.trim()).filter(p => p)
+            exclude: answers.excludePatterns?.split(',').map(p => p.trim()).filter(p => p),
+            inputPrice: answers.inputPrice,
+            outputPrice: answers.outputPrice,
+            verbose: true // Enable verbose for interactive mode
           });
           break;
 
@@ -640,7 +731,10 @@ export class InteractiveMode {
           await runPreview(answers.repoPath!, {
             output: answers.outputDir,
             include: answers.includePatterns?.split(',').map(p => p.trim()).filter(p => p),
-            exclude: answers.excludePatterns?.split(',').map(p => p.trim()).filter(p => p)
+            exclude: answers.excludePatterns?.split(',').map(p => p.trim()).filter(p => p),
+            inputPrice: answers.inputPrice,
+            outputPrice: answers.outputPrice,
+            verbose: true // Enable verbose for interactive mode
           });
           break;
       }

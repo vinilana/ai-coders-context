@@ -95,6 +95,8 @@ program
   .argument('<repo-path>', 'Path to the repository to analyze')
   .option('--exclude <patterns...>', 'Patterns to exclude from analysis')
   .option('--include <patterns...>', 'Patterns to include in analysis')
+  .option('--input-price <price>', 'Input token price per 1M tokens (e.g., 2.50)', parseFloat)
+  .option('--output-price <price>', 'Output token price per 1M tokens (e.g., 10.00)', parseFloat)
   .option('-v, --verbose', 'Verbose output')
   .action(async (repoPath: string, options: any) => {
     try {
@@ -113,13 +115,16 @@ program
   .option('--staged', 'Only analyze staged files (for pre-commit hooks)')
   .option('--exclude <patterns...>', 'Patterns to exclude from analysis')
   .option('--include <patterns...>', 'Patterns to include in analysis')
+  .option('--input-price <price>', 'Input token price per 1M tokens (e.g., 2.50)', parseFloat)
+  .option('--output-price <price>', 'Output token price per 1M tokens (e.g., 10.00)', parseFloat)
   .option('-v, --verbose', 'Verbose output with detailed file lists')
   .addHelpText('after', `
 Examples:
   $ ai-context preview ./                     # Preview changes since last run
   $ ai-context preview ./ --staged           # Preview staged files only
   $ ai-context preview ./ --since HEAD~3     # Preview changes since 3 commits ago
-  $ ai-context preview ./ --verbose          # Show detailed file change lists`)
+  $ ai-context preview ./ --verbose          # Show detailed file change lists
+  $ ai-context preview ./ --input-price 2.50 --output-price 10.00`)
   .action(async (repoPath: string, options: any) => {
     try {
       await runPreview(repoPath, options);
@@ -527,7 +532,19 @@ export async function runAnalyze(repoPath: string, options: any): Promise<void> 
   // Token estimation for full documentation generation
   ui.startSpinner('Estimating token usage for full documentation generation...');
   
-  const tokenEstimator = new TokenEstimator(fileMapper);
+  // Create pricing if provided (optional for analyze command)
+  let pricing = undefined;
+  if (options.inputPrice !== undefined && options.outputPrice !== undefined) {
+    pricing = {
+      input: options.inputPrice,
+      output: options.outputPrice
+    };
+  } else if (options.inputPrice !== undefined || options.outputPrice !== undefined) {
+    ui.displayError('Pricing requires both options: --input-price and --output-price');
+    process.exit(1);
+  }
+  
+  const tokenEstimator = new TokenEstimator(fileMapper, pricing);
   const tokenEstimate = await tokenEstimator.estimateTokensForFullGeneration(repoStructure);
   
   ui.stopSpinner();
@@ -825,7 +842,19 @@ export async function runPreview(repoPath: string, options: any): Promise<void> 
       console.log(chalk.gray(`Debug: Matched ${matchedFiles.length} files from repo structure`));
     }
     
-    const tokenEstimator = new TokenEstimator(fileMapper);
+    // Create pricing if provided (optional for preview command)
+    let pricing = undefined;
+    if (options.inputPrice !== undefined && options.outputPrice !== undefined) {
+      pricing = {
+        input: options.inputPrice,
+        output: options.outputPrice
+      };
+    } else if (options.inputPrice !== undefined || options.outputPrice !== undefined) {
+      ui.displayError('Pricing requires both options: --input-price and --output-price');
+      process.exit(1);
+    }
+    
+    const tokenEstimator = new TokenEstimator(fileMapper, pricing);
     const tokenEstimate = await tokenEstimator.estimateTokensForFullGeneration(affectedRepoStructure);
     
     ui.stopSpinner();
