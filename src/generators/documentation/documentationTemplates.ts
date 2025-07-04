@@ -4,12 +4,15 @@ import { ModuleGroup } from '../moduleGrouper';
 import { GeneratorUtils } from '../shared';
 import { DocumentationType } from './documentationTypes';
 import { CodebaseAnalyzer } from '../analyzers/codebaseAnalyzer';
+import { GuidelinesGenerator } from '../guidelines/guidelinesGenerator';
 
 export class DocumentationTemplates {
   private analyzer: CodebaseAnalyzer;
+  private guidelinesGenerator: GuidelinesGenerator;
 
   constructor(private llmClient: BaseLLMClient, fileMapper?: any) {
     this.analyzer = new CodebaseAnalyzer(fileMapper);
+    this.guidelinesGenerator = new GuidelinesGenerator(fileMapper, llmClient);
   }
 
   async createMentalModel(repoStructure: RepoStructure, moduleGroups: ModuleGroup[]): Promise<string> {
@@ -269,6 +272,57 @@ ${content}
 ${GeneratorUtils.createGeneratedByFooter('Domain Context Documentation')}`;
   }
 
+  async createSoftwareGuidelines(repoStructure: RepoStructure, moduleGroups: ModuleGroup[]): Promise<string> {
+    const content = await this.llmClient.generateText(
+      `Create comprehensive software development guidelines that help developers understand and work effectively with this codebase.
+
+These guidelines should cover the most important aspects of development for this specific project, including:
+
+1. **Technology-Specific Guidelines**: Best practices for the detected technology stack
+2. **Project-Specific Patterns**: Guidelines based on existing code patterns and architecture
+3. **Quality Standards**: Code quality, testing, and review guidelines
+4. **Workflow Guidelines**: Development processes and collaboration practices
+5. **Security & Performance**: Guidelines for maintaining security and performance standards
+
+Focus on:
+- **Actionable Rules**: Clear, specific guidelines developers can follow
+- **Context-Aware**: Guidelines tailored to this project's technology and patterns
+- **Practical Examples**: Concrete examples using the project's tech stack
+- **Tool Recommendations**: Specific tools and automation for enforcing guidelines
+- **Quality Gates**: Measurable criteria for following guidelines
+
+The guidelines should serve as a comprehensive reference for both new and experienced developers working on this project.`,
+      this.buildRepoContext(repoStructure, moduleGroups)
+    );
+
+    return `# Software Development Guidelines
+
+${content}
+
+## Quick Reference
+
+### For New Developers
+- Start with the foundational guidelines and project setup
+- Review code style and testing guidelines thoroughly
+- Gradually explore advanced guidelines as you work on different areas
+
+### For Daily Development
+- Reference relevant guidelines for your current task
+- Use guidelines during code reviews
+- Follow security and performance guidelines for all changes
+
+### For Code Reviews
+- Validate adherence to established guidelines
+- Use guidelines as a checklist for review quality
+- Provide constructive feedback based on guideline violations
+
+## Continuous Improvement
+
+These guidelines should evolve with the project. Regular reviews and updates ensure they remain relevant and valuable for the development team.
+
+${GeneratorUtils.createGeneratedByFooter('Software Development Guidelines')}`;
+  }
+
   createDocumentationIndex(enabledTypes: DocumentationType[]): string {
     const docDescriptions: Record<DocumentationType, { title: string; description: string }> = {
       'mental-model': {
@@ -298,6 +352,10 @@ ${GeneratorUtils.createGeneratedByFooter('Domain Context Documentation')}`;
       'domain-context': {
         title: 'Domain Context',
         description: 'Business and domain knowledge for this project'
+      },
+      'software-guidelines': {
+        title: 'Software Development Guidelines',
+        description: 'Comprehensive development guidelines tailored to this project'
       }
     };
 

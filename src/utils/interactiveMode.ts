@@ -6,15 +6,21 @@ import { CLIInterface } from './cliUI';
 import { LLMClientFactory } from '../services/llmClientFactory';
 
 interface InteractiveAnswers {
-  command: 'init' | 'analyze' | 'update' | 'preview' | 'exit';
+  command: 'init' | 'analyze' | 'update' | 'preview' | 'guidelines' | 'exit';
   repoPath?: string;
-  initType?: 'docs' | 'agents' | 'both';
+  initType?: 'docs' | 'agents' | 'guidelines' | 'both';
   outputDir?: string;
   provider?: string;
   model?: string;
   apiKey?: string;
   excludePatterns?: string;
   includePatterns?: string;
+  guidelineCategories?: string[];
+  projectType?: string;
+  complexity?: string;
+  teamSize?: string;
+  includeExamples?: boolean;
+  includeTools?: boolean;
 }
 
 export class InteractiveMode {
@@ -54,6 +60,11 @@ export class InteractiveMode {
             short: 'Initialize'
           },
           {
+            name: '📋 Generate software development guidelines',
+            value: 'guidelines',
+            short: 'Guidelines'
+          },
+          {
             name: '🔍 Analyze repository structure and estimate costs',
             value: 'analyze',
             short: 'Analyze'
@@ -90,6 +101,9 @@ export class InteractiveMode {
     switch (command) {
       case 'init':
         specificAnswers = await this.promptInitParameters();
+        break;
+      case 'guidelines':
+        specificAnswers = await this.promptGuidelinesParameters();
         break;
       case 'update':
       case 'preview':
@@ -130,6 +144,134 @@ export class InteractiveMode {
     return answers;
   }
 
+  private async promptGuidelinesParameters(): Promise<Partial<InteractiveAnswers>> {
+    // Ask for specific categories or comprehensive guidelines
+    const { guidelineScope } = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'guidelineScope',
+        message: 'What type of guidelines would you like to generate?',
+        choices: [
+          {
+            name: '🎯 Comprehensive guidelines (all categories)',
+            value: 'comprehensive',
+            short: 'Comprehensive'
+          },
+          {
+            name: '🔧 Specific categories only',
+            value: 'specific',
+            short: 'Specific'
+          }
+        ],
+        default: 'comprehensive'
+      }
+    ]);
+
+    let guidelineCategories: string[] = [];
+
+    if (guidelineScope === 'specific') {
+      const { selectedCategories } = await inquirer.prompt<{ selectedCategories: string[] }>({
+        type: 'checkbox',
+        name: 'selectedCategories',
+        message: 'Select the guideline categories to generate:',
+        choices: [
+          { name: '🧪 Testing guidelines', value: 'testing' },
+          { name: '🎨 Frontend guidelines', value: 'frontend' },
+          { name: '⚙️ Backend guidelines', value: 'backend' },
+          { name: '🗄️ Database guidelines', value: 'database' },
+          { name: '🔒 Security guidelines', value: 'security' },
+          { name: '⚡ Performance guidelines', value: 'performance' },
+          { name: '✨ Code style guidelines', value: 'code-style' },
+          { name: '🌲 Git workflow guidelines', value: 'git-workflow' },
+          { name: '🚀 Deployment guidelines', value: 'deployment' },
+          { name: '📊 Monitoring guidelines', value: 'monitoring' },
+          { name: '📚 Documentation guidelines', value: 'documentation' },
+          { name: '🏗️ Architecture guidelines', value: 'architecture' }
+        ],
+        validate: (answer: any) => {
+          if (!answer || answer.length === 0) {
+            return 'Please select at least one category.';
+          }
+          return true;
+        }
+      });
+      guidelineCategories = selectedCategories;
+    }
+
+    // Ask for project configuration
+    const projectConfig = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'projectType',
+        message: 'What type of project is this?',
+        choices: [
+          { name: '🤖 Auto-detect based on codebase', value: 'auto' },
+          { name: '🎨 Frontend application', value: 'frontend' },
+          { name: '⚙️ Backend service', value: 'backend' },
+          { name: '🌐 Full-stack application', value: 'fullstack' },
+          { name: '📱 Mobile application', value: 'mobile' },
+          { name: '🖥️ Desktop application', value: 'desktop' },
+          { name: '📦 Library/package', value: 'library' }
+        ],
+        default: 'auto'
+      },
+      {
+        type: 'list',
+        name: 'complexity',
+        message: 'How complex is your project?',
+        choices: [
+          { name: '🤖 Auto-detect based on codebase', value: 'auto' },
+          { name: '🟢 Simple (few components, straightforward logic)', value: 'simple' },
+          { name: '🟡 Moderate (multiple modules, some complexity)', value: 'moderate' },
+          { name: '🔴 Complex (many modules, intricate architecture)', value: 'complex' }
+        ],
+        default: 'auto'
+      },
+      {
+        type: 'list',
+        name: 'teamSize',
+        message: 'What is your team size?',
+        choices: [
+          { name: '🤖 Auto-detect/assume medium team', value: 'auto' },
+          { name: '👤 Small team (1-3 people)', value: 'small' },
+          { name: '👥 Medium team (4-10 people)', value: 'medium' },
+          { name: '👨‍👩‍👧‍👦 Large team (10+ people)', value: 'large' }
+        ],
+        default: 'auto'
+      }
+    ]);
+
+    // Ask for additional features
+    const features = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'includeExamples',
+        message: 'Include code examples in guidelines?',
+        default: true
+      },
+      {
+        type: 'confirm',
+        name: 'includeTools',
+        message: 'Include tool recommendations in guidelines?',
+        default: true
+      }
+    ]);
+
+    // Ask for LLM configuration
+    const llmAnswers = await this.promptLLMConfiguration();
+
+    // Ask for patterns
+    const patternAnswers = await this.promptPatterns();
+
+    return {
+      guidelineCategories,
+      ...projectConfig,
+      ...features,
+      ...llmAnswers,
+      ...patternAnswers
+    };
+  }
+
   private async promptInitParameters(): Promise<Partial<InteractiveAnswers>> {
     const initAnswers = await inquirer.prompt([
       {
@@ -151,6 +293,11 @@ export class InteractiveMode {
             name: '🤖 AI agents only',
             value: 'agents',
             short: 'Agents only'
+          },
+          {
+            name: '📋 Development guidelines only',
+            value: 'guidelines',
+            short: 'Guidelines only'
           }
         ],
         default: 'both'
@@ -377,6 +524,10 @@ export class InteractiveMode {
       args.push(answers.initType);
     }
 
+    if (answers.command === 'guidelines' && answers.guidelineCategories && answers.guidelineCategories.length > 0) {
+      args.push(...answers.guidelineCategories);
+    }
+
     // Add options
     if (answers.outputDir) {
       args.push('--output', answers.outputDir);
@@ -408,12 +559,31 @@ export class InteractiveMode {
       }
     }
 
+    // Add guidelines-specific options
+    if (answers.command === 'guidelines') {
+      if (answers.projectType && answers.projectType !== 'auto') {
+        args.push('--project-type', answers.projectType);
+      }
+      if (answers.complexity && answers.complexity !== 'auto') {
+        args.push('--complexity', answers.complexity);
+      }
+      if (answers.teamSize && answers.teamSize !== 'auto') {
+        args.push('--team-size', answers.teamSize);
+      }
+      if (answers.includeExamples) {
+        args.push('--include-examples');
+      }
+      if (answers.includeTools) {
+        args.push('--include-tools');
+      }
+    }
+
     // Show the command that will be executed
     console.log(chalk.gray('\n📋 Executing command:'));
     console.log(chalk.cyan(`ai-context ${args.join(' ')}\n`));
 
     // Import and execute the command
-    const { runGenerate, runAnalyze, runUpdate, runPreview } = await import('../index');
+    const { runGenerate, runAnalyze, runUpdate, runPreview, runGuidelines } = await import('../index');
     
     try {
       switch (answers.command) {
@@ -426,7 +596,25 @@ export class InteractiveMode {
             include: answers.includePatterns?.split(',').map(p => p.trim()).filter(p => p),
             exclude: answers.excludePatterns?.split(',').map(p => p.trim()).filter(p => p),
             docsOnly: answers.initType === 'docs',
-            agentsOnly: answers.initType === 'agents'
+            agentsOnly: answers.initType === 'agents',
+            guidelinesOnly: answers.initType === 'guidelines'
+          });
+          break;
+
+        case 'guidelines':
+          await runGuidelines(answers.repoPath!, answers.guidelineCategories || [], {
+            output: answers.outputDir,
+            provider: answers.provider,
+            model: answers.model,
+            apiKey: answers.apiKey,
+            projectType: answers.projectType !== 'auto' ? answers.projectType : undefined,
+            complexity: answers.complexity !== 'auto' ? answers.complexity : undefined,
+            teamSize: answers.teamSize !== 'auto' ? answers.teamSize : undefined,
+            includeExamples: answers.includeExamples,
+            includeTools: answers.includeTools,
+            include: answers.includePatterns?.split(',').map(p => p.trim()).filter(p => p),
+            exclude: answers.excludePatterns?.split(',').map(p => p.trim()).filter(p => p),
+            verbose: true // Enable verbose for interactive mode
           });
           break;
 

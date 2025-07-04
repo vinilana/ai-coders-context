@@ -58,7 +58,8 @@ export class DocumentationGenerator {
       'development-patterns': () => this.templates.createDevelopmentPatterns(repoStructure, moduleGroups),
       'ai-guidelines': () => this.templates.createAIGuidelines(repoStructure, moduleGroups),
       'contributing-workflows': () => this.templates.createContributingWorkflows(repoStructure, moduleGroups),
-      'domain-context': () => this.templates.createDomainContext(repoStructure, moduleGroups)
+      'domain-context': () => this.templates.createDomainContext(repoStructure, moduleGroups),
+      'software-guidelines': () => this.templates.createSoftwareGuidelines(repoStructure, moduleGroups)
     };
 
     for (const docType of enabledTypes) {
@@ -133,5 +134,20 @@ export class DocumentationGenerator {
     
     const filePath = path.join(docsDir, 'architecture-decisions.md');
     await GeneratorUtils.writeFileWithLogging(filePath, content, verbose, 'Generated Architecture Decisions');
+  }
+
+  async generateSoftwareGuidelinesOnly(
+    repoStructure: RepoStructure,
+    outputDir: string,
+    verbose: boolean = false
+  ): Promise<void> {
+    const docsDir = path.join(outputDir, 'docs');
+    await GeneratorUtils.ensureDirectoryAndLog(docsDir, verbose, '📋 Generating software development guidelines');
+
+    const moduleGroups = this.moduleGrouper.getModuleGroups(repoStructure);
+    const content = await this.templates.createSoftwareGuidelines(repoStructure, moduleGroups);
+    
+    const filePath = path.join(docsDir, 'software-guidelines.md');
+    await GeneratorUtils.writeFileWithLogging(filePath, content, verbose, 'Generated Software Development Guidelines');
   }
 }

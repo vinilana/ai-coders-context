@@ -11,6 +11,7 @@ dotenv.config();
 import { FileMapper } from './utils/fileMapper';
 import { DocumentationGenerator } from './generators/documentation/documentationGenerator';
 import { AgentGenerator } from './generators/agents/agentGenerator';
+import { GuidelinesGenerator } from './generators/guidelines/guidelinesGenerator';
 import { IncrementalDocumentationGenerator } from './generators/documentation/incrementalDocumentationGenerator';
 import { CLIOptions, LLMConfig } from './types';
 import { CLIInterface } from './utils/cliUI';
@@ -32,7 +33,7 @@ program
   .command('init')
   .description('Initialize documentation and agent prompts for a repository')
   .argument('<repo-path>', 'Path to the repository to analyze')
-  .argument('[type]', 'Type to initialize: "docs", "agents", or "both" (default: "both")', 'both')
+  .argument('[type]', 'Type to initialize: "docs", "agents", "guidelines", or "both" (default: "both")', 'both')
   .option('-o, --output <dir>', 'Output directory', './.context')
   .option('-k, --api-key <key>', 'API key for the LLM provider')
   .option('-m, --model <model>', 'LLM model to use', 'google/gemini-2.5-flash-preview-05-20')
@@ -43,8 +44,8 @@ program
   .action(async (repoPath: string, type: string, options: any) => {
     try {
       // Validate type argument
-      if (!['docs', 'agents', 'both'].includes(type)) {
-        ui.displayError(`Invalid type "${type}". Must be "docs", "agents", or "both".`);
+      if (!['docs', 'agents', 'guidelines', 'both'].includes(type)) {
+        ui.displayError(`Invalid type "${type}". Must be "docs", "agents", "guidelines", or "both".`);
         process.exit(1);
       }
       
@@ -53,6 +54,8 @@ program
         options.docsOnly = true;
       } else if (type === 'agents') {
         options.agentsOnly = true;
+      } else if (type === 'guidelines') {
+        options.guidelinesOnly = true;
       }
       // For 'both', neither flag is set
       
@@ -126,6 +129,38 @@ Examples:
     }
   });
 
+program
+  .command('guidelines')
+  .description('Generate software development guidelines for a repository')
+  .argument('<repo-path>', 'Path to the repository to analyze')
+  .argument('[categories...]', 'Specific guideline categories to generate (testing, frontend, backend, database, security, performance, code-style, git-workflow, deployment, monitoring, documentation, architecture)')
+  .option('-o, --output <dir>', 'Output directory', './.context')
+  .option('-k, --api-key <key>', 'API key for the LLM provider')
+  .option('-m, --model <model>', 'LLM model to use', 'google/gemini-2.5-flash-preview-05-20')
+  .option('-p, --provider <provider>', 'LLM provider (openrouter, openai, anthropic, gemini, grok)', 'openrouter')
+  .option('--project-type <type>', 'Project type (frontend, backend, fullstack, mobile, desktop, library)', 'auto')
+  .option('--complexity <level>', 'Project complexity (simple, moderate, complex)', 'auto')
+  .option('--team-size <size>', 'Team size (small, medium, large)', 'auto')
+  .option('--include-examples', 'Include code examples in guidelines', false)
+  .option('--include-tools', 'Include tool recommendations in guidelines', false)
+  .option('--exclude <patterns...>', 'Patterns to exclude from analysis')
+  .option('--include <patterns...>', 'Patterns to include in analysis')
+  .option('-v, --verbose', 'Verbose output')
+  .addHelpText('after', `
+Examples:
+  $ ai-context guidelines ./                           # Generate comprehensive guidelines
+  $ ai-context guidelines ./ testing security         # Generate only testing and security guidelines
+  $ ai-context guidelines ./ --project-type frontend  # Generate guidelines for frontend project
+  $ ai-context guidelines ./ --include-examples       # Include code examples in guidelines`)
+  .action(async (repoPath: string, categories: string[], options: any) => {
+    try {
+      await runGuidelines(repoPath, categories, options);
+    } catch (error) {
+      ui.displayError('Failed to generate guidelines', error as Error);
+      process.exit(1);
+    }
+  });
+
 export async function runGenerate(repoPath: string, options: any): Promise<void> {
   const provider = options.provider || LLMClientFactory.detectProviderFromModel(options.model);
   
@@ -175,6 +210,7 @@ export async function runGenerate(repoPath: string, options: any): Promise<void>
   const llmClient = LLMClientFactory.createClient(llmConfig);
   const docGenerator = new DocumentationGenerator(fileMapper, llmClient);
   const agentGenerator = new AgentGenerator(fileMapper, llmClient);
+  const guidelinesGenerator = new GuidelinesGenerator(fileMapper, llmClient);
 
   // Step 1: Map repository structure
   ui.displayStep(1, 4, 'Analyzing repository structure');
@@ -206,9 +242,10 @@ export async function runGenerate(repoPath: string, options: any): Promise<void>
 
   let docsGenerated = 0;
   let agentsGenerated = 0;
+  let guidelinesGenerated = 0;
 
   // Step 2: Generate documentation
-  if (!options.agentsOnly) {
+  if (!options.agentsOnly && !options.guidelinesOnly) {
     ui.displayStep(2, 4, 'Generating documentation');
     ui.startSpinner('Creating comprehensive documentation...');
     
@@ -228,7 +265,7 @@ export async function runGenerate(repoPath: string, options: any): Promise<void>
   }
 
   // Step 3: Generate agent prompts
-  if (!options.docsOnly) {
+  if (!options.docsOnly && !options.guidelinesOnly) {
     ui.displayStep(3, 4, 'Generating AI agent prompts');
     ui.startSpinner('Creating specialized agent prompts...');
     
@@ -246,13 +283,200 @@ export async function runGenerate(repoPath: string, options: any): Promise<void>
     }
   }
 
+  // Step 3/4: Generate guidelines (if guidelines-only or as part of comprehensive generation)
+  if (options.guidelinesOnly) {
+    ui.displayStep(3, 4, 'Generating software development guidelines');
+    ui.startSpinner('Creating comprehensive development guidelines...');
+    
+    try {
+      await guidelinesGenerator.generateGuidelines(
+        repoStructure,
+        cliOptions.outputDir!,
+        {}, // Default config
+        false // We'll handle our own progress display
+      );
+      guidelinesGenerated = 12; // Number of guideline categories
+      ui.updateSpinner('Guidelines generated successfully', 'success');
+    } catch (error) {
+      ui.updateSpinner('Failed to generate guidelines', 'fail');
+      throw error;
+    }
+  }
+
   // Step 4: Complete
   ui.displayStep(4, 4, 'Finalizing output');
   
   // Get usage statistics from the LLM client
   const usageStats = llmClient.getUsageStats();
   ui.displayGenerationSummary(docsGenerated, agentsGenerated, usageStats);
-  ui.displaySuccess(`Output saved to: ${cliOptions.outputDir}`);
+  
+  if (options.guidelinesOnly && guidelinesGenerated > 0) {
+    ui.displaySuccess(`Guidelines generated! Output saved to: ${cliOptions.outputDir}`);
+  } else {
+    ui.displaySuccess(`Output saved to: ${cliOptions.outputDir}`);
+  }
+}
+
+export async function runGuidelines(repoPath: string, categories: string[], options: any): Promise<void> {
+  const provider = options.provider || LLMClientFactory.detectProviderFromModel(options.model);
+  
+  // Get API key from options or environment variables
+  let apiKey = options.apiKey;
+  if (!apiKey) {
+    const envVars = LLMClientFactory.getEnvironmentVariables()[provider as LLMConfig['provider']];
+    for (const envVar of envVars) {
+      apiKey = process.env[envVar];
+      if (apiKey) break;
+    }
+  }
+
+  const cliOptions: CLIOptions = {
+    repoPath: path.resolve(repoPath),
+    outputDir: path.resolve(options.output),
+    model: options.model,
+    apiKey,
+    provider,
+    exclude: options.exclude || [],
+    include: options.include,
+    verbose: options.verbose || false
+  };
+
+  if (!cliOptions.apiKey) {
+    const envVars = LLMClientFactory.getEnvironmentVariables()[provider as LLMConfig['provider']];
+    ui.displayError(`${provider.toUpperCase()} API key is required. Set one of these environment variables: ${envVars.join(', ')} or use --api-key option.`);
+    process.exit(1);
+  }
+
+  // Display welcome message
+  ui.displayWelcome('0.1.0');
+  ui.displayProjectInfo(cliOptions.repoPath, cliOptions.outputDir!, cliOptions.model!, cliOptions.provider);
+  
+  // Show usage warning for expensive models
+  if (cliOptions.model && ['anthropic/claude-3-opus', 'openai/gpt-4'].includes(cliOptions.model)) {
+    ui.displayUsageWarning(1.0); // Lower estimate for guidelines only
+  }
+
+  // Initialize components
+  const fileMapper = new FileMapper(cliOptions.exclude);
+  const llmConfig: LLMConfig = {
+    apiKey: cliOptions.apiKey,
+    model: cliOptions.model || 'google/gemini-2.5-flash-preview-05-20',
+    provider: cliOptions.provider || 'openrouter'
+  };
+  const llmClient = LLMClientFactory.createClient(llmConfig);
+  const guidelinesGenerator = new GuidelinesGenerator(fileMapper, llmClient);
+
+  // Step 1: Map repository structure
+  ui.displayStep(1, 4, 'Analyzing repository structure');
+  ui.startSpinner('Scanning files and directories...');
+  
+  const repoStructure = await fileMapper.mapRepository(
+    cliOptions.repoPath,
+    cliOptions.include
+  );
+
+  ui.updateSpinner(`Found ${repoStructure.totalFiles} files in ${repoStructure.directories.length} directories`, 'success');
+
+  // Display analysis results
+  if (cliOptions.verbose) {
+    ui.displayAnalysisResults(
+      repoStructure.totalFiles,
+      repoStructure.directories.length,
+      ui.formatBytes(repoStructure.totalSize)
+    );
+  }
+
+  // Step 2: Analyze codebase for guidelines
+  ui.displayStep(2, 4, 'Analyzing codebase for guideline recommendations');
+  ui.startSpinner('Detecting technologies and patterns...');
+  
+  try {
+    const analysis = await guidelinesGenerator.analyzeCodebaseOnly(repoStructure, cliOptions.verbose);
+    
+    ui.updateSpinner('Technology analysis complete', 'success');
+    
+    if (cliOptions.verbose) {
+      console.log(chalk.bold('\n📊 Analysis Results:'));
+      console.log(chalk.gray('─'.repeat(50)));
+      console.log(`${chalk.blue('Project Type:')} ${analysis.projectType}`);
+      console.log(`${chalk.blue('Complexity:')} ${analysis.complexity}`);
+      console.log(`${chalk.blue('Technologies:')} ${analysis.technologies.map(t => t.name).join(', ')}`);
+      console.log(`${chalk.blue('Recommended Categories:')} ${analysis.recommendedCategories.join(', ')}`);
+    }
+  } catch (error) {
+    ui.updateSpinner('Failed to analyze codebase', 'fail');
+    throw error;
+  }
+
+  // Step 3: Generate guidelines
+  ui.displayStep(3, 4, 'Generating software development guidelines');
+  ui.startSpinner('Creating comprehensive development guidelines...');
+  
+  try {
+    // Build configuration from CLI options
+    const guidelineConfig: any = {};
+    
+    // Set specific categories if provided
+    if (categories && categories.length > 0) {
+      // Validate categories
+      const validCategories = ['testing', 'frontend', 'backend', 'database', 'security', 'performance', 'code-style', 'git-workflow', 'deployment', 'monitoring', 'documentation', 'architecture'];
+      const invalidCategories = categories.filter(cat => !validCategories.includes(cat));
+      if (invalidCategories.length > 0) {
+        ui.displayError(`Invalid categories: ${invalidCategories.join(', ')}. Valid categories are: ${validCategories.join(', ')}`);
+        process.exit(1);
+      }
+      guidelineConfig.categories = categories;
+    }
+    
+    // Set project configuration from CLI options
+    if (options.projectType && options.projectType !== 'auto') {
+      guidelineConfig.projectType = options.projectType;
+    }
+    if (options.complexity && options.complexity !== 'auto') {
+      guidelineConfig.complexity = options.complexity;
+    }
+    if (options.teamSize && options.teamSize !== 'auto') {
+      guidelineConfig.teamSize = options.teamSize;
+    }
+    
+    // Set feature flags
+    if (options.includeExamples) {
+      guidelineConfig.includeExamples = true;
+    }
+    if (options.includeTools) {
+      guidelineConfig.includeTools = true;
+    }
+    
+    await guidelinesGenerator.generateGuidelines(
+      repoStructure,
+      cliOptions.outputDir!,
+      guidelineConfig,
+      cliOptions.verbose
+    );
+    
+    ui.updateSpinner('Guidelines generated successfully', 'success');
+  } catch (error) {
+    ui.updateSpinner('Failed to generate guidelines', 'fail');
+    throw error;
+  }
+
+  // Step 4: Complete
+  ui.displayStep(4, 4, 'Finalizing output');
+  
+  // Get usage statistics from the LLM client
+  const usageStats = llmClient.getUsageStats();
+  ui.displayGenerationSummary(0, 0, usageStats); // No docs or agents generated
+  
+  const guidelinesPath = path.join(cliOptions.outputDir!, 'guidelines');
+  ui.displaySuccess(`Guidelines generated! Output saved to: ${guidelinesPath}`);
+  
+  // Display helpful next steps
+  console.log(chalk.bold('\n💡 Next Steps:'));
+  console.log(chalk.gray('─'.repeat(50)));
+  console.log(`${chalk.blue('1. Review:')} Check the generated guidelines in ${guidelinesPath}`);
+  console.log(`${chalk.blue('2. Customize:')} Modify guidelines to match your team's specific needs`);
+  console.log(`${chalk.blue('3. Share:')} Distribute guidelines to your development team`);
+  console.log(`${chalk.blue('4. Integrate:')} Include guidelines in your project documentation`);
 }
 
 export async function runAnalyze(repoPath: string, options: any): Promise<void> {

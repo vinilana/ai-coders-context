@@ -10,5 +10,11 @@ export {
   DOCUMENTATION_CONFIG_FILES 
 } from './documentationTypes';
 
-// Re-export analyzers for convenience
+// Re-export analyzers and guidelines for convenience
 export { CodebaseAnalyzer } from '../analyzers';
+export { 
+  GuidelinesGenerator,
+  GuidelinesAnalyzer,
+  GuidelineCategory,
+  GuidelineConfig
+} from '../guidelines';

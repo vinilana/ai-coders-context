@@ -5,7 +5,8 @@ export const DOCUMENTATION_TYPES = [
   'development-patterns',
   'ai-guidelines',
   'contributing-workflows',
-  'domain-context'
+  'domain-context',
+  'software-guidelines'
 ] as const;
 
 export type DocumentationType = typeof DOCUMENTATION_TYPES[number];
