@@ -10,7 +10,7 @@ import * as dotenv from 'dotenv';
 dotenv.config();
 import { FileMapper } from './utils/fileMapper';
 import { DocumentationGenerator } from './generators/documentation/documentationGenerator';
-import { AgentGenerator } from '@generators/agents/agentGenerator';
+import { AgentGenerator } from './generators/agents/agentGenerator';
 import { IncrementalDocumentationGenerator } from './generators/documentation/incrementalDocumentationGenerator';
 import { CLIOptions, LLMConfig } from './types';
 import { CLIInterface } from './utils/cliUI';
@@ -216,6 +216,7 @@ export async function runGenerate(repoPath: string, options: any): Promise<void>
       await docGenerator.generateDocumentation(
         repoStructure,
         cliOptions.outputDir!,
+        {}, // Default config
         false // We'll handle our own progress display
       );
       docsGenerated = 10; // Number of doc files generated (README, STRUCTURE, DEVELOPMENT, API, DEPLOYMENT, TROUBLESHOOTING, configuration + modules)
