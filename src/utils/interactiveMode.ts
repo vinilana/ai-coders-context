@@ -6,9 +6,8 @@ import { CLIInterface } from './cliUI';
 import { LLMClientFactory } from '../services/llmClientFactory';
 
 interface InteractiveAnswers {
-  command: 'init' | 'analyze' | 'update' | 'preview' | 'guidelines' | 'exit';
+  command: 'generate-all' | 'generate-docs' | 'generate-agents' | 'generate-guidelines' | 'analyze' | 'update' | 'preview' | 'exit';
   repoPath?: string;
-  initType?: 'docs' | 'agents' | 'guidelines' | 'both';
   outputDir?: string;
   provider?: string;
   model?: string;
@@ -51,22 +50,32 @@ export class InteractiveMode {
   }
 
   private async promptMainCommand(): Promise<InteractiveAnswers> {
-    const { command } = await inquirer.prompt<{ command: InteractiveAnswers['command'] }>([
-      {
-        type: 'list',
-        name: 'command',
-        message: 'What would you like to do?',
-        choices: [
+    const { command } = await inquirer.prompt<{ command: InteractiveAnswers['command'] }>({
+      type: 'list',
+      name: 'command',
+      message: 'What would you like to generate?',
+      choices: [
           {
-            name: '🚀 Initialize documentation and AI agents for a new project',
-            value: 'init',
-            short: 'Initialize'
+            name: '🚀 Generate everything (docs + agents + guidelines)',
+            value: 'generate-all',
+            short: 'Generate All'
           },
           {
-            name: '📋 Generate software development guidelines',
-            value: 'guidelines',
-            short: 'Guidelines'
+            name: '📚 Generate documentation only',
+            value: 'generate-docs',
+            short: 'Generate Docs'
           },
+          {
+            name: '🤖 Generate AI agent prompts only',
+            value: 'generate-agents',
+            short: 'Generate Agents'
+          },
+          {
+            name: '📋 Generate development guidelines only',
+            value: 'generate-guidelines',
+            short: 'Generate Guidelines'
+          },
+          new inquirer.Separator(),
           {
             name: '🔍 Analyze repository structure and estimate costs',
             value: 'analyze',
@@ -82,14 +91,14 @@ export class InteractiveMode {
             value: 'preview',
             short: 'Preview'
           },
+          new inquirer.Separator(),
           {
             name: '❌ Exit',
             value: 'exit',
             short: 'Exit'
           }
         ]
-      }
-    ]);
+      });
 
     if (command === 'exit') {
       return { command };
@@ -102,10 +111,16 @@ export class InteractiveMode {
     let specificAnswers: Partial<InteractiveAnswers> = {};
     
     switch (command) {
-      case 'init':
-        specificAnswers = await this.promptInitParameters();
+      case 'generate-all':
+        specificAnswers = await this.promptGenerateParameters(true);
         break;
-      case 'guidelines':
+      case 'generate-docs':
+        specificAnswers = await this.promptGenerateParameters(false);
+        break;
+      case 'generate-agents':
+        specificAnswers = await this.promptGenerateParameters(false);
+        break;
+      case 'generate-guidelines':
         specificAnswers = await this.promptGuidelinesParameters();
         break;
       case 'analyze':
@@ -151,6 +166,126 @@ export class InteractiveMode {
   }
 
   private async promptGuidelinesParameters(): Promise<Partial<InteractiveAnswers>> {
+    // Ask for LLM configuration first
+    const llmAnswers = await this.promptLLMConfiguration();
+
+    // Ask for patterns
+    const patternAnswers = await this.promptPatterns();
+
+    // Ask for guidelines configuration
+    const guidelineAnswers = await this.promptGuidelinesConfiguration();
+
+    return {
+      ...llmAnswers,
+      ...patternAnswers,
+      ...guidelineAnswers
+    };
+  }
+
+  private async promptAnalyzeParameters(): Promise<Partial<InteractiveAnswers>> {
+    // Ask for custom pricing
+    const pricingAnswers = await this.promptCustomPricing();
+
+    // Ask for patterns
+    const patternAnswers = await this.promptPatterns();
+
+    return {
+      ...pricingAnswers,
+      ...patternAnswers
+    };
+  }
+
+  private async promptPreviewParameters(): Promise<Partial<InteractiveAnswers>> {
+    // Ask for custom pricing
+    const pricingAnswers = await this.promptCustomPricing();
+
+    // Ask for patterns
+    const patternAnswers = await this.promptPatterns();
+
+    return {
+      ...pricingAnswers,
+      ...patternAnswers
+    };
+  }
+
+  private async promptCustomPricing(): Promise<Partial<InteractiveAnswers>> {
+    const { usePricing } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'usePricing',
+        message: 'Do you want to provide pricing for cost estimation?',
+        default: false
+      }
+    ]);
+
+    if (!usePricing) {
+      return { usePricing: false };
+    }
+
+    console.log(chalk.gray('\n💰 Pricing Configuration'));
+    console.log(chalk.gray('Enter your token pricing (per 1M tokens):\n'));
+
+    const pricingAnswers = await inquirer.prompt([
+      {
+        type: 'input',
+        name: 'inputPrice',
+        message: 'Input token price per 1M tokens (e.g., 2.50 for $2.50):',
+        validate: (input: string) => {
+          const num = parseFloat(input);
+          return !isNaN(num) && num >= 0 || 'Please enter a valid positive number';
+        },
+        filter: (input: string) => parseFloat(input)
+      },
+      {
+        type: 'input',
+        name: 'outputPrice',
+        message: 'Output token price per 1M tokens (e.g., 10.00 for $10.00):',
+        validate: (input: string) => {
+          const num = parseFloat(input);
+          return !isNaN(num) && num >= 0 || 'Please enter a valid positive number';
+        },
+        filter: (input: string) => parseFloat(input)
+      }
+    ]);
+
+    return {
+      usePricing: true,
+      ...pricingAnswers
+    };
+  }
+
+  private async promptGenerateParameters(includeGuidelines: boolean): Promise<Partial<InteractiveAnswers>> {
+    // Ask for LLM configuration
+    const llmAnswers = await this.promptLLMConfiguration();
+
+    // Ask for patterns
+    const patternAnswers = await this.promptPatterns();
+
+    let guidelineAnswers = {};
+    if (includeGuidelines) {
+      // For generate-all, ask if they want to include guidelines configuration
+      const { configureGuidelines } = await inquirer.prompt([
+        {
+          type: 'confirm',
+          name: 'configureGuidelines',
+          message: 'Do you want to configure guidelines generation options?',
+          default: false
+        }
+      ]);
+
+      if (configureGuidelines) {
+        guidelineAnswers = await this.promptGuidelinesConfiguration();
+      }
+    }
+
+    return {
+      ...llmAnswers,
+      ...patternAnswers,
+      ...guidelineAnswers
+    };
+  }
+
+  private async promptGuidelinesConfiguration(): Promise<Partial<InteractiveAnswers>> {
     // Ask for specific categories or comprehensive guidelines
     const { guidelineScope } = await inquirer.prompt([
       {
@@ -263,135 +398,10 @@ export class InteractiveMode {
       }
     ]);
 
-    // Ask for LLM configuration
-    const llmAnswers = await this.promptLLMConfiguration();
-
-    // Ask for patterns
-    const patternAnswers = await this.promptPatterns();
-
     return {
       guidelineCategories,
       ...projectConfig,
-      ...features,
-      ...llmAnswers,
-      ...patternAnswers
-    };
-  }
-
-  private async promptAnalyzeParameters(): Promise<Partial<InteractiveAnswers>> {
-    // Ask for custom pricing
-    const pricingAnswers = await this.promptCustomPricing();
-
-    // Ask for patterns
-    const patternAnswers = await this.promptPatterns();
-
-    return {
-      ...pricingAnswers,
-      ...patternAnswers
-    };
-  }
-
-  private async promptPreviewParameters(): Promise<Partial<InteractiveAnswers>> {
-    // Ask for custom pricing
-    const pricingAnswers = await this.promptCustomPricing();
-
-    // Ask for patterns
-    const patternAnswers = await this.promptPatterns();
-
-    return {
-      ...pricingAnswers,
-      ...patternAnswers
-    };
-  }
-
-  private async promptCustomPricing(): Promise<Partial<InteractiveAnswers>> {
-    const { usePricing } = await inquirer.prompt([
-      {
-        type: 'confirm',
-        name: 'usePricing',
-        message: 'Do you want to provide pricing for cost estimation?',
-        default: false
-      }
-    ]);
-
-    if (!usePricing) {
-      return { usePricing: false };
-    }
-
-    console.log(chalk.gray('\n💰 Pricing Configuration'));
-    console.log(chalk.gray('Enter your token pricing (per 1M tokens):\n'));
-
-    const pricingAnswers = await inquirer.prompt([
-      {
-        type: 'input',
-        name: 'inputPrice',
-        message: 'Input token price per 1M tokens (e.g., 2.50 for $2.50):',
-        validate: (input: string) => {
-          const num = parseFloat(input);
-          return !isNaN(num) && num >= 0 || 'Please enter a valid positive number';
-        },
-        filter: (input: string) => parseFloat(input)
-      },
-      {
-        type: 'input',
-        name: 'outputPrice',
-        message: 'Output token price per 1M tokens (e.g., 10.00 for $10.00):',
-        validate: (input: string) => {
-          const num = parseFloat(input);
-          return !isNaN(num) && num >= 0 || 'Please enter a valid positive number';
-        },
-        filter: (input: string) => parseFloat(input)
-      }
-    ]);
-
-    return {
-      usePricing: true,
-      ...pricingAnswers
-    };
-  }
-
-  private async promptInitParameters(): Promise<Partial<InteractiveAnswers>> {
-    const initAnswers = await inquirer.prompt([
-      {
-        type: 'list',
-        name: 'initType',
-        message: 'What would you like to initialize?',
-        choices: [
-          {
-            name: '📚 Both documentation and AI agents (recommended)',
-            value: 'both',
-            short: 'Both'
-          },
-          {
-            name: '📄 Documentation only',
-            value: 'docs',
-            short: 'Docs only'
-          },
-          {
-            name: '🤖 AI agents only',
-            value: 'agents',
-            short: 'Agents only'
-          },
-          {
-            name: '📋 Development guidelines only',
-            value: 'guidelines',
-            short: 'Guidelines only'
-          }
-        ],
-        default: 'both'
-      }
-    ]);
-
-    // Ask for LLM configuration
-    const llmAnswers = await this.promptLLMConfiguration();
-
-    // Ask for patterns
-    const patternAnswers = await this.promptPatterns();
-
-    return {
-      ...initAnswers,
-      ...llmAnswers,
-      ...patternAnswers
+      ...features
     };
   }
 
@@ -591,18 +601,42 @@ export class InteractiveMode {
   private async executeCommand(answers: InteractiveAnswers): Promise<void> {
     const args: string[] = [];
 
-    // Build command arguments
-    args.push(answers.command);
+    // Build command arguments - map interactive commands to CLI commands
+    let cliCommand: string;
+    switch (answers.command) {
+      case 'generate-all':
+        cliCommand = 'init';
+        break;
+      case 'generate-docs':
+        cliCommand = 'init';
+        break;
+      case 'generate-agents':
+        cliCommand = 'init';
+        break;
+      case 'generate-guidelines':
+        cliCommand = 'guidelines';
+        break;
+      default:
+        cliCommand = answers.command;
+    }
+    
+    args.push(cliCommand);
     
     if (answers.repoPath) {
       args.push(answers.repoPath);
     }
-
-    if (answers.command === 'init' && answers.initType) {
-      args.push(answers.initType);
+    
+    // Add init type for generate commands
+    if (answers.command === 'generate-docs') {
+      args.push('docs');
+    } else if (answers.command === 'generate-agents') {
+      args.push('agents');
+    } else if (answers.command === 'generate-all') {
+      args.push('both');
     }
 
-    if (answers.command === 'guidelines' && answers.guidelineCategories && answers.guidelineCategories.length > 0) {
+    // Add command-specific arguments
+    if (answers.command === 'generate-guidelines' && answers.guidelineCategories && answers.guidelineCategories.length > 0) {
       args.push(...answers.guidelineCategories);
     }
 
@@ -638,7 +672,7 @@ export class InteractiveMode {
     }
 
     // Add guidelines-specific options
-    if (answers.command === 'guidelines') {
+    if (answers.command === 'generate-guidelines') {
       if (answers.projectType && answers.projectType !== 'auto') {
         args.push('--project-type', answers.projectType);
       }
@@ -675,7 +709,7 @@ export class InteractiveMode {
     
     try {
       switch (answers.command) {
-        case 'init':
+        case 'generate-all':
           await runGenerate(answers.repoPath!, {
             output: answers.outputDir,
             provider: answers.provider,
@@ -683,13 +717,37 @@ export class InteractiveMode {
             apiKey: answers.apiKey,
             include: answers.includePatterns?.split(',').map(p => p.trim()).filter(p => p),
             exclude: answers.excludePatterns?.split(',').map(p => p.trim()).filter(p => p),
-            docsOnly: answers.initType === 'docs',
-            agentsOnly: answers.initType === 'agents',
-            guidelinesOnly: answers.initType === 'guidelines'
+            verbose: true // Enable verbose for interactive mode
           });
           break;
 
-        case 'guidelines':
+        case 'generate-docs':
+          await runGenerate(answers.repoPath!, {
+            output: answers.outputDir,
+            provider: answers.provider,
+            model: answers.model,
+            apiKey: answers.apiKey,
+            include: answers.includePatterns?.split(',').map(p => p.trim()).filter(p => p),
+            exclude: answers.excludePatterns?.split(',').map(p => p.trim()).filter(p => p),
+            docsOnly: true,
+            verbose: true // Enable verbose for interactive mode
+          });
+          break;
+
+        case 'generate-agents':
+          await runGenerate(answers.repoPath!, {
+            output: answers.outputDir,
+            provider: answers.provider,
+            model: answers.model,
+            apiKey: answers.apiKey,
+            include: answers.includePatterns?.split(',').map(p => p.trim()).filter(p => p),
+            exclude: answers.excludePatterns?.split(',').map(p => p.trim()).filter(p => p),
+            agentsOnly: true,
+            verbose: true // Enable verbose for interactive mode
+          });
+          break;
+
+        case 'generate-guidelines':
           await runGuidelines(answers.repoPath!, answers.guidelineCategories || [], {
             output: answers.outputDir,
             provider: answers.provider,
