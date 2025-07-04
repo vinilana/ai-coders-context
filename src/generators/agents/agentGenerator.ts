@@ -1,8 +1,8 @@
 import * as fs from 'fs-extra';
 import * as path from 'path';
-import { RepoStructure, AgentPrompt } from '../types';
-import { FileMapper } from '../utils/fileMapper';
-import { BaseLLMClient } from '../services/baseLLMClient';
+import { RepoStructure } from '../../types';
+import { FileMapper } from '../../utils/fileMapper';
+import { BaseLLMClient } from '../../services/baseLLMClient';
 import chalk from 'chalk';
 
 export class AgentGenerator {
@@ -14,7 +14,10 @@ export class AgentGenerator {
     'test-writer',
     'documentation-writer',
     'performance-optimizer',
-    'security-auditor'
+    'security-auditor',
+    'backend-specialist',
+    'frontend-specialist',
+    'architect-specialist'
   ];
 
   constructor(
@@ -170,6 +173,27 @@ ${this.getAgentCommands(agentType)}
         'Implement security best practices',
         'Review dependencies for security issues',
         'Ensure data protection and privacy compliance'
+      ],
+      'backend-specialist': [
+        'Design and implement server-side architecture',
+        'Create and maintain APIs and microservices',
+        'Optimize database queries and data models',
+        'Implement authentication and authorization',
+        'Handle server deployment and scaling'
+      ],
+      'frontend-specialist': [
+        'Design and implement user interfaces',
+        'Create responsive and accessible web applications',
+        'Optimize client-side performance and bundle sizes',
+        'Implement state management and routing',
+        'Ensure cross-browser compatibility'
+      ],
+      'architect-specialist': [
+        'Design overall system architecture and patterns',
+        'Define technical standards and best practices',
+        'Evaluate and recommend technology choices',
+        'Plan system scalability and maintainability',
+        'Create architectural documentation and diagrams'
       ]
     };
 
@@ -218,6 +242,27 @@ ${this.getAgentCommands(agentType)}
         'Follow security best practices',
         'Stay updated on common vulnerabilities',
         'Consider the principle of least privilege'
+      ],
+      'backend-specialist': [
+        'Design APIs with RESTful principles',
+        'Implement proper error handling and logging',
+        'Use appropriate design patterns and clean architecture',
+        'Consider scalability and performance from the start',
+        'Implement comprehensive testing for business logic'
+      ],
+      'frontend-specialist': [
+        'Follow modern frontend development patterns',
+        'Optimize for accessibility and user experience',
+        'Implement responsive design principles',
+        'Use component-based architecture effectively',
+        'Optimize performance and loading times'
+      ],
+      'architect-specialist': [
+        'Consider long-term maintainability and scalability',
+        'Balance technical debt with business requirements',
+        'Document architectural decisions and rationale',
+        'Promote code reusability and modularity',
+        'Stay updated on industry trends and technologies'
       ]
     };
 

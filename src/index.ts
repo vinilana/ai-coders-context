@@ -9,9 +9,9 @@ import * as dotenv from 'dotenv';
 // Load environment variables from .env file
 dotenv.config();
 import { FileMapper } from './utils/fileMapper';
-import { DocumentationGenerator } from './generators/documentationGenerator';
-import { AgentGenerator } from './generators/agentGenerator';
-import { IncrementalDocumentationGenerator } from './generators/incrementalDocumentationGenerator';
+import { DocumentationGenerator } from './generators/documentation/documentationGenerator';
+import { AgentGenerator } from '@generators/agents/agentGenerator';
+import { IncrementalDocumentationGenerator } from './generators/documentation/incrementalDocumentationGenerator';
 import { CLIOptions, LLMConfig } from './types';
 import { CLIInterface } from './utils/cliUI';
 import { LLMClientFactory } from './services/llmClientFactory';

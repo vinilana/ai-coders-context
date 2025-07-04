@@ -1,9 +1,9 @@
 import * as fs from 'fs-extra';
 import * as path from 'path';
-import { FileInfo, RepoStructure } from '../types';
-import { FileMapper } from '../utils/fileMapper';
-import { BaseLLMClient } from '../services/baseLLMClient';
-import { GitService, GitChanges } from '../utils/gitService';
+import { FileInfo, RepoStructure } from '../../types';
+import { FileMapper } from '../../utils/fileMapper';
+import { BaseLLMClient } from '../../services/baseLLMClient';
+import { GitService, GitChanges } from '../../utils/gitService';
 import chalk from 'chalk';
 
 interface ModuleGroup {
