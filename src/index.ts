@@ -1749,7 +1749,9 @@ async function main(): Promise<void> {
   await program.parseAsync(process.argv);
 }
 
-main().catch(error => {
-  ui.displayError(t('errors.cli.executionFailed'), error as Error);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch(error => {
+    ui.displayError(t('errors.cli.executionFailed'), error as Error);
+    process.exit(1);
+  });
+}
