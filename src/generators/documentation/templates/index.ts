@@ -1,0 +1,10 @@
+export { renderIndex } from './indexTemplate';
+export { renderProjectOverview } from './projectOverviewTemplate';
+export { renderArchitectureNotes } from './architectureTemplate';
+export { renderDevelopmentWorkflow } from './developmentWorkflowTemplate';
+export { renderTestingStrategy } from './testingTemplate';
+export { renderGlossary } from './glossaryTemplate';
+export { renderDataFlow } from './dataFlowTemplate';
+export { renderSecurity } from './securityTemplate';
+export { renderToolingGuide } from './toolingTemplate';
+export type { DocumentationTemplateContext, GuideMeta, DirectoryStat } from './types';

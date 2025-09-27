@@ -70,6 +70,13 @@ Need help filling in the scaffold? Use [`prompts/update_scaffold_prompt.md`](./p
 
 Share that prompt verbatim with your assistant to keep updates consistent across teams.
 
+### Available Doc Keys & Agent Types
+
+Pass these values to `--docs` / `--agents` (or pick them interactively):
+
+- Docs: `project-overview`, `architecture`, `development-workflow`, `testing-strategy`, `glossary`, `data-flow`, `security`, `tooling`
+- Agents: `code-reviewer`, `bug-fixer`, `feature-developer`, `refactoring-specialist`, `test-writer`, `documentation-writer`, `performance-optimizer`, `security-auditor`, `backend-specialist`, `frontend-specialist`, `architect-specialist`
+
 ## 🛠 Commands
 
 ### `init`
@@ -84,6 +91,8 @@ Arguments:
 
 Options:
   -o, --output <dir>      Output directory (default: ./.context)
+      --docs <keys...>    Doc keys to scaffold (e.g., project-overview, security)
+      --agents <keys...>  Agent types to scaffold (e.g., code-reviewer, feature-developer)
   --exclude <patterns...> Glob patterns to skip during the scan
   --include <patterns...> Glob patterns to explicitly include
   -v, --verbose           Print detailed progress information
@@ -105,6 +114,8 @@ Options:
   -m, --model <model>     LLM model to use (default: google/gemini-2.5-flash-preview-05-20)
   -p, --provider <name>   Provider (openrouter, openai, anthropic, gemini, grok)
       --prompt <file>     Instruction prompt to follow (default: prompts/update_scaffold_prompt.md)
+      --docs <keys...>    Doc keys to update (default: all)
+      --agents <keys...>  Agent types to update (default: all)
       --dry-run           Preview changes without writing files
       --all               Process every Markdown file even if no TODO markers remain
       --limit <number>    Maximum number of files to update in one run
@@ -112,6 +123,8 @@ Options:
 ```
 
 Under the hood, the command loads the prompt above, scans for `ai-task` or `ai-slot` markers, and asks the LLM to produce the fully updated Markdown. Combine it with `--dry-run` to review responses before committing.
+
+💡 Tip: run `npx @ai-coders/context` with no arguments to enter an interactive mode that guides you through scaffold and LLM-fill options.
 
 Prefer driving the update elsewhere? Just grab [`prompts/update_scaffold_prompt.md`](./prompts/update_scaffold_prompt.md) and run it in your favorite playground or agent host. When you’re ready to automate, drop your API key in `.env` (for example `OPENROUTER_API_KEY` and `OPENROUTER_MODEL`) and let `llm-fill` handle the edits inline.
 
