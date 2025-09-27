@@ -1,153 +1,121 @@
 import * as path from 'path';
 import { RepoStructure } from '../../types';
-import { FileMapper } from '../../utils/fileMapper';
-import { BaseLLMClient } from '../../services/baseLLMClient';
-import { ModuleGrouper, ModuleGroup } from '../moduleGrouper';
 import { GeneratorUtils } from '../shared';
-import { DocumentationTemplates } from './documentationTemplates';
-import { DocumentationConfig, DocumentationType, DOCUMENTATION_TYPES_ARRAY } from './documentationTypes';
+import {
+  DocumentationTemplateContext,
+  GuideMeta,
+  renderIndex,
+  renderProjectOverview,
+  renderArchitectureNotes,
+  renderDevelopmentWorkflow,
+  renderTestingStrategy,
+  renderGlossary,
+  renderDataFlow,
+  renderSecurity,
+  renderToolingGuide
+} from './templates';
+import { DOCUMENT_GUIDES, getGuidesByKeys } from './guideRegistry';
+
+interface DocSection {
+  fileName: string;
+  content: (context: DocumentationTemplateContext) => string;
+}
+
+interface DocumentationGenerationConfig {
+  selectedDocs?: string[];
+}
 
 export class DocumentationGenerator {
-  private moduleGrouper: ModuleGrouper;
-  private templates: DocumentationTemplates;
+  private readonly guides: GuideMeta[] = DOCUMENT_GUIDES;
 
-  constructor(
-    private fileMapper: FileMapper,
-    private llmClient: BaseLLMClient
-  ) {
-    this.moduleGrouper = new ModuleGrouper(fileMapper);
-    this.templates = new DocumentationTemplates(llmClient, fileMapper);
-  }
+  constructor(..._legacyArgs: unknown[]) {}
 
   async generateDocumentation(
     repoStructure: RepoStructure,
     outputDir: string,
-    config: Partial<DocumentationConfig> = {},
+    config: DocumentationGenerationConfig = {},
     verbose: boolean = false
-  ): Promise<void> {
-    const fullConfig: DocumentationConfig = {
-      focusAreas: [],
-      maxContentLength: 2000,
-      includeExamples: true,
-      enabledTypes: DOCUMENTATION_TYPES_ARRAY,
-      ...config
-    };
-
+  ): Promise<number> {
     const docsDir = path.join(outputDir, 'docs');
-    await GeneratorUtils.ensureDirectoryAndLog(docsDir, verbose, '📚 Generating documentation in');
+    await GeneratorUtils.ensureDirectoryAndLog(docsDir, verbose, 'Generating documentation scaffold in');
 
-    const moduleGroups = this.moduleGrouper.getModuleGroups(repoStructure);
+    const guidesToGenerate = getGuidesByKeys(config.selectedDocs);
+    const context = this.buildContext(repoStructure, guidesToGenerate);
+    const sections = this.getDocSections(guidesToGenerate);
 
-    await this.generateAllDocumentation(repoStructure, moduleGroups, docsDir, fullConfig.enabledTypes || DOCUMENTATION_TYPES_ARRAY, verbose);
-    await this.generateMainIndex(docsDir, fullConfig.enabledTypes || DOCUMENTATION_TYPES_ARRAY, verbose);
-  }
-
-  private async generateAllDocumentation(
-    repoStructure: RepoStructure,
-    moduleGroups: ModuleGroup[],
-    docsDir: string,
-    enabledTypes: DocumentationType[],
-    verbose: boolean
-  ): Promise<void> {
-    GeneratorUtils.logProgress('🧠 Generating high-level conceptual documentation...', verbose);
-
-    const generators: Record<DocumentationType, () => Promise<string>> = {
-      'mental-model': () => this.templates.createMentalModel(repoStructure, moduleGroups),
-      'architecture-decisions': () => this.templates.createArchitectureDecisions(repoStructure, moduleGroups),
-      'code-organization': () => this.templates.createCodeOrganization(repoStructure, moduleGroups),
-      'development-patterns': () => this.templates.createDevelopmentPatterns(repoStructure, moduleGroups),
-      'ai-guidelines': () => this.templates.createAIGuidelines(repoStructure, moduleGroups),
-      'contributing-workflows': () => this.templates.createContributingWorkflows(repoStructure, moduleGroups),
-      'domain-context': () => this.templates.createDomainContext(repoStructure, moduleGroups),
-      'software-guidelines': () => this.templates.createSoftwareGuidelines(repoStructure, moduleGroups)
-    };
-
-    for (const docType of enabledTypes) {
-      try {
-        const content = await generators[docType]();
-        const fileName = `${docType}.md`;
-        const filePath = path.join(docsDir, fileName);
-        
-        await GeneratorUtils.writeFileWithLogging(
-          filePath, 
-          content, 
-          verbose, 
-          `Generated ${GeneratorUtils.formatTitle(docType)}`
-        );
-      } catch (error) {
-        GeneratorUtils.logError(`Error generating ${docType}`, error, verbose);
-      }
+    let created = 0;
+    for (const section of sections) {
+      const targetPath = path.join(docsDir, section.fileName);
+      const content = section.content(context);
+      await GeneratorUtils.writeFileWithLogging(targetPath, content, verbose, `Created ${section.fileName}`);
+      created += 1;
     }
+
+    return created;
   }
 
-  private async generateMainIndex(
-    docsDir: string,
-    enabledTypes: DocumentationType[],
-    verbose: boolean
-  ): Promise<void> {
-    const indexContent = this.templates.createDocumentationIndex(enabledTypes);
-    const indexPath = path.join(docsDir, 'README.md');
-    await GeneratorUtils.writeFileWithLogging(indexPath, indexContent, verbose, 'Generated documentation index');
-  }
-
-  // Convenience methods for specific documentation types
-  async generateMentalModelOnly(
+  private buildContext(
     repoStructure: RepoStructure,
-    outputDir: string,
-    verbose: boolean = false
-  ): Promise<void> {
-    const docsDir = path.join(outputDir, 'docs');
-    await GeneratorUtils.ensureDirectoryAndLog(docsDir, verbose, '🧠 Generating mental model documentation');
+    guides: GuideMeta[]
+  ): DocumentationTemplateContext {
+    const directorySet = new Set<string>();
 
-    const moduleGroups = this.moduleGrouper.getModuleGroups(repoStructure);
-    const content = await this.templates.createMentalModel(repoStructure, moduleGroups);
-    
-    const filePath = path.join(docsDir, 'mental-model.md');
-    await GeneratorUtils.writeFileWithLogging(filePath, content, verbose, 'Generated Mental Model');
+    repoStructure.directories.forEach(dir => {
+      const [firstSegment] = dir.relativePath.split(/[\\/]/).filter(Boolean);
+      if (firstSegment) {
+        directorySet.add(firstSegment);
+      }
+    });
+
+    const topLevelDirectories = Array.from(directorySet).sort();
+    const directoryStats = topLevelDirectories.map(name => ({
+      name,
+      fileCount: repoStructure.files.filter(file => file.relativePath.startsWith(`${name}/`)).length
+    }));
+    const primaryLanguages = GeneratorUtils.getTopFileExtensions(repoStructure, 5)
+      .filter(([ext]) => !!ext)
+      .map(([extension, count]) => ({ extension, count }));
+
+    return {
+      repoStructure,
+      topLevelDirectories,
+      primaryLanguages,
+      directoryStats,
+      guides
+    };
   }
 
-  async generateAIGuidelinesOnly(
-    repoStructure: RepoStructure,
-    outputDir: string,
-    verbose: boolean = false
-  ): Promise<void> {
-    const docsDir = path.join(outputDir, 'docs');
-    await GeneratorUtils.ensureDirectoryAndLog(docsDir, verbose, '🤖 Generating AI guidelines documentation');
+  private getDocSections(guides: GuideMeta[]): DocSection[] {
+    const sections: DocSection[] = [
+      {
+        fileName: 'README.md',
+        content: context => renderIndex(context)
+      }
+    ];
 
-    const moduleGroups = this.moduleGrouper.getModuleGroups(repoStructure);
-    const content = await this.templates.createAIGuidelines(repoStructure, moduleGroups);
-    
-    const filePath = path.join(docsDir, 'ai-guidelines.md');
-    await GeneratorUtils.writeFileWithLogging(filePath, content, verbose, 'Generated AI Guidelines');
-  }
+    const renderMap: Record<string, (context: DocumentationTemplateContext) => string> = {
+      'project-overview': renderProjectOverview,
+      architecture: renderArchitectureNotes,
+      'development-workflow': () => renderDevelopmentWorkflow(),
+      'testing-strategy': () => renderTestingStrategy(),
+      glossary: renderGlossary,
+      'data-flow': renderDataFlow,
+      security: () => renderSecurity(),
+      tooling: () => renderToolingGuide()
+    };
 
-  async generateArchitectureDecisionsOnly(
-    repoStructure: RepoStructure,
-    outputDir: string,
-    verbose: boolean = false
-  ): Promise<void> {
-    const docsDir = path.join(outputDir, 'docs');
-    await GeneratorUtils.ensureDirectoryAndLog(docsDir, verbose, '🏗️ Generating architecture decisions documentation');
+    guides.forEach(guide => {
+      const renderer = renderMap[guide.key];
+      if (!renderer) {
+        return;
+      }
 
-    const moduleGroups = this.moduleGrouper.getModuleGroups(repoStructure);
-    const content = await this.templates.createArchitectureDecisions(repoStructure, moduleGroups);
-    
-    const filePath = path.join(docsDir, 'architecture-decisions.md');
-    await GeneratorUtils.writeFileWithLogging(filePath, content, verbose, 'Generated Architecture Decisions');
-  }
+      sections.push({
+        fileName: guide.file,
+        content: renderer
+      });
+    });
 
-  async generateSoftwareGuidelinesOnly(
-    repoStructure: RepoStructure,
-    outputDir: string,
-    verbose: boolean = false
-  ): Promise<void> {
-    const docsDir = path.join(outputDir, 'docs');
-    await GeneratorUtils.ensureDirectoryAndLog(docsDir, verbose, '📋 Generating software development guidelines');
-
-    const moduleGroups = this.moduleGrouper.getModuleGroups(repoStructure);
-    const content = await this.templates.createSoftwareGuidelines(repoStructure, moduleGroups);
-    
-    const filePath = path.join(docsDir, 'software-guidelines.md');
-    await GeneratorUtils.writeFileWithLogging(filePath, content, verbose, 'Generated Software Development Guidelines');
+    return sections;
   }
 }

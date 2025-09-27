@@ -3,884 +3,1755 @@
 import { Command } from 'commander';
 import * as path from 'path';
 import * as fs from 'fs-extra';
-import chalk from 'chalk';
+import { glob } from 'glob';
 import * as dotenv from 'dotenv';
+import chalk from 'chalk';
+import inquirer from 'inquirer';
 
-// Load environment variables from .env file
-dotenv.config();
 import { FileMapper } from './utils/fileMapper';
 import { DocumentationGenerator } from './generators/documentation/documentationGenerator';
 import { AgentGenerator } from './generators/agents/agentGenerator';
-import { GuidelinesGenerator } from './generators/guidelines/guidelinesGenerator';
-import { IncrementalDocumentationGenerator } from './generators/documentation/incrementalDocumentationGenerator';
-import { CLIOptions, LLMConfig } from './types';
+import { PlanGenerator } from './generators/plans/planGenerator';
+import { GeneratorUtils } from './generators/shared';
 import { CLIInterface } from './utils/cliUI';
+import { createTranslator, detectLocale, SUPPORTED_LOCALES, normalizeLocale } from './utils/i18n';
+import type { TranslateFn, Locale, TranslationKey } from './utils/i18n';
 import { LLMClientFactory } from './services/llmClientFactory';
-import { GitService } from './utils/gitService';
-import { ChangeAnalyzer } from './services/changeAnalyzer';
-import { TokenEstimator } from './utils/tokenEstimator';
-import { InteractiveMode } from './utils/interactiveMode';
+import { LLMConfig, RepoStructure, UsageStats } from './types';
+import { DOCUMENT_GUIDES, DOCUMENT_GUIDE_KEYS, getDocFilesByKeys } from './generators/documentation/guideRegistry';
+import { AGENT_TYPES } from './generators/agents/agentTypes';
+
+dotenv.config();
+
+const initialLocale = detectLocale(process.argv.slice(2), process.env.AI_CONTEXT_LANG);
+let currentLocale: Locale = initialLocale;
+let translateFn = createTranslator(initialLocale);
+const t: TranslateFn = (key, params) => translateFn(key, params);
+
+const localeLabelKeys: Record<Locale, TranslationKey> = {
+  en: 'prompts.language.option.en',
+  'pt-BR': 'prompts.language.option.pt-BR'
+};
 
 const program = new Command();
-const ui = new CLIInterface();
+const ui = new CLIInterface(t);
+const VERSION = '0.3.0';
+const DEFAULT_MODEL = 'x-ai/grok-4-fast:free';
+
+const DOC_CHOICES = DOCUMENT_GUIDES.map(guide => ({
+  name: `${guide.title} (${guide.key})`,
+  value: guide.key
+}));
+
+const AGENT_CHOICES = AGENT_TYPES.map(agent => ({
+  name: formatAgentLabel(agent),
+  value: agent
+}));
 
 program
   .name('ai-context')
-  .description('AI-powered CLI for generating codebase documentation and agent prompts')
-  .version('0.1.0');
+  .description(t('cli.description'))
+  .version(VERSION);
+
+program.option('-l, --lang <locale>', t('global.options.lang'), initialLocale);
 
 program
   .command('init')
-  .description('Initialize documentation and agent prompts for a repository')
-  .argument('<repo-path>', 'Path to the repository to analyze')
-  .argument('[type]', 'Type to initialize: "docs", "agents", "guidelines", or "both" (default: "both")', 'both')
-  .option('-o, --output <dir>', 'Output directory', './.context')
-  .option('-k, --api-key <key>', 'API key for the LLM provider')
-  .option('-m, --model <model>', 'LLM model to use', 'google/gemini-2.5-flash-preview-05-20')
-  .option('-p, --provider <provider>', 'LLM provider (openrouter, openai, anthropic, gemini, grok)', 'openrouter')
-  .option('--exclude <patterns...>', 'Patterns to exclude from analysis')
-  .option('--include <patterns...>', 'Patterns to include in analysis')
-  .option('-v, --verbose', 'Verbose output')
+  .description(t('commands.init.description'))
+  .argument('<repo-path>', t('commands.init.arguments.repoPath'))
+  .argument('[type]', t('commands.init.arguments.type'), 'both')
+  .option('-o, --output <dir>', t('commands.init.options.output'), './.context')
+  .option('--docs <keys...>', t('commands.init.options.docs'))
+  .option('--agents <keys...>', t('commands.init.options.agents'))
+  .option('--exclude <patterns...>', t('commands.init.options.exclude'))
+  .option('--include <patterns...>', t('commands.init.options.include'))
+  .option('-v, --verbose', t('commands.init.options.verbose'))
   .action(async (repoPath: string, type: string, options: any) => {
     try {
-      // Validate type argument
-      if (!['docs', 'agents', 'guidelines', 'both'].includes(type)) {
-        ui.displayError(`Invalid type "${type}". Must be "docs", "agents", "guidelines", or "both".`);
+      await runInit(repoPath, type, options);
+    } catch (error) {
+      ui.displayError(t('errors.init.scaffoldFailed'), error as Error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('scaffold')
+  .description(t('commands.scaffold.description'))
+  .argument('<repo-path>', t('commands.init.arguments.repoPath'))
+  .argument('[type]', t('commands.init.arguments.type'), 'both')
+  .option('-o, --output <dir>', t('commands.init.options.output'), './.context')
+  .option('--docs <keys...>', t('commands.init.options.docs'))
+  .option('--agents <keys...>', t('commands.init.options.agents'))
+  .option('--exclude <patterns...>', t('commands.init.options.exclude'))
+  .option('--include <patterns...>', t('commands.init.options.include'))
+  .option('-v, --verbose', t('commands.init.options.verbose'))
+  .action(async (repoPath: string, type: string, options: any) => {
+    try {
+      await runInit(repoPath, type, options);
+    } catch (error) {
+      ui.displayError(t('errors.init.scaffoldFailed'), error as Error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('fill')
+  .description(t('commands.fill.description'))
+  .argument('<repo-path>', t('commands.fill.arguments.repoPath'))
+  .option('-o, --output <dir>', t('commands.fill.options.output'), './.context')
+  .option('-k, --api-key <key>', t('commands.fill.options.apiKey'))
+  .option('-m, --model <model>', t('commands.fill.options.model'), DEFAULT_MODEL)
+  .option('-p, --provider <provider>', t('commands.fill.options.provider'))
+  .option('--base-url <url>', t('commands.fill.options.baseUrl'))
+  .option('--prompt <file>', t('commands.fill.options.prompt'), path.join(__dirname, '../prompts/update_scaffold_prompt.md'))
+  .option('--dry-run', t('commands.fill.options.dryRun'), false)
+  .option('--all', t('commands.fill.options.all'), false)
+  .option('--limit <number>', t('commands.fill.options.limit'), (value: string) => parseInt(value, 10))
+  .option('--docs <keys...>', t('commands.fill.options.docs'))
+  .option('--agents <keys...>', t('commands.fill.options.agents'))
+  .option('--exclude <patterns...>', t('commands.fill.options.exclude'))
+  .option('--include <patterns...>', t('commands.fill.options.include'))
+  .option('-v, --verbose', t('commands.fill.options.verbose'))
+  .action(async (repoPath: string, options: any) => {
+    try {
+      await runLlmFill(repoPath, options);
+    } catch (error) {
+      ui.displayError(t('errors.fill.failed'), error as Error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('plan')
+  .description(t('commands.plan.description'))
+  .argument('<plan-name>', t('commands.plan.arguments.planName'))
+  .option('-o, --output <dir>', t('commands.plan.options.output'), './.context')
+  .option('--title <title>', t('commands.plan.options.title'))
+  .option('--summary <text>', t('commands.plan.options.summary'))
+  .option('--agents <types...>', t('commands.plan.options.agents'))
+  .option('--docs <keys...>', t('commands.plan.options.docs'))
+  .option('-f, --force', t('commands.plan.options.force'))
+  .option('--fill', t('commands.plan.options.fill'))
+  .option('-r, --repo <path>', t('commands.plan.options.repo'))
+  .option('-k, --api-key <key>', t('commands.plan.options.apiKey'))
+  .option('-m, --model <model>', t('commands.plan.options.model'), DEFAULT_MODEL)
+  .option('-p, --provider <provider>', t('commands.plan.options.provider'))
+  .option('--base-url <url>', t('commands.plan.options.baseUrl'))
+  .option('--prompt <file>', t('commands.plan.options.prompt'), path.join(__dirname, '../prompts/update_plan_prompt.md'))
+  .option('--dry-run', t('commands.plan.options.dryRun'), false)
+  .option('--include <patterns...>', t('commands.plan.options.include'))
+  .option('--exclude <patterns...>', t('commands.plan.options.exclude'))
+  .option('-v, --verbose', t('commands.plan.options.verbose'))
+  .action(async (planName: string, rawOptions: any) => {
+    const agentSelection = parseAgentSelection(rawOptions.agents);
+    if (agentSelection.invalid.length > 0) {
+      ui.displayWarning(t('warnings.agents.unknown', { values: agentSelection.invalid.join(', ') }));
+    }
+
+    const docSelection = parseDocSelection(rawOptions.docs);
+    if (docSelection.invalid.length > 0) {
+      ui.displayWarning(t('warnings.docs.unknown', { values: docSelection.invalid.join(', ') }));
+    }
+
+    const outputDir = path.resolve(rawOptions.output || './.context');
+
+    if (rawOptions.fill) {
+      try {
+        await scaffoldPlanIfNeeded(planName, outputDir, {
+          title: rawOptions.title,
+          summary: rawOptions.summary,
+          agentSelection,
+          docSelection,
+          force: Boolean(rawOptions.force),
+          verbose: Boolean(rawOptions.verbose)
+        });
+
+        await runPlanFill(planName, { ...rawOptions, output: outputDir });
+      } catch (error) {
+        ui.displayError(t('errors.plan.fillFailed'), error as Error);
         process.exit(1);
       }
-      
-      // Set options based on type argument
-      if (type === 'docs') {
-        options.docsOnly = true;
-      } else if (type === 'agents') {
-        options.agentsOnly = true;
-      } else if (type === 'guidelines') {
-        options.guidelinesOnly = true;
-      }
-      // For 'both', neither flag is set
-      
-      await runGenerate(repoPath, options);
+      return;
+    }
+
+    const generator = new PlanGenerator();
+
+    ui.startSpinner(t('spinner.plan.creating'));
+
+    try {
+      const result = await generator.generatePlan({
+        planName,
+        outputDir,
+        title: rawOptions.title,
+        summary: rawOptions.summary,
+        selectedAgentTypes: agentSelection.explicitNone ? null : agentSelection.selected,
+        selectedDocKeys: docSelection.explicitNone ? null : docSelection.selected,
+        force: Boolean(rawOptions.force),
+        verbose: Boolean(rawOptions.verbose)
+      });
+
+      ui.updateSpinner(t('spinner.plan.created'), 'success');
+      ui.displaySuccess(t('success.plan.createdAt', { path: chalk.cyan(result.relativePath) }));
     } catch (error) {
-      ui.displayError('Failed to initialize', error as Error);
+      ui.updateSpinner(t('spinner.plan.creationFailed'), 'fail');
+      ui.displayError(t('errors.plan.creationFailed'), error as Error);
       process.exit(1);
+    } finally {
+      ui.stopSpinner();
     }
   });
 
-program
-  .command('update')
-  .description('Update documentation for changed files since last run or specified commit')
-  .argument('<repo-path>', 'Path to the repository to analyze')
-  .option('-o, --output <dir>', 'Output directory', './.context')
-  .option('-k, --api-key <key>', 'API key for the LLM provider')
-  .option('-m, --model <model>', 'LLM model to use', 'google/gemini-2.5-flash-preview-05-20')
-  .option('-p, --provider <provider>', 'LLM provider (openrouter, openai, anthropic, gemini, grok)', 'openrouter')
-  .option('--since <commit>', 'Compare against specific commit/branch (default: last processed commit)')
-  .option('--staged', 'Only process staged files (for pre-commit hooks)')
-  .option('--force', 'Force regeneration even if no changes detected')
-  .option('--exclude <patterns...>', 'Patterns to exclude from analysis')
-  .option('--include <patterns...>', 'Patterns to include in analysis')
-  .option('-v, --verbose', 'Verbose output')
-  .action(async (repoPath: string, options: any) => {
-    try {
-      await runUpdate(repoPath, options);
-    } catch (error) {
-      ui.displayError('Failed to update documentation', error as Error);
-      process.exit(1);
-    }
-  });
-
-program
-  .command('analyze')
-  .description('Analyze repository structure without generating content')
-  .argument('<repo-path>', 'Path to the repository to analyze')
-  .option('--exclude <patterns...>', 'Patterns to exclude from analysis')
-  .option('--include <patterns...>', 'Patterns to include in analysis')
-  .option('--input-price <price>', 'Input token price per 1M tokens (e.g., 2.50)', parseFloat)
-  .option('--output-price <price>', 'Output token price per 1M tokens (e.g., 10.00)', parseFloat)
-  .option('-v, --verbose', 'Verbose output')
-  .action(async (repoPath: string, options: any) => {
-    try {
-      await runAnalyze(repoPath, options);
-    } catch (error) {
-      ui.displayError('Failed to analyze repository', error as Error);
-      process.exit(1);
-    }
-  });
-
-program
-  .command('preview')
-  .description('Preview what documentation updates would be made without actually updating')
-  .argument('<repo-path>', 'Path to the repository to analyze')
-  .option('--since <commit>', 'Compare against specific commit/branch (default: last processed commit)')
-  .option('--staged', 'Only analyze staged files (for pre-commit hooks)')
-  .option('--exclude <patterns...>', 'Patterns to exclude from analysis')
-  .option('--include <patterns...>', 'Patterns to include in analysis')
-  .option('--input-price <price>', 'Input token price per 1M tokens (e.g., 2.50)', parseFloat)
-  .option('--output-price <price>', 'Output token price per 1M tokens (e.g., 10.00)', parseFloat)
-  .option('-v, --verbose', 'Verbose output with detailed file lists')
-  .addHelpText('after', `
-Examples:
-  $ ai-context preview ./                     # Preview changes since last run
-  $ ai-context preview ./ --staged           # Preview staged files only
-  $ ai-context preview ./ --since HEAD~3     # Preview changes since 3 commits ago
-  $ ai-context preview ./ --verbose          # Show detailed file change lists
-  $ ai-context preview ./ --input-price 2.50 --output-price 10.00`)
-  .action(async (repoPath: string, options: any) => {
-    try {
-      await runPreview(repoPath, options);
-    } catch (error) {
-      ui.displayError('Failed to preview updates', error as Error);
-      process.exit(1);
-    }
-  });
-
-program
-  .command('guidelines')
-  .description('Generate software development guidelines for a repository')
-  .argument('<repo-path>', 'Path to the repository to analyze')
-  .argument('[categories...]', 'Specific guideline categories to generate (testing, frontend, backend, database, security, performance, code-style, git-workflow, deployment, monitoring, documentation, architecture)')
-  .option('-o, --output <dir>', 'Output directory', './.context')
-  .option('-k, --api-key <key>', 'API key for the LLM provider')
-  .option('-m, --model <model>', 'LLM model to use', 'google/gemini-2.5-flash-preview-05-20')
-  .option('-p, --provider <provider>', 'LLM provider (openrouter, openai, anthropic, gemini, grok)', 'openrouter')
-  .option('--project-type <type>', 'Project type (frontend, backend, fullstack, mobile, desktop, library)', 'auto')
-  .option('--complexity <level>', 'Project complexity (simple, moderate, complex)', 'auto')
-  .option('--team-size <size>', 'Team size (small, medium, large)', 'auto')
-  .option('--include-examples', 'Include code examples in guidelines', false)
-  .option('--include-tools', 'Include tool recommendations in guidelines', false)
-  .option('--exclude <patterns...>', 'Patterns to exclude from analysis')
-  .option('--include <patterns...>', 'Patterns to include in analysis')
-  .option('-v, --verbose', 'Verbose output')
-  .addHelpText('after', `
-Examples:
-  $ ai-context guidelines ./                           # Generate comprehensive guidelines
-  $ ai-context guidelines ./ testing security         # Generate only testing and security guidelines
-  $ ai-context guidelines ./ --project-type frontend  # Generate guidelines for frontend project
-  $ ai-context guidelines ./ --include-examples       # Include code examples in guidelines`)
-  .action(async (repoPath: string, categories: string[], options: any) => {
-    try {
-      await runGuidelines(repoPath, categories, options);
-    } catch (error) {
-      ui.displayError('Failed to generate guidelines', error as Error);
-      process.exit(1);
-    }
-  });
-
-export async function runGenerate(repoPath: string, options: any): Promise<void> {
-  const provider = options.provider || LLMClientFactory.detectProviderFromModel(options.model);
-  
-  // Get API key from options or environment variables
-  let apiKey = options.apiKey;
-  if (!apiKey) {
-    const envVars = LLMClientFactory.getEnvironmentVariables()[provider as LLMConfig['provider']];
-    for (const envVar of envVars) {
-      apiKey = process.env[envVar];
-      if (apiKey) break;
-    }
-  }
-
-  const cliOptions: CLIOptions = {
-    repoPath: path.resolve(repoPath),
-    outputDir: path.resolve(options.output),
-    model: options.model,
-    apiKey,
-    provider,
-    exclude: options.exclude || [],
-    include: options.include,
-    verbose: options.verbose || false
-  };
-
-  if (!cliOptions.apiKey) {
-    const envVars = LLMClientFactory.getEnvironmentVariables()[provider as LLMConfig['provider']];
-    ui.displayError(`${provider.toUpperCase()} API key is required. Set one of these environment variables: ${envVars.join(', ')} or use --api-key option.`);
-    process.exit(1);
-  }
-
-  // Display welcome message
-  ui.displayWelcome('0.1.0');
-  ui.displayProjectInfo(cliOptions.repoPath, cliOptions.outputDir!, cliOptions.model!, cliOptions.provider);
-  
-  // Show usage warning for expensive models
-  if (cliOptions.model && ['anthropic/claude-3-opus', 'openai/gpt-4'].includes(cliOptions.model)) {
-    ui.displayUsageWarning(2.0); // Estimate high cost for warning
-  }
-
-  // Initialize components
-  const fileMapper = new FileMapper(cliOptions.exclude);
-  const llmConfig: LLMConfig = {
-    apiKey: cliOptions.apiKey,
-    model: cliOptions.model || 'google/gemini-2.5-flash-preview-05-20',
-    provider: cliOptions.provider || 'openrouter'
-  };
-  const llmClient = LLMClientFactory.createClient(llmConfig);
-  const docGenerator = new DocumentationGenerator(fileMapper, llmClient);
-  const agentGenerator = new AgentGenerator(fileMapper, llmClient);
-  const guidelinesGenerator = new GuidelinesGenerator(fileMapper, llmClient);
-
-  // Step 1: Map repository structure
-  ui.displayStep(1, 4, 'Analyzing repository structure');
-  ui.startSpinner('Scanning files and directories...');
-  
-  const repoStructure = await fileMapper.mapRepository(
-    cliOptions.repoPath,
-    cliOptions.include
-  );
-
-  ui.updateSpinner(`Found ${repoStructure.totalFiles} files in ${repoStructure.directories.length} directories`, 'success');
-
-  // Display analysis results
-  if (cliOptions.verbose) {
-    ui.displayAnalysisResults(
-      repoStructure.totalFiles,
-      repoStructure.directories.length,
-      ui.formatBytes(repoStructure.totalSize)
-    );
-
-    // Show file distribution
-    const extensions = new Map<string, number>();
-    repoStructure.files.forEach(file => {
-      const ext = file.extension || 'no-extension';
-      extensions.set(ext, (extensions.get(ext) || 0) + 1);
-    });
-    ui.displayFileTypeDistribution(extensions, repoStructure.totalFiles);
-  }
-
-  let docsGenerated = 0;
-  let agentsGenerated = 0;
-  let guidelinesGenerated = 0;
-
-  // Step 2: Generate documentation
-  if (!options.agentsOnly && !options.guidelinesOnly) {
-    ui.displayStep(2, 4, 'Generating documentation');
-    ui.startSpinner('Creating comprehensive documentation...');
-    
-    try {
-      await docGenerator.generateDocumentation(
-        repoStructure,
-        cliOptions.outputDir!,
-        {}, // Default config
-        false // We'll handle our own progress display
-      );
-      docsGenerated = 10; // Number of doc files generated (README, STRUCTURE, DEVELOPMENT, API, DEPLOYMENT, TROUBLESHOOTING, configuration + modules)
-      ui.updateSpinner('Documentation generated successfully', 'success');
-    } catch (error) {
-      ui.updateSpinner('Failed to generate documentation', 'fail');
-      throw error;
-    }
-  }
-
-  // Step 3: Generate agent prompts
-  if (!options.docsOnly && !options.guidelinesOnly) {
-    ui.displayStep(3, 4, 'Generating AI agent prompts');
-    ui.startSpinner('Creating specialized agent prompts...');
-    
-    try {
-      await agentGenerator.generateAgentPrompts(
-        repoStructure,
-        cliOptions.outputDir!,
-        false // We'll handle our own progress display
-      );
-      agentsGenerated = 9; // Number of agent files generated
-      ui.updateSpinner('Agent prompts generated successfully', 'success');
-    } catch (error) {
-      ui.updateSpinner('Failed to generate agent prompts', 'fail');
-      throw error;
-    }
-  }
-
-  // Step 3/4: Generate guidelines (if guidelines-only or as part of comprehensive generation)
-  if (options.guidelinesOnly) {
-    ui.displayStep(3, 4, 'Generating software development guidelines');
-    ui.startSpinner('Creating comprehensive development guidelines...');
-    
-    try {
-      await guidelinesGenerator.generateGuidelines(
-        repoStructure,
-        cliOptions.outputDir!,
-        {}, // Default config
-        false // We'll handle our own progress display
-      );
-      guidelinesGenerated = 12; // Number of guideline categories
-      ui.updateSpinner('Guidelines generated successfully', 'success');
-    } catch (error) {
-      ui.updateSpinner('Failed to generate guidelines', 'fail');
-      throw error;
-    }
-  }
-
-  // Step 4: Complete
-  ui.displayStep(4, 4, 'Finalizing output');
-  
-  // Get usage statistics from the LLM client
-  const usageStats = llmClient.getUsageStats();
-  ui.displayGenerationSummary(docsGenerated, agentsGenerated, usageStats);
-  
-  if (options.guidelinesOnly && guidelinesGenerated > 0) {
-    ui.displaySuccess(`Guidelines generated! Output saved to: ${cliOptions.outputDir}`);
-  } else {
-    ui.displaySuccess(`Output saved to: ${cliOptions.outputDir}`);
-  }
+interface InitOptions {
+  repoPath: string;
+  outputDir: string;
+  include?: string[];
+  exclude?: string[];
+  verbose: boolean;
+  scaffoldDocs: boolean;
+  scaffoldAgents: boolean;
+  selectedDocKeys?: string[];
+  selectedAgentTypes?: string[];
 }
 
-export async function runGuidelines(repoPath: string, categories: string[], options: any): Promise<void> {
-  const provider = options.provider || LLMClientFactory.detectProviderFromModel(options.model);
-  
-  // Get API key from options or environment variables
-  let apiKey = options.apiKey;
-  if (!apiKey) {
-    const envVars = LLMClientFactory.getEnvironmentVariables()[provider as LLMConfig['provider']];
-    for (const envVar of envVars) {
-      apiKey = process.env[envVar];
-      if (apiKey) break;
-    }
+async function runInit(repoPath: string, type: string, rawOptions: any): Promise<void> {
+  const resolvedType = resolveScaffoldType(type, rawOptions);
+  const docSelection = parseDocSelection(rawOptions.docs);
+  const agentSelection = parseAgentSelection(rawOptions.agents);
+
+  if (docSelection.invalid.length > 0) {
+    ui.displayWarning(t('warnings.docs.unknown', { values: docSelection.invalid.join(', ') }));
   }
 
-  const cliOptions: CLIOptions = {
+  if (agentSelection.invalid.length > 0) {
+    ui.displayWarning(t('warnings.agents.unknown', { values: agentSelection.invalid.join(', ') }));
+  }
+
+  const options: InitOptions = {
     repoPath: path.resolve(repoPath),
-    outputDir: path.resolve(options.output),
-    model: options.model,
-    apiKey,
-    provider,
-    exclude: options.exclude || [],
-    include: options.include,
-    verbose: options.verbose || false
+    outputDir: path.resolve(rawOptions.output || './.context'),
+    include: rawOptions.include,
+    exclude: rawOptions.exclude || [],
+    verbose: rawOptions.verbose || false,
+    scaffoldDocs: shouldGenerateDocs(resolvedType, docSelection),
+    scaffoldAgents: shouldGenerateAgents(resolvedType, agentSelection),
+    selectedDocKeys: docSelection.selected,
+    selectedAgentTypes: agentSelection.selected
   };
 
-  if (!cliOptions.apiKey) {
-    const envVars = LLMClientFactory.getEnvironmentVariables()[provider as LLMConfig['provider']];
-    ui.displayError(`${provider.toUpperCase()} API key is required. Set one of these environment variables: ${envVars.join(', ')} or use --api-key option.`);
-    process.exit(1);
-  }
-
-  // Display welcome message
-  ui.displayWelcome('0.1.0');
-  ui.displayProjectInfo(cliOptions.repoPath, cliOptions.outputDir!, cliOptions.model!, cliOptions.provider);
-  
-  // Show usage warning for expensive models
-  if (cliOptions.model && ['anthropic/claude-3-opus', 'openai/gpt-4'].includes(cliOptions.model)) {
-    ui.displayUsageWarning(1.0); // Lower estimate for guidelines only
-  }
-
-  // Initialize components
-  const fileMapper = new FileMapper(cliOptions.exclude);
-  const llmConfig: LLMConfig = {
-    apiKey: cliOptions.apiKey,
-    model: cliOptions.model || 'google/gemini-2.5-flash-preview-05-20',
-    provider: cliOptions.provider || 'openrouter'
-  };
-  const llmClient = LLMClientFactory.createClient(llmConfig);
-  const guidelinesGenerator = new GuidelinesGenerator(fileMapper, llmClient);
-
-  // Step 1: Map repository structure
-  ui.displayStep(1, 4, 'Analyzing repository structure');
-  ui.startSpinner('Scanning files and directories...');
-  
-  const repoStructure = await fileMapper.mapRepository(
-    cliOptions.repoPath,
-    cliOptions.include
-  );
-
-  ui.updateSpinner(`Found ${repoStructure.totalFiles} files in ${repoStructure.directories.length} directories`, 'success');
-
-  // Display analysis results
-  if (cliOptions.verbose) {
-    ui.displayAnalysisResults(
-      repoStructure.totalFiles,
-      repoStructure.directories.length,
-      ui.formatBytes(repoStructure.totalSize)
-    );
-  }
-
-  // Step 2: Analyze codebase for guidelines
-  ui.displayStep(2, 4, 'Analyzing codebase for guideline recommendations');
-  ui.startSpinner('Detecting technologies and patterns...');
-  
-  try {
-    const analysis = await guidelinesGenerator.analyzeCodebaseOnly(repoStructure, cliOptions.verbose);
-    
-    ui.updateSpinner('Technology analysis complete', 'success');
-    
-    if (cliOptions.verbose) {
-      console.log(chalk.bold('\n📊 Analysis Results:'));
-      console.log(chalk.gray('─'.repeat(50)));
-      console.log(`${chalk.blue('Project Type:')} ${analysis.projectType}`);
-      console.log(`${chalk.blue('Complexity:')} ${analysis.complexity}`);
-      console.log(`${chalk.blue('Technologies:')} ${analysis.technologies.map(t => t.name).join(', ')}`);
-      console.log(`${chalk.blue('Recommended Categories:')} ${analysis.recommendedCategories.join(', ')}`);
-    }
-  } catch (error) {
-    ui.updateSpinner('Failed to analyze codebase', 'fail');
-    throw error;
-  }
-
-  // Step 3: Generate guidelines
-  ui.displayStep(3, 4, 'Generating software development guidelines');
-  ui.startSpinner('Creating comprehensive development guidelines...');
-  
-  try {
-    // Build configuration from CLI options
-    const guidelineConfig: any = {};
-    
-    // Set specific categories if provided
-    if (categories && categories.length > 0) {
-      // Validate categories
-      const validCategories = ['testing', 'frontend', 'backend', 'database', 'security', 'performance', 'code-style', 'git-workflow', 'deployment', 'monitoring', 'documentation', 'architecture'];
-      const invalidCategories = categories.filter(cat => !validCategories.includes(cat));
-      if (invalidCategories.length > 0) {
-        ui.displayError(`Invalid categories: ${invalidCategories.join(', ')}. Valid categories are: ${validCategories.join(', ')}`);
-        process.exit(1);
-      }
-      guidelineConfig.categories = categories;
-    }
-    
-    // Set project configuration from CLI options
-    if (options.projectType && options.projectType !== 'auto') {
-      guidelineConfig.projectType = options.projectType;
-    }
-    if (options.complexity && options.complexity !== 'auto') {
-      guidelineConfig.complexity = options.complexity;
-    }
-    if (options.teamSize && options.teamSize !== 'auto') {
-      guidelineConfig.teamSize = options.teamSize;
-    }
-    
-    // Set feature flags
-    if (options.includeExamples) {
-      guidelineConfig.includeExamples = true;
-    }
-    if (options.includeTools) {
-      guidelineConfig.includeTools = true;
-    }
-    
-    await guidelinesGenerator.generateGuidelines(
-      repoStructure,
-      cliOptions.outputDir!,
-      guidelineConfig,
-      cliOptions.verbose
-    );
-    
-    ui.updateSpinner('Guidelines generated successfully', 'success');
-  } catch (error) {
-    ui.updateSpinner('Failed to generate guidelines', 'fail');
-    throw error;
-  }
-
-  // Step 4: Complete
-  ui.displayStep(4, 4, 'Finalizing output');
-  
-  // Get usage statistics from the LLM client
-  const usageStats = llmClient.getUsageStats();
-  ui.displayGenerationSummary(0, 0, usageStats); // No docs or agents generated
-  
-  const guidelinesPath = path.join(cliOptions.outputDir!, 'guidelines');
-  ui.displaySuccess(`Guidelines generated! Output saved to: ${guidelinesPath}`);
-  
-  // Display helpful next steps
-  console.log(chalk.bold('\n💡 Next Steps:'));
-  console.log(chalk.gray('─'.repeat(50)));
-  console.log(`${chalk.blue('1. Review:')} Check the generated guidelines in ${guidelinesPath}`);
-  console.log(`${chalk.blue('2. Customize:')} Modify guidelines to match your team's specific needs`);
-  console.log(`${chalk.blue('3. Share:')} Distribute guidelines to your development team`);
-  console.log(`${chalk.blue('4. Integrate:')} Include guidelines in your project documentation`);
-}
-
-export async function runAnalyze(repoPath: string, options: any): Promise<void> {
-  const resolvedPath = path.resolve(repoPath);
-  
-  // Display welcome
-  ui.displayWelcome('0.1.0');
-  
-  ui.startSpinner('Analyzing repository structure...');
-
-  const fileMapper = new FileMapper(options.exclude || []);
-  const repoStructure = await fileMapper.mapRepository(
-    resolvedPath,
-    options.include
-  );
-
-  ui.stopSpinner();
-
-  // Display analysis results
-  ui.displayAnalysisResults(
-    repoStructure.totalFiles,
-    repoStructure.directories.length,
-    ui.formatBytes(repoStructure.totalSize)
-  );
-
-  // File type distribution
-  const extensions = new Map<string, number>();
-  repoStructure.files.forEach(file => {
-    const ext = file.extension || 'no-extension';
-    extensions.set(ext, (extensions.get(ext) || 0) + 1);
-  });
-
-  ui.displayFileTypeDistribution(extensions, repoStructure.totalFiles);
-
-  // Directory structure (top level)
-  const topDirs = repoStructure.directories
-    .filter(dir => !dir.relativePath.includes('/'))
-    .slice(0, 10);
-
-  if (topDirs.length > 0) {
-    console.log(chalk.bold('\n📂 Top-level Directories:'));
-    console.log(chalk.gray('─'.repeat(50)));
-    topDirs.forEach(dir => {
-      console.log(`  ${chalk.blue('▸')} ${chalk.white(dir.relativePath)}`);
-    });
-  }
-
-  // Token estimation for full documentation generation
-  ui.startSpinner('Estimating token usage for full documentation generation...');
-  
-  // Create pricing if provided (optional for analyze command)
-  let pricing = undefined;
-  if (options.inputPrice !== undefined && options.outputPrice !== undefined) {
-    pricing = {
-      input: options.inputPrice,
-      output: options.outputPrice
-    };
-  } else if (options.inputPrice !== undefined || options.outputPrice !== undefined) {
-    ui.displayError('Pricing requires both options: --input-price and --output-price');
-    process.exit(1);
-  }
-  
-  const tokenEstimator = new TokenEstimator(fileMapper, pricing);
-  const tokenEstimate = await tokenEstimator.estimateTokensForFullGeneration(repoStructure);
-  
-  ui.stopSpinner();
-  
-  console.log(tokenEstimator.formatTokenEstimate(tokenEstimate));
-
-  ui.displaySuccess('Analysis complete!');
-}
-
-export async function runUpdate(repoPath: string, options: any): Promise<void> {
-  const provider = options.provider || LLMClientFactory.detectProviderFromModel(options.model);
-  
-  // Get API key from options or environment variables
-  let apiKey = options.apiKey;
-  if (!apiKey) {
-    const envVars = LLMClientFactory.getEnvironmentVariables()[provider as LLMConfig['provider']];
-    for (const envVar of envVars) {
-      apiKey = process.env[envVar];
-      if (apiKey) break;
-    }
-  }
-
-  const cliOptions: CLIOptions = {
-    repoPath: path.resolve(repoPath),
-    outputDir: path.resolve(options.output),
-    model: options.model,
-    apiKey,
-    provider,
-    exclude: options.exclude || [],
-    include: options.include,
-    verbose: options.verbose || false,
-    since: options.since,
-    staged: options.staged || false,
-    force: options.force || false
-  };
-
-  if (!cliOptions.apiKey) {
-    const envVars = LLMClientFactory.getEnvironmentVariables()[provider as LLMConfig['provider']];
-    ui.displayError(`${provider.toUpperCase()} API key is required. Set one of these environment variables: ${envVars.join(', ')} or use --api-key option.`);
-    process.exit(1);
-  }
-
-  // Initialize git service
-  const gitService = new GitService(cliOptions.repoPath);
-
-  if (!gitService.isGitRepository()) {
-    ui.displayError('This command requires a Git repository. Initialize git first or use the generate command instead.');
-    process.exit(1);
-  }
-
-  // Check if context has been initialized
-  if (!gitService.hasContextBeenInitialized(cliOptions.outputDir!)) {
-    ui.displayError('No documentation context found. You should run analyze and init before updating.');
-    console.log(chalk.bold('\n💡 Getting Started:'));
-    console.log(chalk.gray('─'.repeat(50)));
-    console.log(`${chalk.blue('1. Analyze:')} ai-context analyze ${cliOptions.repoPath}`);
-    console.log(`${chalk.blue('2. Initialize:')} ai-context init ${cliOptions.repoPath}`);
-    console.log(`${chalk.blue('3. Update:')} ai-context update ${cliOptions.repoPath}`);
-    console.log(chalk.gray('─'.repeat(50)));
-    console.log(chalk.gray('The analyze command shows token estimates and costs.'));
-    console.log(chalk.gray('The init command creates the initial documentation.'));
-    console.log(chalk.gray('The update command incrementally updates existing documentation.'));
-    process.exit(1);
-  }
-
-  // Display welcome message
-  ui.displayWelcome('0.1.0');
-  ui.displayProjectInfo(cliOptions.repoPath, cliOptions.outputDir!, cliOptions.model!, cliOptions.provider);
-
-  // Initialize components
-  const fileMapper = new FileMapper(cliOptions.exclude);
-  const llmConfig: LLMConfig = {
-    apiKey: cliOptions.apiKey,
-    model: cliOptions.model || 'google/gemini-2.5-flash-preview-05-20',
-    provider: cliOptions.provider || 'openrouter'
-  };
-  const llmClient = LLMClientFactory.createClient(llmConfig);
-  const incrementalGenerator = new IncrementalDocumentationGenerator(fileMapper, llmClient, gitService);
-
-  // Step 1: Analyze repository structure
-  ui.displayStep(1, 4, 'Analyzing repository structure');
-  ui.startSpinner('Scanning files and directories...');
-  
-  const repoStructure = await fileMapper.mapRepository(
-    cliOptions.repoPath,
-    cliOptions.include
-  );
-
-  ui.updateSpinner(`Found ${repoStructure.totalFiles} files in ${repoStructure.directories.length} directories`, 'success');
-
-  // Step 2: Detect changes
-  ui.displayStep(2, 4, 'Detecting changes');
-  
-  // Display commit tracking info in verbose mode
-  if (cliOptions.verbose) {
-    gitService.displayCommitTrackingInfo(true);
-  }
-  
-  ui.startSpinner('Analyzing git changes...');
-
-  let changes;
-  if (cliOptions.staged) {
-    // For pre-commit hooks - analyze only staged files
-    changes = gitService.getStagedChanges();
-  } else if (cliOptions.since) {
-    // Compare against specific commit
-    changes = gitService.getChangedFiles(cliOptions.since);
-  } else {
-    // Compare against last processed commit
-    changes = gitService.getChangedFiles();
-  }
-
-  const totalChanges = changes.added.length + changes.modified.length + changes.deleted.length + changes.renamed.length;
-
-  if (totalChanges === 0 && !cliOptions.force) {
-    ui.updateSpinner('No changes detected since last run', 'info');
-    ui.displaySuccess('Documentation is up to date!');
+  if (!options.scaffoldDocs && !options.scaffoldAgents) {
+    ui.displayWarning(t('warnings.scaffold.noneSelected'));
     return;
   }
 
-  ui.updateSpinner(`Found ${totalChanges} changed files`, 'success');
+  await ensurePaths(options);
 
-  // Step 3: Update documentation
-  ui.displayStep(3, 4, 'Updating documentation');
-  ui.startSpinner('Processing changed files...');
+  ui.displayWelcome(VERSION);
+  ui.displayProjectInfo(options.repoPath, options.outputDir, resolvedType);
 
-  const result = await incrementalGenerator.updateDocumentation(
-    repoStructure,
-    cliOptions.outputDir!,
-    changes,
-    cliOptions.verbose
+  const fileMapper = new FileMapper(options.exclude);
+
+  ui.displayStep(1, 3, t('steps.init.analyze'));
+  ui.startSpinner(t('spinner.repo.scanning'));
+
+  const repoStructure = await fileMapper.mapRepository(options.repoPath, options.include);
+  ui.updateSpinner(
+    t('spinner.repo.scanComplete', {
+      fileCount: repoStructure.totalFiles,
+      directoryCount: repoStructure.directories.length
+    }),
+    'success'
   );
 
-  ui.updateSpinner(`Updated ${result.updated} files, removed ${result.removed} files`, 'success');
+  let docsGenerated = 0;
+  let agentsGenerated = 0;
+  const docGenerator = new DocumentationGenerator();
+  const agentGenerator = new AgentGenerator();
 
-  // Step 4: Save state (only if documentation was actually updated)
-  ui.displayStep(4, 4, 'Saving state');
-  const currentCommit = gitService.getCurrentCommit();
-  
-  if (result.updated > 0 || result.removed > 0) {
-    gitService.saveState(currentCommit);
-    if (cliOptions.verbose) {
-      console.log(chalk.gray(`State saved: tracking commit ${currentCommit.substring(0, 8)}`));
-    }
-  } else {
-    if (cliOptions.verbose) {
-      console.log(chalk.gray('No documentation changes made, state not updated'));
-    }
+  if (options.scaffoldDocs) {
+    ui.displayStep(2, 3, t('steps.init.docs'));
+    ui.startSpinner(t('spinner.docs.creating'));
+    docsGenerated = await docGenerator.generateDocumentation(
+      repoStructure,
+      options.outputDir,
+      { selectedDocs: options.selectedDocKeys },
+      options.verbose
+    );
+    ui.updateSpinner(t('spinner.docs.created', { count: docsGenerated }), 'success');
   }
 
-  // Display summary of changed files
-  if (result.updatedFiles.length > 0 || result.removedFiles.length > 0) {
-    console.log(chalk.bold('\n📄 Documentation Files Changed:'));
-    console.log(chalk.gray('─'.repeat(50)));
-    
-    if (result.updatedFiles.length > 0) {
-      console.log(chalk.green('\n✅ Updated/Created:'));
-      result.updatedFiles.forEach(file => {
-        console.log(`  ${chalk.green('●')} ${file}`);
-      });
-    }
-    
-    if (result.removedFiles.length > 0) {
-      console.log(chalk.red('\n🗑️  Removed:'));
-      result.removedFiles.forEach(file => {
-        console.log(`  ${chalk.red('●')} ${file}`);
-      });
-    }
-    
-    console.log(chalk.gray('─'.repeat(50)));
+  if (options.scaffoldAgents) {
+    ui.displayStep(3, options.scaffoldDocs ? 3 : 2, t('steps.init.agents'));
+    ui.startSpinner(t('spinner.agents.creating'));
+    agentsGenerated = await agentGenerator.generateAgentPrompts(
+      repoStructure,
+      options.outputDir,
+      options.selectedAgentTypes,
+      options.verbose
+    );
+    ui.updateSpinner(t('spinner.agents.created', { count: agentsGenerated }), 'success');
   }
 
-  // Get usage statistics
-  const usageStats = llmClient.getUsageStats();
-  ui.displayGenerationSummary(result.updated, 0, usageStats, true);
-  ui.displaySuccess(`Documentation updated! Processed ${result.updated} files.`);
+  ui.displayGenerationSummary(docsGenerated, agentsGenerated);
+  ui.displaySuccess(t('success.scaffold.ready', { path: chalk.cyan(options.outputDir) }));
 }
 
-export async function runPreview(repoPath: string, options: any): Promise<void> {
-  const resolvedPath = path.resolve(repoPath);
-  
-  // Display welcome
-  ui.displayWelcome('0.1.0');
-  
-  ui.startSpinner('Initializing analysis...');
+function resolveScaffoldType(type: string, rawOptions: any): 'docs' | 'agents' | 'both' {
+  const normalized = (type || 'both').toLowerCase();
+  const allowed = ['docs', 'agents', 'both'];
 
-  // Initialize services
-  const fileMapper = new FileMapper(options.exclude || []);
-  const gitService = new GitService(resolvedPath);
-  const changeAnalyzer = new ChangeAnalyzer(gitService, fileMapper);
-
-  // Check if it's a git repository
-  if (!gitService.isGitRepository()) {
-    ui.updateSpinner('Not a git repository', 'fail');
-    ui.displayError('The specified path is not a git repository. Preview requires git tracking.');
-    process.exit(1);
+  if (!allowed.includes(normalized)) {
+    throw new Error(t('errors.init.invalidType', { value: type, allowed: allowed.join(', ') }));
   }
 
-  // Check if context has been initialized
-  const outputDir = path.resolve(options.output || './.context');
-  if (!gitService.hasContextBeenInitialized(outputDir)) {
-    ui.updateSpinner('Context not initialized', 'fail');
-    ui.displayError('No documentation context found. You should run analyze and init before previewing changes to update.');
-    console.log(chalk.bold('\n💡 Getting Started:'));
-    console.log(chalk.gray('─'.repeat(50)));
-    console.log(`${chalk.blue('1. Analyze:')} ai-context analyze ${repoPath}`);
-    console.log(`${chalk.blue('2. Initialize:')} ai-context init ${repoPath}`);
-    console.log(`${chalk.blue('3. Preview:')} ai-context preview ${repoPath}`);
-    console.log(chalk.gray('─'.repeat(50)));
-    console.log(chalk.gray('The analyze command shows token estimates and costs.'));
-    console.log(chalk.gray('The init command creates the initial documentation.'));
-    console.log(chalk.gray('The preview command shows what would change in updates.'));
-    process.exit(1);
+  if (rawOptions.docsOnly) {
+    return 'docs';
+  }
+  if (rawOptions.agentsOnly) {
+    return 'agents';
   }
 
-  ui.updateSpinner('Mapping repository structure...');
+  return normalized as 'docs' | 'agents' | 'both';
+}
 
-  // Map repository structure
-  const repoStructure = await fileMapper.mapRepository(
-    resolvedPath,
-    options.include
-  );
-
-  ui.updateSpinner('Analyzing changes...');
-
-  // Detect changes
-  let changes;
-  if (options.staged) {
-    // For pre-commit hooks - analyze only staged files
-    changes = gitService.getStagedChanges();
-  } else if (options.since) {
-    // Compare against specific commit
-    changes = gitService.getChangedFiles(options.since);
-  } else {
-    // Compare against last processed commit
-    changes = gitService.getChangedFiles();
+async function ensurePaths(options: InitOptions): Promise<void> {
+  const exists = await fs.pathExists(options.repoPath);
+  if (!exists) {
+    throw new Error(t('errors.common.repoMissing', { path: options.repoPath }));
   }
 
-  // Analyze the changes
-  const analysis = await changeAnalyzer.analyzeChanges(repoStructure, changes);
+  await fs.ensureDir(options.outputDir);
+}
 
-  ui.stopSpinner();
+export async function runGenerate(repoPath: string, options: any): Promise<void> {
+  const type = options?.docsOnly ? 'docs' : options?.agentsOnly ? 'agents' : (options?.type || 'both');
 
-  // Display the analysis
-  changeAnalyzer.displayAnalysis(analysis, options.verbose);
+  await runInit(repoPath, type, {
+    output: options?.output ?? options?.outputDir ?? './.context',
+    include: options?.include,
+    exclude: options?.exclude,
+    verbose: options?.verbose,
+    docs: options?.docs,
+    agents: options?.agents,
+    docsOnly: options?.docsOnly,
+    agentsOnly: options?.agentsOnly
+  });
+}
 
-  // Add token estimation if there are changes to process
-  if (analysis.affectedModules.length > 0) {
-    ui.startSpinner('Estimating token usage and costs for affected changes...');
-    
-    // Create a subset structure with only affected files
-    const affectedFiles = new Set<string>();
-    
-    // Add all files from affected modules
-    for (const module of analysis.affectedModules) {
-      module.affectedFiles.forEach(filePath => {
-        // Convert to absolute path to match repoStructure.files format
-        const absolutePath = path.resolve(resolvedPath, filePath);
-        if (fileMapper.isTextFile(absolutePath)) {
-          affectedFiles.add(absolutePath);
+export async function runAnalyze(..._args: unknown[]): Promise<void> {
+  throw new Error(t('errors.commands.analyzeRemoved'));
+}
+
+export async function runUpdate(..._args: unknown[]): Promise<void> {
+  throw new Error(t('errors.commands.updateRemoved'));
+}
+
+export async function runPreview(..._args: unknown[]): Promise<void> {
+  throw new Error(t('errors.commands.previewRemoved'));
+}
+
+export async function runGuidelines(..._args: unknown[]): Promise<void> {
+  throw new Error(t('errors.commands.guidelinesRemoved'));
+}
+
+export { runInit };
+
+interface LlmFillOptions {
+  repoPath: string;
+  outputDir: string;
+  promptPath: string;
+  provider: LLMConfig['provider'];
+  model: string;
+  apiKey: string;
+  baseUrl?: string;
+  include?: string[];
+  exclude?: string[];
+  verbose: boolean;
+  dryRun: boolean;
+  processAll: boolean;
+  limit?: number;
+  selectedDocKeys?: string[];
+  selectedAgentTypes?: string[];
+  selectedDocFiles?: Set<string>;
+  selectedAgentFiles?: Set<string>;
+}
+
+interface ResolvedLlmConfig {
+  provider: LLMConfig['provider'];
+  model: string;
+  apiKey: string;
+  promptPath: string;
+  baseUrl?: string;
+}
+
+async function resolveLlmConfig(
+  rawOptions: any,
+  defaults: { promptPath: string; fallbackModel: string }
+): Promise<ResolvedLlmConfig> {
+  const promptPath = path.resolve(rawOptions.prompt || defaults.promptPath);
+  if (!(await fs.pathExists(promptPath))) {
+    throw new Error(t('errors.fill.promptMissing', { path: promptPath }));
+  }
+
+  const providerEnvMap = LLMClientFactory.getEnvironmentVariables();
+  const defaultModels = LLMClientFactory.getDefaultModels();
+
+  let provider = rawOptions.provider as LLMConfig['provider'] | undefined;
+  let model = rawOptions.model as string | undefined;
+  let apiKey = rawOptions.apiKey as string | undefined;
+
+  if (!apiKey) {
+    if (provider) {
+      for (const envVar of providerEnvMap[provider]) {
+        const value = process.env[envVar];
+        if (value) {
+          apiKey = value;
+          break;
         }
-      });
-    }
-    
-    // Also add directly changed files
-    [...changes.added, ...changes.modified].forEach(filePath => {
-      const fullPath = path.resolve(resolvedPath, filePath);
-      if (fileMapper.isTextFile(fullPath)) {
-        affectedFiles.add(fullPath);
       }
-    });
-    
-    // Debug: Log the affected files and available files for comparison
-    if (options.verbose) {
-      console.log(chalk.gray(`\nDebug: Found ${affectedFiles.size} affected files:`));
-      for (const file of Array.from(affectedFiles).slice(0, 5)) {
-        const relativePath = path.relative(resolvedPath, file);
-        console.log(chalk.gray(`  - ${relativePath}`));
-      }
-      if (affectedFiles.size > 5) {
-        console.log(chalk.gray(`  ... and ${affectedFiles.size - 5} more`));
+    } else {
+      outer: for (const [prov, envVars] of Object.entries(providerEnvMap)) {
+        for (const envVar of envVars) {
+          const value = process.env[envVar];
+          if (value) {
+            apiKey = value;
+            provider = prov as LLMConfig['provider'];
+            break outer;
+          }
+        }
       }
     }
-    
-    // Create a reduced repo structure for estimation
-    const matchedFiles = repoStructure.files.filter(file => affectedFiles.has(file.path));
-    
-    const affectedRepoStructure = {
-      ...repoStructure,
-      files: matchedFiles,
-      totalFiles: matchedFiles.length
-    };
-    
-    if (options.verbose) {
-      console.log(chalk.gray(`Debug: Matched ${matchedFiles.length} files from repo structure`));
-    }
-    
-    // Create pricing if provided (optional for preview command)
-    let pricing = undefined;
-    if (options.inputPrice !== undefined && options.outputPrice !== undefined) {
-      pricing = {
-        input: options.inputPrice,
-        output: options.outputPrice
-      };
-    } else if (options.inputPrice !== undefined || options.outputPrice !== undefined) {
-      ui.displayError('Pricing requires both options: --input-price and --output-price');
-      process.exit(1);
-    }
-    
-    const tokenEstimator = new TokenEstimator(fileMapper, pricing);
-    const tokenEstimate = await tokenEstimator.estimateTokensForFullGeneration(affectedRepoStructure);
-    
-    ui.stopSpinner();
-    
-    // Display the token estimate
-    console.log(chalk.bold('\n🔮 Token & Cost Estimate for Preview Changes:'));
-    console.log(chalk.gray('═'.repeat(60)));
-    console.log(tokenEstimator.formatTokenEstimate(tokenEstimate));
   }
 
-  // Summary
-  if (analysis.affectedModules.length > 0) {
-    console.log(chalk.green('\n✅ Ready to proceed with update command'));
-    console.log(chalk.gray('Run the same command with "update" instead of "preview" to apply changes'));
-  } else {
-    console.log(chalk.yellow('\n📄 No updates needed - documentation is up to date'));
+  if (!provider) {
+    if (model) {
+      provider = LLMClientFactory.detectProviderFromModel(model);
+    } else if (apiKey) {
+      provider = LLMClientFactory.getProviderFromApiKey(apiKey);
+    }
+  }
+
+  if (!model) {
+    if (provider === 'openrouter' && process.env.OPENROUTER_MODEL) {
+      model = process.env.OPENROUTER_MODEL;
+    } else if (provider && defaultModels[provider]?.length) {
+      model = defaultModels[provider][0];
+    } else {
+      model = defaults.fallbackModel;
+      provider = LLMClientFactory.detectProviderFromModel(model);
+    }
+  }
+
+  if (!provider) {
+    provider = LLMClientFactory.detectProviderFromModel(model || defaults.fallbackModel);
+  }
+
+  if (!apiKey) {
+    for (const envVar of providerEnvMap[provider]) {
+      const value = process.env[envVar];
+      if (value) {
+        apiKey = value;
+        break;
+      }
+    }
+  }
+
+  if (!apiKey) {
+    const envVars = providerEnvMap[provider];
+    throw new Error(
+      t('errors.fill.apiKeyMissing', {
+        provider: provider.toUpperCase(),
+        envVars: envVars.join(', ')
+      })
+    );
+  }
+
+  return {
+    provider,
+    model: model || defaults.fallbackModel,
+    apiKey,
+    promptPath,
+    baseUrl: rawOptions.baseUrl
+  };
+}
+
+async function runLlmFill(repoPath: string, rawOptions: any): Promise<void> {
+  const resolvedRepo = path.resolve(repoPath);
+  const outputDir = path.resolve(rawOptions.output || './.context');
+  const docsDir = path.join(outputDir, 'docs');
+  const agentsDir = path.join(outputDir, 'agents');
+
+  await ensureDirectoryExists(docsDir, t('errors.fill.missingDocsScaffold'));
+  await ensureDirectoryExists(agentsDir, t('errors.fill.missingAgentsScaffold'));
+
+  const docSelection = parseDocSelection(rawOptions.docs);
+  const agentSelection = parseAgentSelection(rawOptions.agents);
+
+  if (docSelection.invalid.length > 0) {
+    ui.displayWarning(t('warnings.docs.unknown', { values: docSelection.invalid.join(', ') }));
+  }
+
+  if (agentSelection.invalid.length > 0) {
+    ui.displayWarning(t('warnings.agents.unknown', { values: agentSelection.invalid.join(', ') }));
+  }
+
+  const { provider, model, apiKey, promptPath, baseUrl } = await resolveLlmConfig(rawOptions, {
+    promptPath: path.join(__dirname, '../prompts/update_scaffold_prompt.md'),
+    fallbackModel: DEFAULT_MODEL
+  });
+
+  const docAllowlist = docSelection.explicitNone
+    ? new Set<string>()
+    : getDocFilesByKeys(docSelection.selected);
+  const agentAllowlist = agentSelection.explicitNone
+    ? new Set<string>()
+    : getAgentFilesByTypes(agentSelection.selected);
+
+  const options: LlmFillOptions = {
+    repoPath: resolvedRepo,
+    outputDir,
+    promptPath,
+    provider,
+    model,
+    apiKey,
+    baseUrl,
+    include: rawOptions.include,
+    exclude: rawOptions.exclude,
+    verbose: rawOptions.verbose || false,
+    dryRun: rawOptions.dryRun || false,
+    processAll: rawOptions.all || false,
+    limit: rawOptions.limit,
+    selectedDocKeys: docSelection.selected,
+    selectedAgentTypes: agentSelection.selected,
+    selectedDocFiles: docAllowlist,
+    selectedAgentFiles: agentAllowlist
+  };
+
+  ui.displayWelcome(VERSION);
+  ui.displayProjectInfo(options.repoPath, options.outputDir, `fill:${options.provider}`);
+
+  const fileMapper = new FileMapper(options.exclude);
+  ui.displayStep(1, 3, t('steps.fill.analyze'));
+  ui.startSpinner(t('spinner.repo.scanning'));
+  const repoStructure = await fileMapper.mapRepository(options.repoPath, options.include);
+  ui.updateSpinner(
+    t('spinner.repo.scanComplete', {
+      fileCount: repoStructure.totalFiles,
+      directoryCount: repoStructure.directories.length
+    }),
+    'success'
+  );
+
+  const systemPrompt = await fs.readFile(options.promptPath, 'utf-8');
+  const llmClient = LLMClientFactory.createClient({
+    apiKey: options.apiKey,
+    model: options.model,
+    provider: options.provider,
+    baseUrl: options.baseUrl
+  });
+
+  const targets = await collectTargets(
+    docsDir,
+    agentsDir,
+    options.processAll,
+    options.limit,
+    options.selectedDocFiles,
+    options.selectedAgentFiles
+  );
+  if (targets.length === 0) {
+    ui.displayWarning(t('warnings.fill.noTargets'));
+    return;
+  }
+
+  const contextSummary = buildContextSummary(repoStructure);
+  const results: Array<{ file: string; status: 'updated' | 'skipped' | 'failed'; message?: string }> = [];
+
+  ui.displayStep(2, 3, t('steps.fill.processFiles', { count: targets.length, model: options.model }));
+
+  for (const target of targets) {
+    const relativePath = path.relative(options.outputDir, target.fullPath);
+    ui.startSpinner(t('spinner.fill.processing', { path: relativePath }));
+
+    try {
+      const currentContent = await fs.readFile(target.fullPath, 'utf-8');
+      const userPrompt = buildUserPrompt(relativePath, currentContent, contextSummary, target.isAgent);
+      const updatedContent = await llmClient.generateText(userPrompt, systemPrompt);
+
+      if (!updatedContent || !updatedContent.trim()) {
+        ui.updateSpinner(t('spinner.fill.noContent', { path: relativePath }), 'warn');
+        results.push({ file: relativePath, status: 'skipped', message: t('messages.fill.emptyResponse') });
+        continue;
+      }
+
+      if (options.dryRun) {
+        ui.updateSpinner(t('spinner.fill.dryRunPreview', { path: relativePath }), 'info');
+        console.log(chalk.gray(`\n${t('messages.fill.previewStart')}`));
+        console.log(updatedContent.trim());
+        console.log(chalk.gray(`${t('messages.fill.previewEnd')}\n`));
+      } else {
+        await fs.writeFile(target.fullPath, ensureTrailingNewline(updatedContent));
+        ui.updateSpinner(t('spinner.fill.updated', { path: relativePath }), 'success');
+      }
+
+      results.push({ file: relativePath, status: options.dryRun ? 'skipped' : 'updated' });
+    } catch (error) {
+      ui.updateSpinner(t('spinner.fill.failed', { path: relativePath }), 'fail');
+      results.push({
+        file: relativePath,
+        status: 'failed',
+        message: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+
+  ui.displayStep(3, 3, t('steps.fill.summary'));
+  printLlmSummary(llmClient.getUsageStats(), results, options.dryRun);
+  ui.displaySuccess(t('success.fill.completed'));
+}
+
+interface PlanScaffoldForFillOptions {
+  title?: string;
+  summary?: string;
+  agentSelection?: SelectionParseResult;
+  docSelection?: SelectionParseResult;
+  force?: boolean;
+  verbose?: boolean;
+}
+
+async function scaffoldPlanIfNeeded(
+  planName: string,
+  outputDir: string,
+  options: PlanScaffoldForFillOptions
+): Promise<void> {
+  const resolvedOutput = path.resolve(outputDir);
+  const plansDir = path.join(resolvedOutput, 'plans');
+
+  const normalizedInput = planName.replace(/\.md$/i, '');
+  const slug = GeneratorUtils.slugify(normalizedInput);
+  if (!slug) {
+    throw new Error(t('errors.plan.invalidName'));
+  }
+
+  const planPath = path.join(plansDir, `${slug}.md`);
+  const planExists = await fs.pathExists(planPath);
+
+  if (planExists && !options.force) {
+    return;
+  }
+
+  const generator = new PlanGenerator();
+  const result = await generator.generatePlan({
+    planName,
+    outputDir: resolvedOutput,
+    title: options.title,
+    summary: options.summary,
+    selectedAgentTypes: options.agentSelection
+      ? options.agentSelection.explicitNone
+        ? null
+        : options.agentSelection.selected
+      : undefined,
+    selectedDocKeys: options.docSelection
+      ? options.docSelection.explicitNone
+        ? null
+        : options.docSelection.selected
+      : undefined,
+    force: Boolean(options.force),
+    verbose: Boolean(options.verbose)
+  });
+
+  const relativePath = result.relativePath;
+  const message = planExists && options.force
+    ? t('messages.plan.regenerated', { path: relativePath })
+    : t('messages.plan.created', { path: relativePath });
+  ui.displayInfo(t('info.plan.scaffolded.title'), message);
+}
+
+async function runPlanFill(planName: string, rawOptions: any): Promise<void> {
+  const outputDir = path.resolve(rawOptions.output || './.context');
+  const plansDir = path.join(outputDir, 'plans');
+  await ensureDirectoryExists(plansDir, t('errors.plan.missingPlansDir'));
+
+  const normalizedInput = planName.replace(/\.md$/i, '');
+  const slug = GeneratorUtils.slugify(normalizedInput);
+  if (!slug) {
+    throw new Error(t('errors.plan.invalidName'));
+  }
+
+  const candidateFiles = new Set<string>();
+  candidateFiles.add(path.join(plansDir, `${slug}.md`));
+  if (planName.toLowerCase().endsWith('.md')) {
+    candidateFiles.add(path.join(plansDir, planName));
+  }
+
+  let planPath: string | undefined;
+  for (const candidate of candidateFiles) {
+    if (await fs.pathExists(candidate)) {
+      planPath = candidate;
+      break;
+    }
+  }
+
+  if (!planPath) {
+    const expected = Array.from(candidateFiles).map(file => path.relative(process.cwd(), file)).join(' or ');
+    throw new Error(t('errors.plan.notFound', { expected }));
+  }
+
+  const docsDir = path.join(outputDir, 'docs');
+  const agentsDir = path.join(outputDir, 'agents');
+  await ensureDirectoryExists(docsDir, t('errors.fill.missingDocsScaffold'));
+  await ensureDirectoryExists(agentsDir, t('errors.fill.missingAgentsScaffold'));
+
+  const repoPath = path.resolve(rawOptions.repo || process.cwd());
+  if (!(await fs.pathExists(repoPath))) {
+    throw new Error(t('errors.common.repoMissing', { path: repoPath }));
+  }
+
+  const { provider, model, apiKey, promptPath, baseUrl } = await resolveLlmConfig(rawOptions, {
+    promptPath: path.join(__dirname, '../prompts/update_plan_prompt.md'),
+    fallbackModel: DEFAULT_MODEL
+  });
+
+  const planContent = await fs.readFile(planPath, 'utf-8');
+  const docsIndexPath = path.join(docsDir, 'README.md');
+  const agentsIndexPath = path.join(agentsDir, 'README.md');
+  const docsIndex = (await fs.pathExists(docsIndexPath)) ? await fs.readFile(docsIndexPath, 'utf-8') : undefined;
+  const agentsIndex = (await fs.pathExists(agentsIndexPath)) ? await fs.readFile(agentsIndexPath, 'utf-8') : undefined;
+
+  const referencedDocs = await loadReferencedMarkdown(docsDir, extractPlanReferences(planContent, 'docs'));
+  const referencedAgents = await loadReferencedMarkdown(agentsDir, extractPlanReferences(planContent, 'agents'));
+
+  ui.displayWelcome(VERSION);
+  ui.displayProjectInfo(repoPath, outputDir, `plan-fill:${provider}`);
+
+  const fileMapper = new FileMapper(rawOptions.exclude);
+  ui.displayStep(1, 3, t('steps.plan.summary'));
+  ui.startSpinner(t('spinner.planFill.analyzingRepo'));
+  const repoStructure = await fileMapper.mapRepository(repoPath, rawOptions.include);
+  const contextSummary = buildContextSummary(repoStructure);
+  ui.updateSpinner(t('spinner.planFill.summaryReady'), 'success');
+
+  const systemPrompt = await fs.readFile(promptPath, 'utf-8');
+  const llmClient = LLMClientFactory.createClient({
+    apiKey,
+    model,
+    provider,
+    baseUrl
+  });
+
+  const planRelativePath = path.relative(outputDir, planPath);
+  const results: Array<{ file: string; status: 'updated' | 'skipped' | 'failed'; message?: string }> = [];
+
+  ui.displayStep(2, 3, t('steps.plan.update', { path: planRelativePath, model }));
+  ui.startSpinner(t('spinner.planFill.updating', { path: planRelativePath }));
+
+  try {
+    const userPrompt = buildPlanUserPrompt({
+      relativePath: planRelativePath,
+      planContent,
+      contextSummary,
+      docsIndex,
+      agentsIndex,
+      docs: referencedDocs,
+      agents: referencedAgents
+    });
+
+    const updatedContent = await llmClient.generateText(userPrompt, systemPrompt);
+
+    if (!updatedContent || !updatedContent.trim()) {
+      ui.updateSpinner(t('spinner.planFill.noContent'), 'warn');
+      results.push({ file: planRelativePath, status: 'skipped', message: t('messages.fill.emptyResponse') });
+    } else if (rawOptions.dryRun) {
+      ui.updateSpinner(t('spinner.planFill.dryRun'), 'info');
+      console.log(chalk.gray(`\n${t('messages.fill.previewStart')}`));
+      console.log(updatedContent.trim());
+      console.log(chalk.gray(`${t('messages.fill.previewEnd')}\n`));
+      results.push({ file: planRelativePath, status: 'skipped', message: 'dry-run' });
+    } else {
+      await fs.writeFile(planPath, ensureTrailingNewline(updatedContent));
+      ui.updateSpinner(t('spinner.planFill.updated', { path: planRelativePath }), 'success');
+      results.push({ file: planRelativePath, status: 'updated' });
+    }
+  } catch (error) {
+    ui.updateSpinner(t('spinner.planFill.failed'), 'fail');
+    results.push({
+      file: planRelativePath,
+      status: 'failed',
+      message: error instanceof Error ? error.message : String(error)
+    });
+  } finally {
+    ui.stopSpinner();
+  }
+
+  ui.displayStep(3, 3, t('steps.plan.summaryResults'));
+  printLlmSummary(llmClient.getUsageStats(), results, Boolean(rawOptions.dryRun));
+  ui.displaySuccess(t('success.plan.filled'));
+}
+
+async function ensureDirectoryExists(dir: string, message: string): Promise<void> {
+  const exists = await fs.pathExists(dir);
+  if (!exists) {
+    throw new Error(message);
   }
 }
 
-// Check if no arguments were provided (interactive mode)
-if (process.argv.length === 2) {
-  const interactive = new InteractiveMode();
-  interactive.start().catch((error) => {
-    ui.displayError('Interactive mode failed', error);
+interface TargetFile {
+  fullPath: string;
+  hasMarkers: boolean;
+  isAgent: boolean;
+}
+
+async function collectTargets(
+  docsDir: string,
+  agentsDir: string,
+  processAll: boolean,
+  limit: number | undefined,
+  docAllowlist?: Set<string>,
+  agentAllowlist?: Set<string>
+): Promise<TargetFile[]> {
+  const docFiles = await glob('**/*.md', { cwd: docsDir, absolute: true });
+  const agentFiles = await glob('**/*.md', { cwd: agentsDir, absolute: true });
+  const candidates = [...docFiles, ...agentFiles];
+
+  const targets: TargetFile[] = [];
+  for (const fullPath of candidates) {
+    const content = await fs.readFile(fullPath, 'utf-8');
+    const hasMarkers = /<!--\s*ai-task:/.test(content) || /<!--\s*ai-slot:/.test(content) || /TODO/.test(content);
+    const isAgent = fullPath.includes(`${path.sep}agents${path.sep}`);
+    const fileName = path.basename(fullPath);
+
+    if (isAgent) {
+      if (agentAllowlist && !agentAllowlist.has(fileName)) {
+        continue;
+      }
+    } else {
+      if (docAllowlist && !docAllowlist.has(fileName)) {
+        continue;
+      }
+    }
+
+    const explicitSelection = isAgent ? !!agentAllowlist : !!docAllowlist;
+    const shouldInclude =
+      processAll ||
+      hasMarkers ||
+      (explicitSelection && (isAgent ? agentAllowlist!.has(fileName) : docAllowlist!.has(fileName)));
+
+    if (!shouldInclude) {
+      continue;
+    }
+
+    targets.push({ fullPath, hasMarkers, isAgent });
+    if (limit && targets.length >= limit) {
+      break;
+    }
+  }
+
+  return targets;
+}
+
+function buildContextSummary(repoStructure: RepoStructure): string {
+  const directories = new Set<string>();
+  repoStructure.directories.forEach(dir => {
+    const [first] = dir.relativePath.split(/[\\/]/).filter(Boolean);
+    if (first) {
+      directories.add(first);
+    }
+  });
+
+  const topDirs = Array.from(directories).sort().slice(0, 12);
+  const totalSizeMb = (repoStructure.totalSize / (1024 * 1024)).toFixed(2);
+
+  return [
+    `Top-level directories: ${topDirs.length ? topDirs.join(', ') : 'n/a'}`,
+    `Total files scanned: ${repoStructure.totalFiles}`,
+    `Repository size (approx.): ${totalSizeMb} MB`
+  ].join('\n');
+}
+
+function buildUserPrompt(relativePath: string, currentContent: string, contextSummary: string, isAgent: boolean): string {
+  const guidance: string[] = [
+    '- Preserve YAML front matter and existing `ai-task` sections.',
+    '- Replace TODOs and resolve `ai-slot` placeholders with concrete information.',
+    '- Ensure success criteria in the front matter are satisfied.',
+    '- Return only the full updated Markdown for this file.'
+  ];
+
+  if (isAgent) {
+    guidance.push('- Keep agent responsibilities, best practices, and documentation touchpoints aligned with the latest docs.');
+  } else {
+    guidance.push('- Maintain accurate cross-links between docs and referenced resources.');
+  }
+
+  return [
+    `Target file: ${relativePath}`,
+    'Repository summary:',
+    contextSummary,
+    '',
+    'Guidance:',
+    ...guidance,
+    '',
+    'Current content:',
+    '<file>',
+    currentContent,
+    '</file>'
+  ].join('\n');
+}
+
+interface PlanPromptContext {
+  relativePath: string;
+  planContent: string;
+  contextSummary: string;
+  docsIndex?: string;
+  agentsIndex?: string;
+  docs: Array<{ path: string; content: string }>;
+  agents: Array<{ path: string; content: string }>;
+}
+
+function buildPlanUserPrompt(context: PlanPromptContext): string {
+  const guidance = [
+    '- Preserve the YAML front matter and `ai-task` wrapper already in the plan.',
+    '- Replace TODOs with concrete steps that align with the provided documentation and agent playbooks.',
+    '- Keep the Agent Lineup and Documentation Touchpoints tables accurate and sorted.',
+    '- Ensure stages include owners, deliverables, and evidence expectations.',
+    '- Return only the full updated Markdown for this plan.'
+  ];
+
+  const sections: string[] = [
+    `Target file: ${context.relativePath}`,
+    'Repository summary:',
+    context.contextSummary,
+    '',
+    'Guidance:',
+    ...guidance,
+    '',
+    'Current plan:',
+    '<plan>',
+    context.planContent,
+    '</plan>'
+  ];
+
+  if (context.docsIndex) {
+    sections.push(
+      '',
+      'Documentation index (docs/README.md):',
+      '<docs-index>',
+      context.docsIndex,
+      '</docs-index>'
+    );
+  }
+
+  if (context.agentsIndex) {
+    sections.push(
+      '',
+      'Agent handbook (agents/README.md):',
+      '<agents-index>',
+      context.agentsIndex,
+      '</agents-index>'
+    );
+  }
+
+  context.docs.forEach(doc => {
+    sections.push(
+      '',
+      `Referenced documentation (${doc.path}):`,
+      '<doc>',
+      doc.content,
+      '</doc>'
+    );
+  });
+
+  context.agents.forEach(agent => {
+    sections.push(
+      '',
+      `Referenced agent playbook (${agent.path}):`,
+      '<agent>',
+      agent.content,
+      '</agent>'
+    );
+  });
+
+  return sections.join('\n');
+}
+
+function extractPlanReferences(content: string, type: 'docs' | 'agents'): string[] {
+  const regex = type === 'docs'
+    ? /\]\(\.\.\/docs\/([^)#]+)(?:#[^)]*)?\)/g
+    : /\]\(\.\.\/agents\/([^)#]+)(?:#[^)]*)?\)/g;
+
+  const references: string[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(content)) !== null) {
+    const rawPath = match[1].trim();
+    if (!rawPath) continue;
+    const normalized = rawPath.replace(/^\.\//, '').replace(/#.*$/, '');
+    if (!normalized || normalized.includes('..')) continue;
+    if (!references.includes(normalized)) {
+      references.push(normalized);
+    }
+  }
+
+  return references;
+}
+
+async function loadReferencedMarkdown(
+  baseDir: string,
+  fileNames: string[]
+): Promise<Array<{ path: string; content: string }>> {
+  const results: Array<{ path: string; content: string }> = [];
+  const seen = new Set<string>();
+
+  for (const name of fileNames) {
+    const cleanName = name.replace(/#.*$/, '');
+    if (!cleanName || seen.has(cleanName)) {
+      continue;
+    }
+
+    const normalized = path.normalize(cleanName).replace(/^\.\//, '');
+    if (normalized.includes('..')) {
+      continue;
+    }
+
+    const fullPath = path.join(baseDir, normalized);
+    if (!(await fs.pathExists(fullPath))) {
+      continue;
+    }
+
+    const content = await fs.readFile(fullPath, 'utf-8');
+    results.push({ path: normalized, content });
+    seen.add(cleanName);
+  }
+
+  return results;
+}
+
+function ensureTrailingNewline(content: string): string {
+  return content.endsWith('\n') ? content : `${content}\n`;
+}
+
+function printLlmSummary(usage: UsageStats, results: Array<{ file: string; status: string; message?: string }>, dryRun: boolean): void {
+  const updated = results.filter(r => r.status === 'updated').length;
+  const skipped = results.filter(r => r.status === 'skipped').length;
+  const failed = results.filter(r => r.status === 'failed');
+
+  console.log('\n' + chalk.bold('📄 LLM Fill Summary'));
+  console.log(chalk.gray('─'.repeat(50)));
+  console.log(`${chalk.blue('Updated files:')} ${chalk.white(updated.toString())}`);
+  console.log(`${chalk.blue('Skipped files:')} ${chalk.white(skipped.toString())}${dryRun ? chalk.gray(' (dry run)') : ''}`);
+  console.log(`${chalk.blue('Failures:')} ${failed.length}`);
+
+  if (usage.totalCalls > 0) {
+    console.log(chalk.gray('─'.repeat(50)));
+    console.log(`${chalk.blue('LLM calls:')} ${usage.totalCalls}`);
+    console.log(`${chalk.blue('Prompt tokens:')} ${usage.totalPromptTokens}`);
+    console.log(`${chalk.blue('Completion tokens:')} ${usage.totalCompletionTokens}`);
+    console.log(`${chalk.blue('Estimated cost:')} ${usage.estimatedCost.toFixed(4)}`);
+    console.log(`${chalk.blue('Model:')} ${usage.model}`);
+  }
+
+  if (failed.length > 0) {
+    console.log(chalk.gray('─'.repeat(50)));
+    failed.forEach(f => {
+      console.log(`${chalk.red('✖')} ${chalk.white(f.file)} — ${chalk.gray(f.message || 'Unknown error')}`);
+    });
+  }
+}
+
+interface SelectionParseResult {
+  selected?: string[];
+  invalid: string[];
+  provided: boolean;
+  explicitNone: boolean;
+}
+
+function parseDocSelection(input: any): SelectionParseResult {
+  if (input === undefined) {
+    return { selected: undefined, invalid: [], provided: false, explicitNone: false };
+  }
+
+  if (Array.isArray(input) && input.length === 0) {
+    return { selected: [], invalid: [], provided: true, explicitNone: true };
+  }
+
+  const values = toStringArray(input);
+  const normalized = values.map(value => value.toLowerCase().replace(/\.md$/, ''));
+  const valid = Array.from(new Set(normalized.filter(key => DOCUMENT_GUIDE_KEYS.includes(key))));
+  const invalid = normalized.filter(key => !DOCUMENT_GUIDE_KEYS.includes(key));
+
+  if (values.length > 0 && valid.length === 0 && invalid.length > 0) {
+    return { selected: undefined, invalid, provided: true, explicitNone: false };
+  }
+
+  return { selected: valid.length > 0 ? valid : undefined, invalid, provided: true, explicitNone: false };
+}
+
+function parseAgentSelection(input: any): SelectionParseResult {
+  if (input === undefined) {
+    return { selected: undefined, invalid: [], provided: false, explicitNone: false };
+  }
+
+  if (Array.isArray(input) && input.length === 0) {
+    return { selected: [], invalid: [], provided: true, explicitNone: true };
+  }
+
+  const values = toStringArray(input);
+  const normalized = values.map(value => value.toLowerCase().replace(/\.md$/, ''));
+  const allowed = new Set(AGENT_TYPES);
+  const valid = Array.from(new Set(normalized.filter(value => allowed.has(value as typeof AGENT_TYPES[number]))));
+  const invalid = normalized.filter(value => !allowed.has(value as typeof AGENT_TYPES[number]));
+
+  if (values.length > 0 && valid.length === 0 && invalid.length > 0) {
+    return { selected: undefined, invalid, provided: true, explicitNone: false };
+  }
+
+  return { selected: valid.length > 0 ? valid : undefined, invalid, provided: true, explicitNone: false };
+}
+
+function shouldGenerateDocs(resolvedType: 'docs' | 'agents' | 'both', selection: SelectionParseResult): boolean {
+  if (selection.explicitNone) {
+    return false;
+  }
+
+  if (resolvedType === 'agents') {
+    return false;
+  }
+
+  if (!selection.provided) {
+    return resolvedType === 'docs' || resolvedType === 'both';
+  }
+
+  if (selection.selected && selection.selected.length === 0) {
+    return false;
+  }
+
+  return resolvedType === 'docs' || resolvedType === 'both';
+}
+
+function shouldGenerateAgents(resolvedType: 'docs' | 'agents' | 'both', selection: SelectionParseResult): boolean {
+  if (selection.explicitNone) {
+    return false;
+  }
+
+  if (resolvedType === 'docs') {
+    return false;
+  }
+
+  if (!selection.provided) {
+    return resolvedType === 'agents' || resolvedType === 'both';
+  }
+
+  if (selection.selected && selection.selected.length === 0) {
+    return false;
+  }
+
+  return resolvedType === 'agents' || resolvedType === 'both';
+}
+
+function toStringArray(input: any): string[] {
+  if (Array.isArray(input)) {
+    return input.map(item => item.toString().trim()).filter(Boolean);
+  }
+  if (input === null || input === undefined) {
+    return [];
+  }
+  return input
+    .toString()
+    .split(',')
+    .map((part: string) => part.trim())
+    .filter(Boolean);
+}
+
+function formatAgentLabel(value: string): string {
+  return value
+    .split('-')
+    .map(segment => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(' ');
+}
+
+async function runInteractive(): Promise<void> {
+  const { locale } = await inquirer.prompt<{ locale: Locale }>([
+    {
+      type: 'list',
+      name: 'locale',
+      message: t('prompts.language.select'),
+      default: currentLocale,
+      choices: SUPPORTED_LOCALES.map(option => ({
+        value: option,
+        name: t(localeLabelKeys[option])
+      }))
+    }
+  ]);
+
+  const normalizedLocale = normalizeLocale(locale);
+  currentLocale = normalizedLocale;
+  translateFn = createTranslator(normalizedLocale);
+
+  ui.displayWelcome(VERSION);
+
+  const { action } = await inquirer.prompt<{ action: 'scaffold' | 'fill' | 'plan' }>([
+    {
+      type: 'list',
+      name: 'action',
+      message: t('prompts.main.action'),
+      choices: [
+        { name: t('prompts.main.choice.scaffold'), value: 'scaffold' },
+        { name: t('prompts.main.choice.fill'), value: 'fill' },
+        { name: t('prompts.main.choice.plan'), value: 'plan' }
+      ]
+    }
+  ]);
+
+  if (action === 'scaffold') {
+    await runInteractiveScaffold();
+  } else if (action === 'fill') {
+    await runInteractiveLlmFill();
+  } else {
+    await runInteractivePlan();
+  }
+}
+
+async function runInteractiveScaffold(): Promise<void> {
+  const { repoPath } = await inquirer.prompt<{ repoPath: string }>([
+    {
+      type: 'input',
+      name: 'repoPath',
+      message: t('prompts.scaffold.repoPath'),
+      default: process.cwd()
+    }
+  ]);
+
+  const resolvedRepo = path.resolve(repoPath.trim() || '.');
+  const defaultOutput = path.resolve(resolvedRepo, '.context');
+
+  const { outputDir } = await inquirer.prompt<{ outputDir: string }>([
+    {
+      type: 'input',
+      name: 'outputDir',
+      message: t('commands.init.options.output'),
+      default: defaultOutput
+    }
+  ]);
+
+  const { includeDocs } = await inquirer.prompt<{ includeDocs: boolean }>([
+    {
+      type: 'confirm',
+      name: 'includeDocs',
+      message: t('prompts.scaffold.includeDocs'),
+      default: true
+    }
+  ]);
+
+  let selectedDocs: string[] | undefined;
+  if (includeDocs) {
+    const { docs } = await inquirer.prompt<{ docs: string[] }>([
+      {
+        type: 'checkbox',
+        name: 'docs',
+        message: t('prompts.scaffold.selectDocs'),
+        choices: DOC_CHOICES,
+        default: DOC_CHOICES.map(choice => choice.value)
+      }
+    ]);
+    selectedDocs = docs;
+  } else {
+    selectedDocs = [];
+  }
+
+  const { includeAgents } = await inquirer.prompt<{ includeAgents: boolean }>([
+    {
+      type: 'confirm',
+      name: 'includeAgents',
+      message: t('prompts.scaffold.includeAgents'),
+      default: true
+    }
+  ]);
+
+  let selectedAgents: string[] | undefined;
+  if (includeAgents) {
+    const { agents } = await inquirer.prompt<{ agents: string[] }>([
+      {
+        type: 'checkbox',
+        name: 'agents',
+        message: t('prompts.scaffold.selectAgents'),
+        choices: AGENT_CHOICES,
+        default: AGENT_CHOICES.map(choice => choice.value)
+      }
+    ]);
+    selectedAgents = agents;
+  } else {
+    selectedAgents = [];
+  }
+
+  if ((selectedDocs?.length ?? 0) === 0 && (selectedAgents?.length ?? 0) === 0) {
+    ui.displayWarning(t('warnings.interactive.nothingSelected'));
+    return;
+  }
+
+  const { verbose } = await inquirer.prompt<{ verbose: boolean }>([
+    {
+      type: 'confirm',
+      name: 'verbose',
+      message: t('prompts.common.verbose'),
+      default: false
+    }
+  ]);
+
+  const scaffoldType = determineScaffoldType(selectedDocs, selectedAgents);
+
+  await runInit(resolvedRepo, scaffoldType, {
+    output: outputDir,
+    docs: selectedDocs,
+    agents: selectedAgents,
+    verbose
+  });
+}
+
+function determineScaffoldType(docSelection?: string[], agentSelection?: string[]): 'docs' | 'agents' | 'both' {
+  const docsSelected = docSelection === undefined ? true : docSelection.length > 0;
+  const agentsSelected = agentSelection === undefined ? true : agentSelection.length > 0;
+
+  if (docsSelected && agentsSelected) return 'both';
+  if (docsSelected) return 'docs';
+  return 'agents';
+}
+
+async function runInteractiveLlmFill(): Promise<void> {
+  const { repoPath } = await inquirer.prompt<{ repoPath: string }>([
+    {
+      type: 'input',
+      name: 'repoPath',
+      message: t('prompts.fill.repoPath'),
+      default: process.cwd()
+    }
+  ]);
+
+  const resolvedRepo = path.resolve(repoPath.trim() || '.');
+  const defaultOutput = path.resolve(resolvedRepo, '.context');
+  const defaultPrompt = path.resolve(process.cwd(), 'prompts/update_scaffold_prompt.md');
+
+  const { outputDir, promptPath } = await inquirer.prompt<{ outputDir: string; promptPath: string }>([
+    {
+      type: 'input',
+      name: 'outputDir',
+      message: t('commands.fill.options.output'),
+      default: defaultOutput
+    },
+    {
+      type: 'input',
+      name: 'promptPath',
+      message: t('prompts.fill.promptPath'),
+      default: defaultPrompt
+    }
+  ]);
+
+  const { dryRun, processAll } = await inquirer.prompt<{ dryRun: boolean; processAll: boolean }>([
+    {
+      type: 'confirm',
+      name: 'dryRun',
+      message: t('prompts.fill.dryRun'),
+      default: true
+    },
+    {
+      type: 'confirm',
+      name: 'processAll',
+      message: t('prompts.fill.processAll'),
+      default: false
+    }
+  ]);
+
+  const { limit } = await inquirer.prompt<{ limit: string }>([
+    {
+      type: 'input',
+      name: 'limit',
+      message: t('prompts.fill.limit'),
+      filter: (value: string) => value.trim()
+    }
+  ]);
+  const limitValue = limit ? parseInt(limit, 10) : undefined;
+  const parsedLimit = Number.isNaN(limitValue) ? undefined : limitValue;
+
+  const { includeDocs } = await inquirer.prompt<{ includeDocs: boolean }>([
+    {
+      type: 'confirm',
+      name: 'includeDocs',
+      message: t('prompts.fill.includeDocs'),
+      default: true
+    }
+  ]);
+
+  let selectedDocs: string[] | undefined;
+  if (includeDocs) {
+    const { docs } = await inquirer.prompt<{ docs: string[] }>([
+      {
+        type: 'checkbox',
+        name: 'docs',
+        message: t('prompts.fill.selectDocs'),
+        choices: DOC_CHOICES,
+        default: DOC_CHOICES.map(choice => choice.value)
+      }
+    ]);
+    selectedDocs = docs;
+  } else {
+    selectedDocs = [];
+  }
+
+  const { includeAgents } = await inquirer.prompt<{ includeAgents: boolean }>([
+    {
+      type: 'confirm',
+      name: 'includeAgents',
+      message: t('prompts.fill.includeAgents'),
+      default: true
+    }
+  ]);
+
+  let selectedAgents: string[] | undefined;
+  if (includeAgents) {
+    const { agents } = await inquirer.prompt<{ agents: string[] }>([
+      {
+        type: 'checkbox',
+        name: 'agents',
+        message: t('prompts.fill.selectAgents'),
+        choices: AGENT_CHOICES,
+        default: AGENT_CHOICES.map(choice => choice.value)
+      }
+    ]);
+    selectedAgents = agents;
+  } else {
+    selectedAgents = [];
+  }
+
+  if ((selectedDocs?.length ?? 0) === 0 && (selectedAgents?.length ?? 0) === 0) {
+    ui.displayWarning(t('warnings.interactive.nothingSelected'));
+    return;
+  }
+
+  const { specifyModel } = await inquirer.prompt<{ specifyModel: boolean }>([
+    {
+      type: 'confirm',
+      name: 'specifyModel',
+      message: t('prompts.fill.overrideModel'),
+      default: false
+    }
+  ]);
+
+  let provider: string | undefined;
+  let model: string | undefined;
+  if (specifyModel) {
+    const providerAnswer = await inquirer.prompt<{ provider: string }>([
+      {
+        type: 'list',
+        name: 'provider',
+        message: t('prompts.fill.provider'),
+        choices: ['openrouter', 'openai', 'anthropic', 'gemini', 'grok']
+      }
+    ]);
+    provider = providerAnswer.provider;
+    const modelAnswer = await inquirer.prompt<{ model: string }>([
+      {
+        type: 'input',
+        name: 'model',
+        message: t('prompts.fill.model'),
+        default: DEFAULT_MODEL
+      }
+    ]);
+    model = modelAnswer.model.trim();
+  }
+
+  const { provideApiKey } = await inquirer.prompt<{ provideApiKey: boolean }>([
+    {
+      type: 'confirm',
+      name: 'provideApiKey',
+      message: t('prompts.fill.provideApiKey'),
+      default: false
+    }
+  ]);
+
+  let apiKey: string | undefined;
+  if (provideApiKey) {
+    const apiKeyAnswer = await inquirer.prompt<{ apiKey: string }>([
+      {
+        type: 'password',
+        name: 'apiKey',
+        message: t('prompts.fill.apiKey'),
+        mask: '*'
+      }
+    ]);
+    apiKey = apiKeyAnswer.apiKey.trim();
+  }
+
+  const { verbose } = await inquirer.prompt<{ verbose: boolean }>([
+    {
+      type: 'confirm',
+      name: 'verbose',
+      message: t('prompts.common.verbose'),
+      default: false
+    }
+  ]);
+
+  await runLlmFill(resolvedRepo, {
+    output: outputDir,
+    prompt: promptPath,
+    docs: selectedDocs,
+    agents: selectedAgents,
+    dryRun,
+    all: processAll,
+    limit: parsedLimit,
+    model,
+    provider,
+    apiKey,
+    verbose
+  });
+}
+
+async function runInteractivePlan(): Promise<void> {
+  const { planName } = await inquirer.prompt<{ planName: string }>([
+    {
+      type: 'input',
+      name: 'planName',
+      message: t('prompts.plan.name'),
+      default: 'new-plan'
+    }
+  ]);
+
+  const defaultOutput = path.resolve(process.cwd(), '.context');
+  const { mode } = await inquirer.prompt<{ mode: 'scaffold' | 'fill' }>([
+    {
+      type: 'list',
+      name: 'mode',
+      message: t('prompts.plan.mode'),
+      choices: [
+        { name: t('prompts.plan.modeScaffold'), value: 'scaffold' },
+        { name: t('prompts.plan.modeFill'), value: 'fill' }
+      ],
+      default: 'scaffold'
+    }
+  ]);
+
+  const { outputDir } = await inquirer.prompt<{ outputDir: string }>([
+    {
+      type: 'input',
+      name: 'outputDir',
+      message: t('commands.plan.options.output'),
+      default: defaultOutput
+    }
+  ]);
+
+  if (mode === 'fill') {
+    const { summary } = await inquirer.prompt<{ summary: string }>([
+      {
+        type: 'input',
+        name: 'summary',
+        message: t('prompts.plan.summary'),
+        filter: (value: string) => value.trim()
+      }
+    ]);
+
+    const { includeAgents } = await inquirer.prompt<{ includeAgents: boolean }>([
+      {
+        type: 'confirm',
+        name: 'includeAgents',
+        message: t('prompts.plan.includeAgents'),
+        default: true
+      }
+    ]);
+
+    let selectedAgents: string[] = [];
+    if (includeAgents) {
+      const { agents } = await inquirer.prompt<{ agents: string[] }>([
+        {
+          type: 'checkbox',
+          name: 'agents',
+          message: t('prompts.plan.selectAgents'),
+          choices: AGENT_CHOICES,
+          default: AGENT_CHOICES.map(choice => choice.value)
+        }
+      ]);
+      selectedAgents = agents;
+    }
+
+    const { includeDocs } = await inquirer.prompt<{ includeDocs: boolean }>([
+      {
+        type: 'confirm',
+        name: 'includeDocs',
+        message: t('prompts.plan.includeDocs'),
+        default: true
+      }
+    ]);
+
+    let selectedDocs: string[] = [];
+    if (includeDocs) {
+      const { docs } = await inquirer.prompt<{ docs: string[] }>([
+        {
+          type: 'checkbox',
+          name: 'docs',
+          message: t('prompts.plan.selectDocs'),
+          choices: DOC_CHOICES,
+          default: DOC_CHOICES.map(choice => choice.value)
+        }
+      ]);
+      selectedDocs = docs;
+    }
+
+    const agentSelection = parseAgentSelection(selectedAgents);
+    const docSelection = parseDocSelection(selectedDocs);
+
+    const { repoPath } = await inquirer.prompt<{ repoPath: string }>([
+      {
+        type: 'input',
+        name: 'repoPath',
+        message: t('prompts.plan.repoPath'),
+        default: process.cwd()
+      }
+    ]);
+
+    const { dryRun } = await inquirer.prompt<{ dryRun: boolean }>([
+      {
+        type: 'confirm',
+        name: 'dryRun',
+        message: t('prompts.plan.dryRun'),
+        default: true
+      }
+    ]);
+
+    try {
+      const resolvedOutput = path.resolve(outputDir.trim() || defaultOutput);
+      await scaffoldPlanIfNeeded(planName, resolvedOutput, {
+        summary: summary || undefined,
+        agentSelection,
+        docSelection
+      });
+
+      await runPlanFill(planName, {
+        output: resolvedOutput,
+        repo: repoPath,
+        dryRun
+      });
+    } catch (error) {
+      ui.displayError(t('errors.plan.fillFailed'), error as Error);
+    }
+
+    return;
+  }
+
+  const { summary } = await inquirer.prompt<{ summary: string }>([
+    {
+      type: 'input',
+      name: 'summary',
+      message: t('prompts.plan.summary'),
+      filter: (value: string) => value.trim()
+    }
+  ]);
+
+  const { includeAgents } = await inquirer.prompt<{ includeAgents: boolean }>([
+    {
+      type: 'confirm',
+      name: 'includeAgents',
+      message: t('prompts.plan.includeAgents'),
+      default: true
+    }
+  ]);
+
+  let selectedAgents: string[] | null = null;
+  if (includeAgents) {
+    const { agents } = await inquirer.prompt<{ agents: string[] }>([
+      {
+        type: 'checkbox',
+        name: 'agents',
+        message: t('prompts.plan.selectAgents'),
+        choices: AGENT_CHOICES,
+        default: AGENT_CHOICES.map(choice => choice.value)
+      }
+    ]);
+    selectedAgents = agents.length > 0 ? agents : null;
+  }
+
+  const { includeDocs } = await inquirer.prompt<{ includeDocs: boolean }>([
+    {
+      type: 'confirm',
+      name: 'includeDocs',
+      message: t('prompts.plan.includeDocs'),
+      default: true
+    }
+  ]);
+
+  let selectedDocs: string[] | null = null;
+  if (includeDocs) {
+    const { docs } = await inquirer.prompt<{ docs: string[] }>([
+      {
+        type: 'checkbox',
+        name: 'docs',
+        message: t('prompts.plan.selectDocs'),
+        choices: DOC_CHOICES,
+        default: DOC_CHOICES.map(choice => choice.value)
+      }
+    ]);
+    selectedDocs = docs.length > 0 ? docs : null;
+  }
+
+  const generator = new PlanGenerator();
+  ui.startSpinner(t('spinner.plan.creating'));
+
+  try {
+    const result = await generator.generatePlan({
+      planName,
+      outputDir: path.resolve(outputDir.trim() || defaultOutput),
+      summary: summary || undefined,
+      selectedAgentTypes: selectedAgents,
+      selectedDocKeys: selectedDocs,
+      verbose: false
+    });
+
+    ui.updateSpinner(t('spinner.plan.created'), 'success');
+    ui.displaySuccess(t('success.plan.createdAt', { path: chalk.cyan(result.relativePath) }));
+  } catch (error) {
+    ui.updateSpinner(t('spinner.plan.creationFailed'), 'fail');
+    ui.displayError(t('errors.plan.creationFailed'), error as Error);
+  } finally {
+    ui.stopSpinner();
+  }
+}
+
+function getAgentFilesByTypes(types?: string[]): Set<string> | undefined {
+  if (!types || types.length === 0) {
+    return undefined;
+  }
+
+  const allowed = new Set(AGENT_TYPES);
+  const files = types
+    .filter(type => allowed.has(type as typeof AGENT_TYPES[number]))
+    .map(type => `${type}.md`);
+
+  return files.length ? new Set(files) : undefined;
+}
+
+function filterOutLocaleArgs(args: string[]): string[] {
+  const filtered: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const current = args[index];
+    if (current === '--lang' || current === '--language' || current === '-l') {
+      index += 1;
+      continue;
+    }
+    if (current.startsWith('--lang=') || current.startsWith('--language=')) {
+      continue;
+    }
+    filtered.push(current);
+  }
+  return filtered;
+}
+
+async function main(): Promise<void> {
+  const userArgs = process.argv.slice(2);
+  const meaningfulArgs = filterOutLocaleArgs(userArgs);
+  if (meaningfulArgs.length === 0) {
+    await runInteractive();
+    return;
+  }
+
+  await program.parseAsync(process.argv);
+}
+
+if (require.main === module) {
+  main().catch(error => {
+    ui.displayError(t('errors.cli.executionFailed'), error as Error);
     process.exit(1);
   });
-} else {
-  program.parse();
 }

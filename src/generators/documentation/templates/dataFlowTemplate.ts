@@ -1,0 +1,54 @@
+import { createFrontMatter } from './frontMatter';
+import { DocumentationTemplateContext } from './types';
+import { formatInlineDirectoryList } from './common';
+
+export function renderDataFlow(context: DocumentationTemplateContext): string {
+  const frontMatter = createFrontMatter({
+    id: 'data-flow',
+    goal: 'Describe how information moves through the system and where it integrates with external services.',
+    requiredInputs: [
+      'Architecture diagrams or sequence flows',
+      'Integration specs (APIs, queues, webhooks, third-party services)',
+      'Notes on batch jobs, schedulers, or ETL processes'
+    ],
+    successCriteria: [
+      'Highlights inbound, internal, and outbound flows',
+      'Documents transformation points and trust boundaries',
+      'Identifies failure modes and retry/backoff behaviour'
+    ],
+    relatedAgents: ['architect-specialist', 'backend-specialist']
+  });
+
+  return `${frontMatter}
+<!-- ai-task:data-flow -->
+# Data Flow & Integrations
+
+Explain how data enters, moves through, and exits the system, including interactions with external services.
+
+## High-level Flow
+- Summarize the primary pipeline from input to output. Reference diagrams or embed Mermaid definitions when available.
+
+## Internal Movement
+- Describe how modules within ${formatInlineDirectoryList(context.topLevelDirectories)} collaborate (queues, events, RPC calls, shared databases).
+
+## External Integrations
+- <!-- ai-slot:integration -->**Integration** — Purpose, authentication, payload shapes, retry strategy.<!-- /ai-slot -->
+
+## Observability & Failure Modes
+- Metrics, traces, or logs that monitor the flow.
+- Backoff, dead-letter, or compensating actions when downstream systems fail.
+
+## AI Update Checklist
+1. Validate flows against the latest integration contracts or diagrams.
+2. Update authentication, scopes, or rate limits when they change.
+3. Capture recent incidents or lessons learned that influenced reliability.
+4. Link to runbooks or dashboards used during triage.
+
+## Acceptable Sources
+- Architecture diagrams, ADRs, integration playbooks.
+- API specs, queue/topic definitions, infrastructure code.
+- Postmortems or incident reviews impacting data movement.
+
+<!-- /ai-task -->
+`;
+}
