@@ -4,31 +4,79 @@ import * as cliProgress from 'cli-progress';
 import boxen from 'boxen';
 import figures from 'figures';
 
+import { TranslateFn, TranslationKey, TranslateParams } from './i18n';
+
 export class CLIInterface {
   private spinner: Ora | null = null;
   private progressBar: cliProgress.SingleBar | null = null;
   private startTime: number = Date.now();
 
-  displayWelcome(version: string): void {
-    const welcomeMessage = chalk.bold.cyan('AI Coders Context') + '\n' +
-      chalk.gray(`Version ${version}`) + '\n' +
-      chalk.dim('Scaffold documentation and agent playbooks with or without LLM assistance');
+  constructor(private readonly translate: TranslateFn) {}
 
-    console.log(boxen(welcomeMessage, {
-      padding: 1,
-      margin: 1,
-      borderStyle: 'double',
-      borderColor: 'cyan',
-      align: 'center'
-    }));
+  displayWelcome(version: string): void {
+    const asciiArtLines = [
+      '  ___  _____   _____ ___________ ___________  _____ ',
+      ' / _ \\|_   _| /  __ \\  _  |  _  \\  ___| ___ \\ /  ___|',
+      '/ /_\\ \\ | |   | /  \\/ | | | | | | |__ | |_/ /\\ `--. ',
+      '|  _  | | |   | |   | | | | | | |  __||    /  `--. \\',
+      '| | | |_| |_  | \\__/\\ \\_/ / |/ /| |___| |\\ \\ /\\__/ /',
+      '\\_| |_/\\___/   \\____/\\___/|___/ \\____/\\_| \\_|\\____/ '
+    ];
+
+    const palette = [
+      chalk.cyanBright,
+      chalk.cyan,
+      chalk.blueBright,
+      chalk.blue,
+      chalk.magentaBright,
+      chalk.magenta
+    ];
+
+    const banner = asciiArtLines
+      .map((line, index) => palette[index % palette.length](`  ${line}`))
+      .join('\n');
+
+    console.log('\n' + banner + '\n');
+
+    const nameLabel = this.t('cli.name');
+    const versionLabel = this.t('ui.version', { version });
+    const taglineLabel = this.t('cli.tagline');
+
+    const infoEntries = [
+      {
+        icon: '◉',
+        raw: nameLabel,
+        colored: chalk.whiteBright.bold(nameLabel)
+      },
+      {
+        icon: '⌁',
+        raw: versionLabel,
+        colored: chalk.cyanBright(versionLabel)
+      },
+      {
+        icon: '⋰',
+        raw: taglineLabel,
+        colored: chalk.gray(taglineLabel)
+      }
+    ];
+
+    const maxWidth = infoEntries.reduce((width, entry) => Math.max(width, entry.raw.length), 0);
+    const accent = chalk.cyanBright('╺' + '━'.repeat(maxWidth + 8) + '╸');
+
+    console.log(accent);
+    infoEntries.forEach(entry => {
+      const padding = ' '.repeat(Math.max(0, maxWidth - entry.raw.length));
+      console.log(`${chalk.cyanBright(entry.icon)}  ${entry.colored}${padding}`);
+    });
+    console.log('');
   }
 
   displayProjectInfo(repoPath: string, outputDir: string, mode: string): void {
-    console.log(chalk.bold('\n📋 Project Configuration:'));
+    console.log(chalk.bold(`\n${this.t('ui.projectConfiguration.title')}`));
     console.log(chalk.gray('─'.repeat(50)));
-    console.log(`${chalk.blue(figures.pointer)} Repository: ${chalk.white(repoPath)}`);
-    console.log(`${chalk.blue(figures.pointer)} Output: ${chalk.white(outputDir)}`);
-    console.log(`${chalk.blue(figures.pointer)} Scaffold Mode: ${chalk.white(mode)}`);
+    console.log(`${chalk.blue(figures.pointer)} ${this.t('ui.projectConfiguration.repository')} ${chalk.white(repoPath)}`);
+    console.log(`${chalk.blue(figures.pointer)} ${this.t('ui.projectConfiguration.output')} ${chalk.white(outputDir)}`);
+    console.log(`${chalk.blue(figures.pointer)} ${this.t('ui.projectConfiguration.mode')} ${chalk.white(mode)}`);
     console.log(chalk.gray('─'.repeat(50)) + '\n');
   }
 
@@ -83,7 +131,7 @@ export class CLIInterface {
     }, cliProgress.Presets.shades_classic);
 
     this.progressBar.start(total, 0, {
-      task: 'Starting...'
+      task: this.t('ui.progress.starting')
     });
   }
 
@@ -100,10 +148,10 @@ export class CLIInterface {
 
   displayAnalysisResults(totalFiles: number, totalDirs: number, totalSize: string): void {
     const results = boxen(
-      chalk.bold.green('📊 Repository Analysis Complete\n\n') +
-      `${chalk.blue('Files:')} ${chalk.white(totalFiles.toString())}\n` +
-      `${chalk.blue('Directories:')} ${chalk.white(totalDirs.toString())}\n` +
-      `${chalk.blue('Total Size:')} ${chalk.white(totalSize)}`,
+      chalk.bold.green(`${this.t('ui.analysis.complete.title')}\n\n`) +
+      `${chalk.blue(`${this.t('ui.analysis.files')}:`)} ${chalk.white(totalFiles.toString())}\n` +
+      `${chalk.blue(`${this.t('ui.analysis.directories')}:`)} ${chalk.white(totalDirs.toString())}\n` +
+      `${chalk.blue(`${this.t('ui.analysis.totalSize')}:`)} ${chalk.white(totalSize)}`,
       {
         padding: 1,
         borderStyle: 'round',
@@ -115,7 +163,7 @@ export class CLIInterface {
   }
 
   displayFileTypeDistribution(distribution: Map<string, number>, totalFiles: number): void {
-    console.log(chalk.bold('\n📁 File Type Distribution:'));
+    console.log(chalk.bold(`\n${this.t('ui.fileTypeDistribution.title')}`));
     console.log(chalk.gray('─'.repeat(50)));
     
     const sorted = Array.from(distribution.entries())
@@ -135,11 +183,11 @@ export class CLIInterface {
 
   displayGenerationSummary(docsGenerated: number, agentsGenerated: number): void {
     const elapsed = ((Date.now() - this.startTime) / 1000).toFixed(1);
-    const summaryText = chalk.bold.green('✨ Scaffold Complete!\n\n') +
-      `${chalk.blue('Documentation files:')} ${chalk.white(docsGenerated.toString())}\n` +
-      `${chalk.blue('Agent playbooks:')} ${chalk.white(agentsGenerated.toString())}\n` +
-      `${chalk.blue('Time elapsed:')} ${chalk.white(`${elapsed}s`)}\n\n` +
-      chalk.dim('Next step: customize the generated templates to match your project.');
+    const summaryText = chalk.bold.green(`${this.t('ui.generationSummary.title')}\n\n`) +
+      `${chalk.blue(`${this.t('ui.generationSummary.documentation')}:`)} ${chalk.white(docsGenerated.toString())}\n` +
+      `${chalk.blue(`${this.t('ui.generationSummary.agents')}:`)} ${chalk.white(agentsGenerated.toString())}\n` +
+      `${chalk.blue(`${this.t('ui.generationSummary.timeElapsed')}:`)} ${chalk.white(`${elapsed}s`)}\n\n` +
+      chalk.dim(this.t('ui.generationSummary.nextStep'));
 
     const summary = boxen(summaryText, {
       padding: 1,
@@ -153,7 +201,7 @@ export class CLIInterface {
 
   displayError(message: string, error?: Error): void {
     const errorBox = boxen(
-      chalk.bold.red('❌ Error Occurred\n\n') +
+      chalk.bold.red(`${this.t('ui.error.title')}\n\n`) +
       chalk.white(message) +
       (error ? '\n\n' + chalk.gray(error.stack || error.message) : ''),
       {
@@ -196,5 +244,9 @@ export class CLIInterface {
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  }
+
+  private t(key: TranslationKey, params?: TranslateParams): string {
+    return this.translate(key, params);
   }
 }

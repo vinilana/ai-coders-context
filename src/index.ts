@@ -14,6 +14,8 @@ import { AgentGenerator } from './generators/agents/agentGenerator';
 import { PlanGenerator } from './generators/plans/planGenerator';
 import { GeneratorUtils } from './generators/shared';
 import { CLIInterface } from './utils/cliUI';
+import { createTranslator, detectLocale, SUPPORTED_LOCALES, normalizeLocale } from './utils/i18n';
+import type { TranslateFn, Locale, TranslationKey } from './utils/i18n';
 import { LLMClientFactory } from './services/llmClientFactory';
 import { LLMConfig, RepoStructure, UsageStats } from './types';
 import { DOCUMENT_GUIDES, DOCUMENT_GUIDE_KEYS, getDocFilesByKeys } from './generators/documentation/guideRegistry';
@@ -21,8 +23,18 @@ import { AGENT_TYPES } from './generators/agents/agentTypes';
 
 dotenv.config();
 
+const initialLocale = detectLocale(process.argv.slice(2), process.env.AI_CONTEXT_LANG);
+let currentLocale: Locale = initialLocale;
+let translateFn = createTranslator(initialLocale);
+const t: TranslateFn = (key, params) => translateFn(key, params);
+
+const localeLabelKeys: Record<Locale, TranslationKey> = {
+  en: 'prompts.language.option.en',
+  'pt-BR': 'prompts.language.option.pt-BR'
+};
+
 const program = new Command();
-const ui = new CLIInterface();
+const ui = new CLIInterface(t);
 const VERSION = '0.3.0';
 const DEFAULT_MODEL = 'x-ai/grok-4-fast:free';
 
@@ -38,106 +50,108 @@ const AGENT_CHOICES = AGENT_TYPES.map(agent => ({
 
 program
   .name('ai-context')
-  .description('Scaffold documentation and agent playbooks for your repository')
+  .description(t('cli.description'))
   .version(VERSION);
+
+program.option('-l, --lang <locale>', t('global.options.lang'), initialLocale);
 
 program
   .command('init')
-  .description('Generate docs and agent scaffolding for a repository')
-  .argument('<repo-path>', 'Path to the repository to analyze')
-  .argument('[type]', 'Scaffold type: "docs", "agents", or "both" (default)', 'both')
-  .option('-o, --output <dir>', 'Output directory for generated assets', './.context')
-  .option('--docs <keys...>', 'Doc keys to scaffold (default: all)')
-  .option('--agents <keys...>', 'Agent types to scaffold (default: all)')
-  .option('--exclude <patterns...>', 'Glob patterns to exclude from analysis')
-  .option('--include <patterns...>', 'Glob patterns to include during analysis')
-  .option('-v, --verbose', 'Enable verbose logging')
+  .description(t('commands.init.description'))
+  .argument('<repo-path>', t('commands.init.arguments.repoPath'))
+  .argument('[type]', t('commands.init.arguments.type'), 'both')
+  .option('-o, --output <dir>', t('commands.init.options.output'), './.context')
+  .option('--docs <keys...>', t('commands.init.options.docs'))
+  .option('--agents <keys...>', t('commands.init.options.agents'))
+  .option('--exclude <patterns...>', t('commands.init.options.exclude'))
+  .option('--include <patterns...>', t('commands.init.options.include'))
+  .option('-v, --verbose', t('commands.init.options.verbose'))
   .action(async (repoPath: string, type: string, options: any) => {
     try {
       await runInit(repoPath, type, options);
     } catch (error) {
-      ui.displayError('Failed to scaffold repository assets', error as Error);
+      ui.displayError(t('errors.init.scaffoldFailed'), error as Error);
       process.exit(1);
     }
   });
 
 program
   .command('scaffold')
-  .description('Alias for init')
-  .argument('<repo-path>', 'Path to the repository to analyze')
-  .argument('[type]', 'Scaffold type: "docs", "agents", or "both" (default)', 'both')
-  .option('-o, --output <dir>', 'Output directory for generated assets', './.context')
-  .option('--docs <keys...>', 'Doc keys to scaffold (default: all)')
-  .option('--agents <keys...>', 'Agent types to scaffold (default: all)')
-  .option('--exclude <patterns...>', 'Glob patterns to exclude from analysis')
-  .option('--include <patterns...>', 'Glob patterns to include during analysis')
-  .option('-v, --verbose', 'Enable verbose logging')
+  .description(t('commands.scaffold.description'))
+  .argument('<repo-path>', t('commands.init.arguments.repoPath'))
+  .argument('[type]', t('commands.init.arguments.type'), 'both')
+  .option('-o, --output <dir>', t('commands.init.options.output'), './.context')
+  .option('--docs <keys...>', t('commands.init.options.docs'))
+  .option('--agents <keys...>', t('commands.init.options.agents'))
+  .option('--exclude <patterns...>', t('commands.init.options.exclude'))
+  .option('--include <patterns...>', t('commands.init.options.include'))
+  .option('-v, --verbose', t('commands.init.options.verbose'))
   .action(async (repoPath: string, type: string, options: any) => {
     try {
       await runInit(repoPath, type, options);
     } catch (error) {
-      ui.displayError('Failed to scaffold repository assets', error as Error);
+      ui.displayError(t('errors.init.scaffoldFailed'), error as Error);
       process.exit(1);
     }
   });
 
 program
   .command('fill')
-  .description('Use an LLM to fill generated docs and agent playbooks with the latest repo context')
-  .argument('<repo-path>', 'Path to the repository root used to build context')
-  .option('-o, --output <dir>', 'Scaffold directory containing docs/ and agents/', './.context')
-  .option('-k, --api-key <key>', 'API key for the LLM provider')
-  .option('-m, --model <model>', 'LLM model to use', DEFAULT_MODEL)
-  .option('-p, --provider <provider>', 'LLM provider (openrouter, openai, anthropic, gemini, grok)')
-  .option('--base-url <url>', 'Custom base URL for provider APIs')
-  .option('--prompt <file>', 'Path to an instruction prompt', path.join(__dirname, '../prompts/update_scaffold_prompt.md'))
-  .option('--dry-run', 'Preview updates without writing files', false)
-  .option('--all', 'Process every doc/agent file even if no TODO markers are found', false)
-  .option('--limit <number>', 'Maximum number of files to process', (value: string) => parseInt(value, 10))
-  .option('--docs <keys...>', 'Doc keys to update (default: all)')
-  .option('--agents <keys...>', 'Agent types to update (default: all)')
-  .option('--exclude <patterns...>', 'Glob patterns to exclude from repository analysis')
-  .option('--include <patterns...>', 'Glob patterns to include during analysis')
-  .option('-v, --verbose', 'Enable verbose logging')
+  .description(t('commands.fill.description'))
+  .argument('<repo-path>', t('commands.fill.arguments.repoPath'))
+  .option('-o, --output <dir>', t('commands.fill.options.output'), './.context')
+  .option('-k, --api-key <key>', t('commands.fill.options.apiKey'))
+  .option('-m, --model <model>', t('commands.fill.options.model'), DEFAULT_MODEL)
+  .option('-p, --provider <provider>', t('commands.fill.options.provider'))
+  .option('--base-url <url>', t('commands.fill.options.baseUrl'))
+  .option('--prompt <file>', t('commands.fill.options.prompt'), path.join(__dirname, '../prompts/update_scaffold_prompt.md'))
+  .option('--dry-run', t('commands.fill.options.dryRun'), false)
+  .option('--all', t('commands.fill.options.all'), false)
+  .option('--limit <number>', t('commands.fill.options.limit'), (value: string) => parseInt(value, 10))
+  .option('--docs <keys...>', t('commands.fill.options.docs'))
+  .option('--agents <keys...>', t('commands.fill.options.agents'))
+  .option('--exclude <patterns...>', t('commands.fill.options.exclude'))
+  .option('--include <patterns...>', t('commands.fill.options.include'))
+  .option('-v, --verbose', t('commands.fill.options.verbose'))
   .action(async (repoPath: string, options: any) => {
     try {
       await runLlmFill(repoPath, options);
     } catch (error) {
-      ui.displayError('Failed to fill documentation with LLM assistance', error as Error);
+      ui.displayError(t('errors.fill.failed'), error as Error);
       process.exit(1);
     }
   });
 
 program
   .command('plan')
-  .description('Create a collaboration plan that links documentation and agent playbooks')
-  .argument('<plan-name>', 'Name of the plan (used to create the file slug)')
-  .option('-o, --output <dir>', 'Scaffold directory containing docs/ and agents/', './.context')
-  .option('--title <title>', 'Custom title for the plan document')
-  .option('--summary <text>', 'Seed summary for the plan header')
-  .option('--agents <types...>', 'Agent types to highlight (default: all)')
-  .option('--docs <keys...>', 'Doc keys to highlight (default: all)')
-  .option('-f, --force', 'Overwrite the plan if it already exists (scaffold mode)')
-  .option('--fill', 'Use an LLM to fill or update the plan instead of scaffolding')
-  .option('-r, --repo <path>', 'Repository root to summarize for additional context')
-  .option('-k, --api-key <key>', 'API key for the LLM provider')
-  .option('-m, --model <model>', 'LLM model to use', DEFAULT_MODEL)
-  .option('-p, --provider <provider>', 'LLM provider (openrouter, openai, anthropic, gemini, grok)')
-  .option('--base-url <url>', 'Custom base URL for provider APIs')
-  .option('--prompt <file>', 'Path to a plan update instruction prompt', path.join(__dirname, '../prompts/update_plan_prompt.md'))
-  .option('--dry-run', 'Preview updates without writing files', false)
-  .option('--include <patterns...>', 'Glob patterns to include during repository analysis')
-  .option('--exclude <patterns...>', 'Glob patterns to exclude from repository analysis')
-  .option('-v, --verbose', 'Enable verbose logging')
+  .description(t('commands.plan.description'))
+  .argument('<plan-name>', t('commands.plan.arguments.planName'))
+  .option('-o, --output <dir>', t('commands.plan.options.output'), './.context')
+  .option('--title <title>', t('commands.plan.options.title'))
+  .option('--summary <text>', t('commands.plan.options.summary'))
+  .option('--agents <types...>', t('commands.plan.options.agents'))
+  .option('--docs <keys...>', t('commands.plan.options.docs'))
+  .option('-f, --force', t('commands.plan.options.force'))
+  .option('--fill', t('commands.plan.options.fill'))
+  .option('-r, --repo <path>', t('commands.plan.options.repo'))
+  .option('-k, --api-key <key>', t('commands.plan.options.apiKey'))
+  .option('-m, --model <model>', t('commands.plan.options.model'), DEFAULT_MODEL)
+  .option('-p, --provider <provider>', t('commands.plan.options.provider'))
+  .option('--base-url <url>', t('commands.plan.options.baseUrl'))
+  .option('--prompt <file>', t('commands.plan.options.prompt'), path.join(__dirname, '../prompts/update_plan_prompt.md'))
+  .option('--dry-run', t('commands.plan.options.dryRun'), false)
+  .option('--include <patterns...>', t('commands.plan.options.include'))
+  .option('--exclude <patterns...>', t('commands.plan.options.exclude'))
+  .option('-v, --verbose', t('commands.plan.options.verbose'))
   .action(async (planName: string, rawOptions: any) => {
     const agentSelection = parseAgentSelection(rawOptions.agents);
     if (agentSelection.invalid.length > 0) {
-      ui.displayWarning(`Ignoring unknown agent types: ${agentSelection.invalid.join(', ')}`);
+      ui.displayWarning(t('warnings.agents.unknown', { values: agentSelection.invalid.join(', ') }));
     }
 
     const docSelection = parseDocSelection(rawOptions.docs);
     if (docSelection.invalid.length > 0) {
-      ui.displayWarning(`Ignoring unknown docs: ${docSelection.invalid.join(', ')}`);
+      ui.displayWarning(t('warnings.docs.unknown', { values: docSelection.invalid.join(', ') }));
     }
 
     const outputDir = path.resolve(rawOptions.output || './.context');
@@ -155,7 +169,7 @@ program
 
         await runPlanFill(planName, { ...rawOptions, output: outputDir });
       } catch (error) {
-        ui.displayError('Failed to fill plan with LLM assistance', error as Error);
+        ui.displayError(t('errors.plan.fillFailed'), error as Error);
         process.exit(1);
       }
       return;
@@ -163,7 +177,7 @@ program
 
     const generator = new PlanGenerator();
 
-    ui.startSpinner('Creating plan template...');
+    ui.startSpinner(t('spinner.plan.creating'));
 
     try {
       const result = await generator.generatePlan({
@@ -177,11 +191,11 @@ program
         verbose: Boolean(rawOptions.verbose)
       });
 
-      ui.updateSpinner('Plan template created', 'success');
-      ui.displaySuccess(`Plan created at ${chalk.cyan(result.relativePath)}`);
+      ui.updateSpinner(t('spinner.plan.created'), 'success');
+      ui.displaySuccess(t('success.plan.createdAt', { path: chalk.cyan(result.relativePath) }));
     } catch (error) {
-      ui.updateSpinner('Failed to create plan template', 'fail');
-      ui.displayError('Failed to create plan template', error as Error);
+      ui.updateSpinner(t('spinner.plan.creationFailed'), 'fail');
+      ui.displayError(t('errors.plan.creationFailed'), error as Error);
       process.exit(1);
     } finally {
       ui.stopSpinner();
@@ -206,11 +220,11 @@ async function runInit(repoPath: string, type: string, rawOptions: any): Promise
   const agentSelection = parseAgentSelection(rawOptions.agents);
 
   if (docSelection.invalid.length > 0) {
-    ui.displayWarning(`Ignoring unknown docs: ${docSelection.invalid.join(', ')}`);
+    ui.displayWarning(t('warnings.docs.unknown', { values: docSelection.invalid.join(', ') }));
   }
 
   if (agentSelection.invalid.length > 0) {
-    ui.displayWarning(`Ignoring unknown agent types: ${agentSelection.invalid.join(', ')}`);
+    ui.displayWarning(t('warnings.agents.unknown', { values: agentSelection.invalid.join(', ') }));
   }
 
   const options: InitOptions = {
@@ -226,7 +240,7 @@ async function runInit(repoPath: string, type: string, rawOptions: any): Promise
   };
 
   if (!options.scaffoldDocs && !options.scaffoldAgents) {
-    ui.displayWarning('No documentation or agent playbooks selected. Nothing to scaffold.');
+    ui.displayWarning(t('warnings.scaffold.noneSelected'));
     return;
   }
 
@@ -237,11 +251,17 @@ async function runInit(repoPath: string, type: string, rawOptions: any): Promise
 
   const fileMapper = new FileMapper(options.exclude);
 
-  ui.displayStep(1, 3, 'Analyzing repository structure');
-  ui.startSpinner('Scanning repository...');
+  ui.displayStep(1, 3, t('steps.init.analyze'));
+  ui.startSpinner(t('spinner.repo.scanning'));
 
   const repoStructure = await fileMapper.mapRepository(options.repoPath, options.include);
-  ui.updateSpinner(`Found ${repoStructure.totalFiles} files across ${repoStructure.directories.length} directories`, 'success');
+  ui.updateSpinner(
+    t('spinner.repo.scanComplete', {
+      fileCount: repoStructure.totalFiles,
+      directoryCount: repoStructure.directories.length
+    }),
+    'success'
+  );
 
   let docsGenerated = 0;
   let agentsGenerated = 0;
@@ -249,31 +269,31 @@ async function runInit(repoPath: string, type: string, rawOptions: any): Promise
   const agentGenerator = new AgentGenerator();
 
   if (options.scaffoldDocs) {
-    ui.displayStep(2, 3, 'Scaffolding documentation');
-    ui.startSpinner('Creating docs directory and templates...');
+    ui.displayStep(2, 3, t('steps.init.docs'));
+    ui.startSpinner(t('spinner.docs.creating'));
     docsGenerated = await docGenerator.generateDocumentation(
       repoStructure,
       options.outputDir,
       { selectedDocs: options.selectedDocKeys },
       options.verbose
     );
-    ui.updateSpinner(`Documentation scaffold created (${docsGenerated} files)`, 'success');
+    ui.updateSpinner(t('spinner.docs.created', { count: docsGenerated }), 'success');
   }
 
   if (options.scaffoldAgents) {
-    ui.displayStep(3, options.scaffoldDocs ? 3 : 2, 'Scaffolding agent playbooks');
-    ui.startSpinner('Creating agent directory and templates...');
+    ui.displayStep(3, options.scaffoldDocs ? 3 : 2, t('steps.init.agents'));
+    ui.startSpinner(t('spinner.agents.creating'));
     agentsGenerated = await agentGenerator.generateAgentPrompts(
       repoStructure,
       options.outputDir,
       options.selectedAgentTypes,
       options.verbose
     );
-    ui.updateSpinner(`Agent scaffold created (${agentsGenerated} files)`, 'success');
+    ui.updateSpinner(t('spinner.agents.created', { count: agentsGenerated }), 'success');
   }
 
   ui.displayGenerationSummary(docsGenerated, agentsGenerated);
-  ui.displaySuccess(`Scaffold ready in ${chalk.cyan(options.outputDir)}`);
+  ui.displaySuccess(t('success.scaffold.ready', { path: chalk.cyan(options.outputDir) }));
 }
 
 function resolveScaffoldType(type: string, rawOptions: any): 'docs' | 'agents' | 'both' {
@@ -281,7 +301,7 @@ function resolveScaffoldType(type: string, rawOptions: any): 'docs' | 'agents' |
   const allowed = ['docs', 'agents', 'both'];
 
   if (!allowed.includes(normalized)) {
-    throw new Error(`Invalid scaffold type "${type}". Expected one of: ${allowed.join(', ')}`);
+    throw new Error(t('errors.init.invalidType', { value: type, allowed: allowed.join(', ') }));
   }
 
   if (rawOptions.docsOnly) {
@@ -297,7 +317,7 @@ function resolveScaffoldType(type: string, rawOptions: any): 'docs' | 'agents' |
 async function ensurePaths(options: InitOptions): Promise<void> {
   const exists = await fs.pathExists(options.repoPath);
   if (!exists) {
-    throw new Error(`Repository path does not exist: ${options.repoPath}`);
+    throw new Error(t('errors.common.repoMissing', { path: options.repoPath }));
   }
 
   await fs.ensureDir(options.outputDir);
@@ -319,19 +339,19 @@ export async function runGenerate(repoPath: string, options: any): Promise<void>
 }
 
 export async function runAnalyze(..._args: unknown[]): Promise<void> {
-  throw new Error('The analyze command has been removed in the scaffolding-only version of ai-context.');
+  throw new Error(t('errors.commands.analyzeRemoved'));
 }
 
 export async function runUpdate(..._args: unknown[]): Promise<void> {
-  throw new Error('The update command is no longer supported. Re-run `ai-context init` to refresh scaffolds.');
+  throw new Error(t('errors.commands.updateRemoved'));
 }
 
 export async function runPreview(..._args: unknown[]): Promise<void> {
-  throw new Error('Preview mode has been retired. Use the generated docs and agent templates directly.');
+  throw new Error(t('errors.commands.previewRemoved'));
 }
 
 export async function runGuidelines(..._args: unknown[]): Promise<void> {
-  throw new Error('Guidelines generation relied on LLMs and is no longer available.');
+  throw new Error(t('errors.commands.guidelinesRemoved'));
 }
 
 export { runInit };
@@ -370,7 +390,7 @@ async function resolveLlmConfig(
 ): Promise<ResolvedLlmConfig> {
   const promptPath = path.resolve(rawOptions.prompt || defaults.promptPath);
   if (!(await fs.pathExists(promptPath))) {
-    throw new Error(`Prompt file not found at ${promptPath}.`);
+    throw new Error(t('errors.fill.promptMissing', { path: promptPath }));
   }
 
   const providerEnvMap = LLMClientFactory.getEnvironmentVariables();
@@ -438,7 +458,12 @@ async function resolveLlmConfig(
 
   if (!apiKey) {
     const envVars = providerEnvMap[provider];
-    throw new Error(`${provider.toUpperCase()} API key is required. Set one of ${envVars.join(', ')} or use --api-key.`);
+    throw new Error(
+      t('errors.fill.apiKeyMissing', {
+        provider: provider.toUpperCase(),
+        envVars: envVars.join(', ')
+      })
+    );
   }
 
   return {
@@ -456,18 +481,18 @@ async function runLlmFill(repoPath: string, rawOptions: any): Promise<void> {
   const docsDir = path.join(outputDir, 'docs');
   const agentsDir = path.join(outputDir, 'agents');
 
-  await ensureDirectoryExists(docsDir, 'Documentation scaffold not found. Run `ai-context init` first.');
-  await ensureDirectoryExists(agentsDir, 'Agent scaffold not found. Run `ai-context init` first.');
+  await ensureDirectoryExists(docsDir, t('errors.fill.missingDocsScaffold'));
+  await ensureDirectoryExists(agentsDir, t('errors.fill.missingAgentsScaffold'));
 
   const docSelection = parseDocSelection(rawOptions.docs);
   const agentSelection = parseAgentSelection(rawOptions.agents);
 
   if (docSelection.invalid.length > 0) {
-    ui.displayWarning(`Ignoring unknown docs: ${docSelection.invalid.join(', ')}`);
+    ui.displayWarning(t('warnings.docs.unknown', { values: docSelection.invalid.join(', ') }));
   }
 
   if (agentSelection.invalid.length > 0) {
-    ui.displayWarning(`Ignoring unknown agent types: ${agentSelection.invalid.join(', ')}`);
+    ui.displayWarning(t('warnings.agents.unknown', { values: agentSelection.invalid.join(', ') }));
   }
 
   const { provider, model, apiKey, promptPath, baseUrl } = await resolveLlmConfig(rawOptions, {
@@ -506,10 +531,16 @@ async function runLlmFill(repoPath: string, rawOptions: any): Promise<void> {
   ui.displayProjectInfo(options.repoPath, options.outputDir, `fill:${options.provider}`);
 
   const fileMapper = new FileMapper(options.exclude);
-  ui.displayStep(1, 3, 'Analyzing repository structure');
-  ui.startSpinner('Scanning repository...');
+  ui.displayStep(1, 3, t('steps.fill.analyze'));
+  ui.startSpinner(t('spinner.repo.scanning'));
   const repoStructure = await fileMapper.mapRepository(options.repoPath, options.include);
-  ui.updateSpinner(`Found ${repoStructure.totalFiles} files across ${repoStructure.directories.length} directories`, 'success');
+  ui.updateSpinner(
+    t('spinner.repo.scanComplete', {
+      fileCount: repoStructure.totalFiles,
+      directoryCount: repoStructure.directories.length
+    }),
+    'success'
+  );
 
   const systemPrompt = await fs.readFile(options.promptPath, 'utf-8');
   const llmClient = LLMClientFactory.createClient({
@@ -528,18 +559,18 @@ async function runLlmFill(repoPath: string, rawOptions: any): Promise<void> {
     options.selectedAgentFiles
   );
   if (targets.length === 0) {
-    ui.displayWarning('No Markdown files required updates. Use --all or add TODO markers to trigger LLM assistance.');
+    ui.displayWarning(t('warnings.fill.noTargets'));
     return;
   }
 
   const contextSummary = buildContextSummary(repoStructure);
   const results: Array<{ file: string; status: 'updated' | 'skipped' | 'failed'; message?: string }> = [];
 
-  ui.displayStep(2, 3, `Updating ${targets.length} files with ${options.model}`);
+  ui.displayStep(2, 3, t('steps.fill.processFiles', { count: targets.length, model: options.model }));
 
   for (const target of targets) {
     const relativePath = path.relative(options.outputDir, target.fullPath);
-    ui.startSpinner(`Processing ${relativePath}...`);
+    ui.startSpinner(t('spinner.fill.processing', { path: relativePath }));
 
     try {
       const currentContent = await fs.readFile(target.fullPath, 'utf-8');
@@ -547,24 +578,24 @@ async function runLlmFill(repoPath: string, rawOptions: any): Promise<void> {
       const updatedContent = await llmClient.generateText(userPrompt, systemPrompt);
 
       if (!updatedContent || !updatedContent.trim()) {
-        ui.updateSpinner(`No content received for ${relativePath}`, 'warn');
-        results.push({ file: relativePath, status: 'skipped', message: 'Empty response from LLM' });
+        ui.updateSpinner(t('spinner.fill.noContent', { path: relativePath }), 'warn');
+        results.push({ file: relativePath, status: 'skipped', message: t('messages.fill.emptyResponse') });
         continue;
       }
 
       if (options.dryRun) {
-        ui.updateSpinner(`Dry run - preview for ${relativePath}`, 'info');
-        console.log(chalk.gray('\n--- Preview Start ---'));
+        ui.updateSpinner(t('spinner.fill.dryRunPreview', { path: relativePath }), 'info');
+        console.log(chalk.gray(`\n${t('messages.fill.previewStart')}`));
         console.log(updatedContent.trim());
-        console.log(chalk.gray('--- Preview End ---\n'));
+        console.log(chalk.gray(`${t('messages.fill.previewEnd')}\n`));
       } else {
         await fs.writeFile(target.fullPath, ensureTrailingNewline(updatedContent));
-        ui.updateSpinner(`Updated ${relativePath}`, 'success');
+        ui.updateSpinner(t('spinner.fill.updated', { path: relativePath }), 'success');
       }
 
       results.push({ file: relativePath, status: options.dryRun ? 'skipped' : 'updated' });
     } catch (error) {
-      ui.updateSpinner(`Failed ${relativePath}`, 'fail');
+      ui.updateSpinner(t('spinner.fill.failed', { path: relativePath }), 'fail');
       results.push({
         file: relativePath,
         status: 'failed',
@@ -573,9 +604,9 @@ async function runLlmFill(repoPath: string, rawOptions: any): Promise<void> {
     }
   }
 
-  ui.displayStep(3, 3, 'Summarizing LLM usage');
+  ui.displayStep(3, 3, t('steps.fill.summary'));
   printLlmSummary(llmClient.getUsageStats(), results, options.dryRun);
-  ui.displaySuccess('LLM-assisted update complete. Review the changes and commit when ready.');
+  ui.displaySuccess(t('success.fill.completed'));
 }
 
 interface PlanScaffoldForFillOptions {
@@ -598,7 +629,7 @@ async function scaffoldPlanIfNeeded(
   const normalizedInput = planName.replace(/\.md$/i, '');
   const slug = GeneratorUtils.slugify(normalizedInput);
   if (!slug) {
-    throw new Error('Plan name must contain at least one alphanumeric character.');
+    throw new Error(t('errors.plan.invalidName'));
   }
 
   const planPath = path.join(plansDir, `${slug}.md`);
@@ -630,20 +661,20 @@ async function scaffoldPlanIfNeeded(
 
   const relativePath = result.relativePath;
   const message = planExists && options.force
-    ? `Regenerated ${relativePath} before LLM fill.`
-    : `Created ${relativePath} before LLM fill.`;
-  ui.displayInfo('Plan scaffolded', message);
+    ? t('messages.plan.regenerated', { path: relativePath })
+    : t('messages.plan.created', { path: relativePath });
+  ui.displayInfo(t('info.plan.scaffolded.title'), message);
 }
 
 async function runPlanFill(planName: string, rawOptions: any): Promise<void> {
   const outputDir = path.resolve(rawOptions.output || './.context');
   const plansDir = path.join(outputDir, 'plans');
-  await ensureDirectoryExists(plansDir, 'Plans directory not found. Run `ai-context plan <name>` to create one.');
+  await ensureDirectoryExists(plansDir, t('errors.plan.missingPlansDir'));
 
   const normalizedInput = planName.replace(/\.md$/i, '');
   const slug = GeneratorUtils.slugify(normalizedInput);
   if (!slug) {
-    throw new Error('Plan name must contain at least one alphanumeric character.');
+    throw new Error(t('errors.plan.invalidName'));
   }
 
   const candidateFiles = new Set<string>();
@@ -661,17 +692,18 @@ async function runPlanFill(planName: string, rawOptions: any): Promise<void> {
   }
 
   if (!planPath) {
-    throw new Error(`Plan not found. Expected ${Array.from(candidateFiles).map(file => path.relative(process.cwd(), file)).join(' or ')}.`);
+    const expected = Array.from(candidateFiles).map(file => path.relative(process.cwd(), file)).join(' or ');
+    throw new Error(t('errors.plan.notFound', { expected }));
   }
 
   const docsDir = path.join(outputDir, 'docs');
   const agentsDir = path.join(outputDir, 'agents');
-  await ensureDirectoryExists(docsDir, 'Documentation scaffold not found. Run `ai-context init` first.');
-  await ensureDirectoryExists(agentsDir, 'Agent scaffold not found. Run `ai-context init` first.');
+  await ensureDirectoryExists(docsDir, t('errors.fill.missingDocsScaffold'));
+  await ensureDirectoryExists(agentsDir, t('errors.fill.missingAgentsScaffold'));
 
   const repoPath = path.resolve(rawOptions.repo || process.cwd());
   if (!(await fs.pathExists(repoPath))) {
-    throw new Error(`Repository path does not exist: ${repoPath}`);
+    throw new Error(t('errors.common.repoMissing', { path: repoPath }));
   }
 
   const { provider, model, apiKey, promptPath, baseUrl } = await resolveLlmConfig(rawOptions, {
@@ -692,11 +724,11 @@ async function runPlanFill(planName: string, rawOptions: any): Promise<void> {
   ui.displayProjectInfo(repoPath, outputDir, `plan-fill:${provider}`);
 
   const fileMapper = new FileMapper(rawOptions.exclude);
-  ui.displayStep(1, 3, 'Summarizing repository state');
-  ui.startSpinner('Analyzing repository...');
+  ui.displayStep(1, 3, t('steps.plan.summary'));
+  ui.startSpinner(t('spinner.planFill.analyzingRepo'));
   const repoStructure = await fileMapper.mapRepository(repoPath, rawOptions.include);
   const contextSummary = buildContextSummary(repoStructure);
-  ui.updateSpinner('Repository summary ready', 'success');
+  ui.updateSpinner(t('spinner.planFill.summaryReady'), 'success');
 
   const systemPrompt = await fs.readFile(promptPath, 'utf-8');
   const llmClient = LLMClientFactory.createClient({
@@ -709,8 +741,8 @@ async function runPlanFill(planName: string, rawOptions: any): Promise<void> {
   const planRelativePath = path.relative(outputDir, planPath);
   const results: Array<{ file: string; status: 'updated' | 'skipped' | 'failed'; message?: string }> = [];
 
-  ui.displayStep(2, 3, `Updating ${planRelativePath} with ${model}`);
-  ui.startSpinner(`Filling ${planRelativePath}...`);
+  ui.displayStep(2, 3, t('steps.plan.update', { path: planRelativePath, model }));
+  ui.startSpinner(t('spinner.planFill.updating', { path: planRelativePath }));
 
   try {
     const userPrompt = buildPlanUserPrompt({
@@ -726,33 +758,33 @@ async function runPlanFill(planName: string, rawOptions: any): Promise<void> {
     const updatedContent = await llmClient.generateText(userPrompt, systemPrompt);
 
     if (!updatedContent || !updatedContent.trim()) {
-      ui.updateSpinner('No content received from LLM', 'warn');
-      results.push({ file: planRelativePath, status: 'skipped', message: 'Empty response from LLM' });
+      ui.updateSpinner(t('spinner.planFill.noContent'), 'warn');
+      results.push({ file: planRelativePath, status: 'skipped', message: t('messages.fill.emptyResponse') });
     } else if (rawOptions.dryRun) {
-      ui.updateSpinner('Dry run - preview follows', 'info');
-      console.log(chalk.gray('\n--- Preview Start ---'));
+      ui.updateSpinner(t('spinner.planFill.dryRun'), 'info');
+      console.log(chalk.gray(`\n${t('messages.fill.previewStart')}`));
       console.log(updatedContent.trim());
-      console.log(chalk.gray('--- Preview End ---\n'));
+      console.log(chalk.gray(`${t('messages.fill.previewEnd')}\n`));
       results.push({ file: planRelativePath, status: 'skipped', message: 'dry-run' });
     } else {
       await fs.writeFile(planPath, ensureTrailingNewline(updatedContent));
-      ui.updateSpinner(`Updated ${planRelativePath}`, 'success');
+      ui.updateSpinner(t('spinner.planFill.updated', { path: planRelativePath }), 'success');
       results.push({ file: planRelativePath, status: 'updated' });
     }
   } catch (error) {
-      ui.updateSpinner('Failed to fill plan', 'fail');
-      results.push({
-        file: planRelativePath,
-        status: 'failed',
-        message: error instanceof Error ? error.message : String(error)
-      });
+    ui.updateSpinner(t('spinner.planFill.failed'), 'fail');
+    results.push({
+      file: planRelativePath,
+      status: 'failed',
+      message: error instanceof Error ? error.message : String(error)
+    });
   } finally {
     ui.stopSpinner();
   }
 
-  ui.displayStep(3, 3, 'Summarizing LLM usage');
+  ui.displayStep(3, 3, t('steps.plan.summaryResults'));
   printLlmSummary(llmClient.getUsageStats(), results, Boolean(rawOptions.dryRun));
-  ui.displaySuccess('Plan fill complete. Review the updates and commit when ready.');
+  ui.displaySuccess(t('success.plan.filled'));
 }
 
 async function ensureDirectoryExists(dir: string, message: string): Promise<void> {
@@ -1135,15 +1167,34 @@ function formatAgentLabel(value: string): string {
 }
 
 async function runInteractive(): Promise<void> {
+  const { locale } = await inquirer.prompt<{ locale: Locale }>([
+    {
+      type: 'list',
+      name: 'locale',
+      message: t('prompts.language.select'),
+      default: currentLocale,
+      choices: SUPPORTED_LOCALES.map(option => ({
+        value: option,
+        name: t(localeLabelKeys[option])
+      }))
+    }
+  ]);
+
+  const normalizedLocale = normalizeLocale(locale);
+  currentLocale = normalizedLocale;
+  translateFn = createTranslator(normalizedLocale);
+
+  ui.displayWelcome(VERSION);
+
   const { action } = await inquirer.prompt<{ action: 'scaffold' | 'fill' | 'plan' }>([
     {
       type: 'list',
       name: 'action',
-      message: 'What would you like to do?',
+      message: t('prompts.main.action'),
       choices: [
-        { name: 'Generate documentation/agent scaffolding', value: 'scaffold' },
-        { name: 'Fill docs and agents with an LLM', value: 'fill' },
-        { name: 'Create a collaboration plan', value: 'plan' }
+        { name: t('prompts.main.choice.scaffold'), value: 'scaffold' },
+        { name: t('prompts.main.choice.fill'), value: 'fill' },
+        { name: t('prompts.main.choice.plan'), value: 'plan' }
       ]
     }
   ]);
@@ -1162,7 +1213,7 @@ async function runInteractiveScaffold(): Promise<void> {
     {
       type: 'input',
       name: 'repoPath',
-      message: 'Repository path to analyze',
+      message: t('prompts.scaffold.repoPath'),
       default: process.cwd()
     }
   ]);
@@ -1174,7 +1225,7 @@ async function runInteractiveScaffold(): Promise<void> {
     {
       type: 'input',
       name: 'outputDir',
-      message: 'Output directory for generated assets',
+      message: t('commands.init.options.output'),
       default: defaultOutput
     }
   ]);
@@ -1183,7 +1234,7 @@ async function runInteractiveScaffold(): Promise<void> {
     {
       type: 'confirm',
       name: 'includeDocs',
-      message: 'Generate documentation scaffolding?',
+      message: t('prompts.scaffold.includeDocs'),
       default: true
     }
   ]);
@@ -1194,7 +1245,7 @@ async function runInteractiveScaffold(): Promise<void> {
       {
         type: 'checkbox',
         name: 'docs',
-        message: 'Select documentation guides to scaffold',
+        message: t('prompts.scaffold.selectDocs'),
         choices: DOC_CHOICES,
         default: DOC_CHOICES.map(choice => choice.value)
       }
@@ -1208,7 +1259,7 @@ async function runInteractiveScaffold(): Promise<void> {
     {
       type: 'confirm',
       name: 'includeAgents',
-      message: 'Generate agent playbooks?',
+      message: t('prompts.scaffold.includeAgents'),
       default: true
     }
   ]);
@@ -1219,7 +1270,7 @@ async function runInteractiveScaffold(): Promise<void> {
       {
         type: 'checkbox',
         name: 'agents',
-        message: 'Select agent playbooks to scaffold',
+        message: t('prompts.scaffold.selectAgents'),
         choices: AGENT_CHOICES,
         default: AGENT_CHOICES.map(choice => choice.value)
       }
@@ -1230,7 +1281,7 @@ async function runInteractiveScaffold(): Promise<void> {
   }
 
   if ((selectedDocs?.length ?? 0) === 0 && (selectedAgents?.length ?? 0) === 0) {
-    ui.displayWarning('Nothing selected. Aborting.');
+    ui.displayWarning(t('warnings.interactive.nothingSelected'));
     return;
   }
 
@@ -1238,7 +1289,7 @@ async function runInteractiveScaffold(): Promise<void> {
     {
       type: 'confirm',
       name: 'verbose',
-      message: 'Enable verbose logging?',
+      message: t('prompts.common.verbose'),
       default: false
     }
   ]);
@@ -1267,7 +1318,7 @@ async function runInteractiveLlmFill(): Promise<void> {
     {
       type: 'input',
       name: 'repoPath',
-      message: 'Repository path containing the scaffold',
+      message: t('prompts.fill.repoPath'),
       default: process.cwd()
     }
   ]);
@@ -1280,13 +1331,13 @@ async function runInteractiveLlmFill(): Promise<void> {
     {
       type: 'input',
       name: 'outputDir',
-      message: 'Scaffold directory containing docs/ and agents/',
+      message: t('commands.fill.options.output'),
       default: defaultOutput
     },
     {
       type: 'input',
       name: 'promptPath',
-      message: 'Instruction prompt to follow',
+      message: t('prompts.fill.promptPath'),
       default: defaultPrompt
     }
   ]);
@@ -1295,13 +1346,13 @@ async function runInteractiveLlmFill(): Promise<void> {
     {
       type: 'confirm',
       name: 'dryRun',
-      message: 'Preview changes without writing files?',
+      message: t('prompts.fill.dryRun'),
       default: true
     },
     {
       type: 'confirm',
       name: 'processAll',
-      message: 'Process every Markdown file regardless of markers?',
+      message: t('prompts.fill.processAll'),
       default: false
     }
   ]);
@@ -1310,7 +1361,7 @@ async function runInteractiveLlmFill(): Promise<void> {
     {
       type: 'input',
       name: 'limit',
-      message: 'Maximum number of files to update (leave blank for all)',
+      message: t('prompts.fill.limit'),
       filter: (value: string) => value.trim()
     }
   ]);
@@ -1321,7 +1372,7 @@ async function runInteractiveLlmFill(): Promise<void> {
     {
       type: 'confirm',
       name: 'includeDocs',
-      message: 'Include documentation files?',
+      message: t('prompts.fill.includeDocs'),
       default: true
     }
   ]);
@@ -1332,7 +1383,7 @@ async function runInteractiveLlmFill(): Promise<void> {
       {
         type: 'checkbox',
         name: 'docs',
-        message: 'Select documentation guides to update',
+        message: t('prompts.fill.selectDocs'),
         choices: DOC_CHOICES,
         default: DOC_CHOICES.map(choice => choice.value)
       }
@@ -1346,7 +1397,7 @@ async function runInteractiveLlmFill(): Promise<void> {
     {
       type: 'confirm',
       name: 'includeAgents',
-      message: 'Include agent playbooks?',
+      message: t('prompts.fill.includeAgents'),
       default: true
     }
   ]);
@@ -1357,7 +1408,7 @@ async function runInteractiveLlmFill(): Promise<void> {
       {
         type: 'checkbox',
         name: 'agents',
-        message: 'Select agent playbooks to update',
+        message: t('prompts.fill.selectAgents'),
         choices: AGENT_CHOICES,
         default: AGENT_CHOICES.map(choice => choice.value)
       }
@@ -1368,7 +1419,7 @@ async function runInteractiveLlmFill(): Promise<void> {
   }
 
   if ((selectedDocs?.length ?? 0) === 0 && (selectedAgents?.length ?? 0) === 0) {
-    ui.displayWarning('Nothing selected. Aborting.');
+    ui.displayWarning(t('warnings.interactive.nothingSelected'));
     return;
   }
 
@@ -1376,7 +1427,7 @@ async function runInteractiveLlmFill(): Promise<void> {
     {
       type: 'confirm',
       name: 'specifyModel',
-      message: 'Override provider/model configuration?',
+      message: t('prompts.fill.overrideModel'),
       default: false
     }
   ]);
@@ -1388,7 +1439,7 @@ async function runInteractiveLlmFill(): Promise<void> {
       {
         type: 'list',
         name: 'provider',
-        message: 'Select provider',
+        message: t('prompts.fill.provider'),
         choices: ['openrouter', 'openai', 'anthropic', 'gemini', 'grok']
       }
     ]);
@@ -1397,7 +1448,7 @@ async function runInteractiveLlmFill(): Promise<void> {
       {
         type: 'input',
         name: 'model',
-        message: 'Model identifier',
+        message: t('prompts.fill.model'),
         default: DEFAULT_MODEL
       }
     ]);
@@ -1408,7 +1459,7 @@ async function runInteractiveLlmFill(): Promise<void> {
     {
       type: 'confirm',
       name: 'provideApiKey',
-      message: 'Provide an API key for this run?',
+      message: t('prompts.fill.provideApiKey'),
       default: false
     }
   ]);
@@ -1419,7 +1470,7 @@ async function runInteractiveLlmFill(): Promise<void> {
       {
         type: 'password',
         name: 'apiKey',
-        message: 'API key',
+        message: t('prompts.fill.apiKey'),
         mask: '*'
       }
     ]);
@@ -1430,7 +1481,7 @@ async function runInteractiveLlmFill(): Promise<void> {
     {
       type: 'confirm',
       name: 'verbose',
-      message: 'Enable verbose logging?',
+      message: t('prompts.common.verbose'),
       default: false
     }
   ]);
@@ -1455,7 +1506,7 @@ async function runInteractivePlan(): Promise<void> {
     {
       type: 'input',
       name: 'planName',
-      message: 'Plan name (used for the file slug)',
+      message: t('prompts.plan.name'),
       default: 'new-plan'
     }
   ]);
@@ -1465,10 +1516,10 @@ async function runInteractivePlan(): Promise<void> {
     {
       type: 'list',
       name: 'mode',
-      message: 'How would you like to work with this plan?',
+      message: t('prompts.plan.mode'),
       choices: [
-        { name: 'Scaffold a plan template', value: 'scaffold' },
-        { name: 'Fill an existing plan with LLM assistance', value: 'fill' }
+        { name: t('prompts.plan.modeScaffold'), value: 'scaffold' },
+        { name: t('prompts.plan.modeFill'), value: 'fill' }
       ],
       default: 'scaffold'
     }
@@ -1478,7 +1529,7 @@ async function runInteractivePlan(): Promise<void> {
     {
       type: 'input',
       name: 'outputDir',
-      message: 'Scaffold directory containing docs/ and agents/',
+      message: t('commands.plan.options.output'),
       default: defaultOutput
     }
   ]);
@@ -1488,7 +1539,7 @@ async function runInteractivePlan(): Promise<void> {
       {
         type: 'input',
         name: 'summary',
-        message: 'Optional summary to seed the plan (leave blank to add later)',
+        message: t('prompts.plan.summary'),
         filter: (value: string) => value.trim()
       }
     ]);
@@ -1497,7 +1548,7 @@ async function runInteractivePlan(): Promise<void> {
       {
         type: 'confirm',
         name: 'includeAgents',
-        message: 'Reference agent playbooks in the plan?',
+        message: t('prompts.plan.includeAgents'),
         default: true
       }
     ]);
@@ -1508,7 +1559,7 @@ async function runInteractivePlan(): Promise<void> {
         {
           type: 'checkbox',
           name: 'agents',
-          message: 'Select agent playbooks to highlight',
+          message: t('prompts.plan.selectAgents'),
           choices: AGENT_CHOICES,
           default: AGENT_CHOICES.map(choice => choice.value)
         }
@@ -1520,7 +1571,7 @@ async function runInteractivePlan(): Promise<void> {
       {
         type: 'confirm',
         name: 'includeDocs',
-        message: 'Link documentation guides in the plan?',
+        message: t('prompts.plan.includeDocs'),
         default: true
       }
     ]);
@@ -1531,7 +1582,7 @@ async function runInteractivePlan(): Promise<void> {
         {
           type: 'checkbox',
           name: 'docs',
-          message: 'Select documentation guides to reference',
+          message: t('prompts.plan.selectDocs'),
           choices: DOC_CHOICES,
           default: DOC_CHOICES.map(choice => choice.value)
         }
@@ -1546,7 +1597,7 @@ async function runInteractivePlan(): Promise<void> {
       {
         type: 'input',
         name: 'repoPath',
-        message: 'Repository root for context',
+        message: t('prompts.plan.repoPath'),
         default: process.cwd()
       }
     ]);
@@ -1555,7 +1606,7 @@ async function runInteractivePlan(): Promise<void> {
       {
         type: 'confirm',
         name: 'dryRun',
-        message: 'Preview updates without writing files?',
+        message: t('prompts.plan.dryRun'),
         default: true
       }
     ]);
@@ -1574,7 +1625,7 @@ async function runInteractivePlan(): Promise<void> {
         dryRun
       });
     } catch (error) {
-      ui.displayError('Failed to fill plan', error as Error);
+      ui.displayError(t('errors.plan.fillFailed'), error as Error);
     }
 
     return;
@@ -1584,7 +1635,7 @@ async function runInteractivePlan(): Promise<void> {
     {
       type: 'input',
       name: 'summary',
-      message: 'Optional summary to seed the plan (leave blank to add later)',
+      message: t('prompts.plan.summary'),
       filter: (value: string) => value.trim()
     }
   ]);
@@ -1593,7 +1644,7 @@ async function runInteractivePlan(): Promise<void> {
     {
       type: 'confirm',
       name: 'includeAgents',
-      message: 'Reference agent playbooks in the plan?',
+      message: t('prompts.plan.includeAgents'),
       default: true
     }
   ]);
@@ -1604,7 +1655,7 @@ async function runInteractivePlan(): Promise<void> {
       {
         type: 'checkbox',
         name: 'agents',
-        message: 'Select agent playbooks to highlight',
+        message: t('prompts.plan.selectAgents'),
         choices: AGENT_CHOICES,
         default: AGENT_CHOICES.map(choice => choice.value)
       }
@@ -1616,7 +1667,7 @@ async function runInteractivePlan(): Promise<void> {
     {
       type: 'confirm',
       name: 'includeDocs',
-      message: 'Link documentation guides in the plan?',
+      message: t('prompts.plan.includeDocs'),
       default: true
     }
   ]);
@@ -1627,7 +1678,7 @@ async function runInteractivePlan(): Promise<void> {
       {
         type: 'checkbox',
         name: 'docs',
-        message: 'Select documentation guides to reference',
+        message: t('prompts.plan.selectDocs'),
         choices: DOC_CHOICES,
         default: DOC_CHOICES.map(choice => choice.value)
       }
@@ -1636,7 +1687,7 @@ async function runInteractivePlan(): Promise<void> {
   }
 
   const generator = new PlanGenerator();
-  ui.startSpinner('Creating plan template...');
+  ui.startSpinner(t('spinner.plan.creating'));
 
   try {
     const result = await generator.generatePlan({
@@ -1648,11 +1699,11 @@ async function runInteractivePlan(): Promise<void> {
       verbose: false
     });
 
-    ui.updateSpinner('Plan template created', 'success');
-    ui.displaySuccess(`Plan created at ${chalk.cyan(result.relativePath)}`);
+    ui.updateSpinner(t('spinner.plan.created'), 'success');
+    ui.displaySuccess(t('success.plan.createdAt', { path: chalk.cyan(result.relativePath) }));
   } catch (error) {
-    ui.updateSpinner('Failed to create plan template', 'fail');
-    ui.displayError('Failed to create plan template', error as Error);
+    ui.updateSpinner(t('spinner.plan.creationFailed'), 'fail');
+    ui.displayError(t('errors.plan.creationFailed'), error as Error);
   } finally {
     ui.stopSpinner();
   }
@@ -1671,8 +1722,26 @@ function getAgentFilesByTypes(types?: string[]): Set<string> | undefined {
   return files.length ? new Set(files) : undefined;
 }
 
+function filterOutLocaleArgs(args: string[]): string[] {
+  const filtered: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const current = args[index];
+    if (current === '--lang' || current === '--language' || current === '-l') {
+      index += 1;
+      continue;
+    }
+    if (current.startsWith('--lang=') || current.startsWith('--language=')) {
+      continue;
+    }
+    filtered.push(current);
+  }
+  return filtered;
+}
+
 async function main(): Promise<void> {
-  if (process.argv.length <= 2) {
+  const userArgs = process.argv.slice(2);
+  const meaningfulArgs = filterOutLocaleArgs(userArgs);
+  if (meaningfulArgs.length === 0) {
     await runInteractive();
     return;
   }
@@ -1681,6 +1750,6 @@ async function main(): Promise<void> {
 }
 
 main().catch(error => {
-  ui.displayError('CLI execution failed', error as Error);
+  ui.displayError(t('errors.cli.executionFailed'), error as Error);
   process.exit(1);
 });
