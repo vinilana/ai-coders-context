@@ -70,7 +70,7 @@ describe('CLI Commands', () => {
   describe('plan command', () => {
     it('should display help for plan command', () => {
       const output = execSync(`node ${cliPath} plan --help`, { encoding: 'utf8' });
-      expect(output).toContain('Create a collaboration plan');
+      expect(output).toContain('Create a development plan that links documentation and agent playbooks');
       [
         '-o, --output <dir>',
         '--title <title>',

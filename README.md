@@ -6,6 +6,10 @@
 
 A lightweight CLI that scaffolds living documentation and AI-agent playbooks for any repository—no LLMs or API keys required. The generated structure gives teams a consistent starting point for knowledge sharing while keeping everything under version control.
 
+## ⚙️ Requirements
+
+- Node.js 20+ (we currently test on 20, 22, 23, and 24)
+
 ## ✨ What You Get
 
 - 📚 `docs/` folder with a documentation index plus ready-to-edit guides (overview, architecture, workflow, testing)

@@ -12,6 +12,9 @@
     "LICENSE",
     "prompts/**/*"
   ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
