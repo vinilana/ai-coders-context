@@ -4,6 +4,9 @@
 [![CI](https://github.com/vinilana/ai-coders-context/actions/workflows/ci.yml/badge.svg)](https://github.com/vinilana/ai-coders-context/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+<img width="663" height="192" alt="image" src="https://github.com/user-attachments/assets/4b07f61d-6800-420a-ae91-6e952cbc790d" />
+
+
 A lightweight CLI that scaffolds living documentation and AI-agent playbooks for any repository—no LLMs or API keys required. The generated structure gives teams a consistent starting point for knowledge sharing while keeping everything under version control.
 
 ## ⚙️ Requirements
