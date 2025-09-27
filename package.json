@@ -1,6 +1,6 @@
 {
   "name": "@ai-coders/context",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "CLI tool for generating codebase documentation and AI agent prompts",
   "main": "dist/index.js",
   "bin": {
@@ -9,7 +9,8 @@
   "files": [
     "dist/**/*",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "prompts/**/*"
   ],
   "scripts": {
     "build": "tsc",
@@ -36,38 +37,35 @@
   },
   "keywords": [
     "cli",
-    "ai",
     "documentation",
-    "openrouter",
-    "llm"
+    "agents",
+    "scaffold"
   ],
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.30.0",
-    "@google/genai": "^0.8.0",
-    "@types/inquirer": "^9.0.8",
-    "axios": "^1.7.0",
     "boxen": "^5.1.2",
     "chalk": "^4.1.2",
     "cli-progress": "^3.12.0",
     "commander": "^12.0.0",
-    "dotenv": "^16.4.0",
     "figures": "^3.2.0",
     "fs-extra": "^11.2.0",
     "glob": "^10.4.0",
-    "inquirer": "^12.6.3",
-    "openai": "^4.70.0",
-    "ora": "^5.4.1"
+    "ora": "^5.4.1",
+    "@anthropic-ai/sdk": "^0.30.0",
+    "@google/genai": "^0.8.0",
+    "axios": "^1.7.0",
+    "dotenv": "^16.4.0",
+    "openai": "^4.70.0"
   },
   "devDependencies": {
-    "@types/cli-progress": "^3.11.0",
     "@types/fs-extra": "^11.0.4",
     "@types/jest": "^29.5.0",
     "@types/node": "^22.0.0",
     "jest": "^29.7.0",
     "ts-jest": "^29.2.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "@types/cli-progress": "^3.11.0"
   }
 }

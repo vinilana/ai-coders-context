@@ -3,8 +3,6 @@ import ora, { Ora } from 'ora';
 import * as cliProgress from 'cli-progress';
 import boxen from 'boxen';
 import figures from 'figures';
-import { UsageStats } from '../types';
-import { formatCurrency } from './pricing';
 
 export class CLIInterface {
   private spinner: Ora | null = null;
@@ -14,7 +12,7 @@ export class CLIInterface {
   displayWelcome(version: string): void {
     const welcomeMessage = chalk.bold.cyan('AI Coders Context') + '\n' +
       chalk.gray(`Version ${version}`) + '\n' +
-      chalk.dim('Generate intelligent documentation and AI agent prompts');
+      chalk.dim('Scaffold documentation and agent playbooks with or without LLM assistance');
 
     console.log(boxen(welcomeMessage, {
       padding: 1,
@@ -25,13 +23,12 @@ export class CLIInterface {
     }));
   }
 
-  displayProjectInfo(repoPath: string, outputDir: string, model: string, provider?: string): void {
+  displayProjectInfo(repoPath: string, outputDir: string, mode: string): void {
     console.log(chalk.bold('\n📋 Project Configuration:'));
     console.log(chalk.gray('─'.repeat(50)));
     console.log(`${chalk.blue(figures.pointer)} Repository: ${chalk.white(repoPath)}`);
     console.log(`${chalk.blue(figures.pointer)} Output: ${chalk.white(outputDir)}`);
-    console.log(`${chalk.blue(figures.pointer)} Provider: ${chalk.white(provider || 'openrouter')}`);
-    console.log(`${chalk.blue(figures.pointer)} Model: ${chalk.white(model)}`);
+    console.log(`${chalk.blue(figures.pointer)} Scaffold Mode: ${chalk.white(mode)}`);
     console.log(chalk.gray('─'.repeat(50)) + '\n');
   }
 
@@ -136,30 +133,14 @@ export class CLIInterface {
     });
   }
 
-  displayGenerationSummary(docsGenerated: number, agentsGenerated: number, usageStats?: UsageStats, isUpdate: boolean = false): void {
+  displayGenerationSummary(docsGenerated: number, agentsGenerated: number): void {
     const elapsed = ((Date.now() - this.startTime) / 1000).toFixed(1);
-    
-    const title = isUpdate ? '🔄 Update Complete!' : '✨ Generation Complete!';
-    const docLabel = isUpdate ? 'Updated Files:' : 'Documentation:';
-    const agentLabel = isUpdate ? 'Agent Prompts:' : 'Agent Prompts:';
-    
-    let summaryText = chalk.bold.green(`${title}\n\n`) +
-      `${chalk.blue(docLabel)} ${chalk.white(docsGenerated + ' files')}\n` +
-      `${chalk.blue(agentLabel)} ${chalk.white(agentsGenerated + ' files')}\n` +
-      `${chalk.blue('Time Elapsed:')} ${chalk.white(elapsed + 's')}\n`;
+    const summaryText = chalk.bold.green('✨ Scaffold Complete!\n\n') +
+      `${chalk.blue('Documentation files:')} ${chalk.white(docsGenerated.toString())}\n` +
+      `${chalk.blue('Agent playbooks:')} ${chalk.white(agentsGenerated.toString())}\n` +
+      `${chalk.blue('Time elapsed:')} ${chalk.white(`${elapsed}s`)}\n\n` +
+      chalk.dim('Next step: customize the generated templates to match your project.');
 
-    if (usageStats && usageStats.totalCalls > 0) {
-      summaryText += '\n' + chalk.bold.cyan('💰 API Usage Statistics:\n') +
-        `${chalk.blue('Total API Calls:')} ${chalk.white(usageStats.totalCalls.toString())}\n` +
-        `${chalk.blue('Input Tokens:')} ${chalk.white(usageStats.totalPromptTokens.toLocaleString())}\n` +
-        `${chalk.blue('Output Tokens:')} ${chalk.white(usageStats.totalCompletionTokens.toLocaleString())}\n` +
-        `${chalk.blue('Total Tokens:')} ${chalk.white(usageStats.totalTokens.toLocaleString())}\n` +
-        `${chalk.blue('Estimated Cost:')} ${chalk.yellow(formatCurrency(usageStats.estimatedCost))}\n` +
-        `${chalk.blue('Model Used:')} ${chalk.white(usageStats.model)}\n`;
-    }
-
-    summaryText += '\n' + chalk.dim('Check the output directory for your generated files.');
-    
     const summary = boxen(summaryText, {
       padding: 1,
       borderStyle: 'double',
@@ -168,23 +149,6 @@ export class CLIInterface {
     });
     
     console.log('\n' + summary);
-  }
-
-  displayUsageWarning(estimatedCost: number): void {
-    if (estimatedCost > 1.0) {
-      const warning = boxen(
-        chalk.bold.yellow('⚠️  High Usage Warning\n\n') +
-        `This operation may cost approximately ${chalk.white(formatCurrency(estimatedCost))}\n` +
-        chalk.dim('Consider using a cheaper model like claude-3-haiku for testing.'),
-        {
-          padding: 1,
-          borderStyle: 'round',
-          borderColor: 'yellow',
-          align: 'center'
-        }
-      );
-      console.log('\n' + warning);
-    }
   }
 
   displayError(message: string, error?: Error): void {

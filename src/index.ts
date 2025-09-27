@@ -3,884 +3,507 @@
 import { Command } from 'commander';
 import * as path from 'path';
 import * as fs from 'fs-extra';
-import chalk from 'chalk';
+import { glob } from 'glob';
 import * as dotenv from 'dotenv';
+import chalk from 'chalk';
 
-// Load environment variables from .env file
-dotenv.config();
 import { FileMapper } from './utils/fileMapper';
 import { DocumentationGenerator } from './generators/documentation/documentationGenerator';
 import { AgentGenerator } from './generators/agents/agentGenerator';
-import { GuidelinesGenerator } from './generators/guidelines/guidelinesGenerator';
-import { IncrementalDocumentationGenerator } from './generators/documentation/incrementalDocumentationGenerator';
-import { CLIOptions, LLMConfig } from './types';
 import { CLIInterface } from './utils/cliUI';
 import { LLMClientFactory } from './services/llmClientFactory';
-import { GitService } from './utils/gitService';
-import { ChangeAnalyzer } from './services/changeAnalyzer';
-import { TokenEstimator } from './utils/tokenEstimator';
-import { InteractiveMode } from './utils/interactiveMode';
+import { LLMConfig, RepoStructure, UsageStats } from './types';
+
+dotenv.config();
 
 const program = new Command();
 const ui = new CLIInterface();
+const VERSION = '0.3.0';
+const DEFAULT_MODEL = 'x-ai/grok-4-fast:free';
 
 program
   .name('ai-context')
-  .description('AI-powered CLI for generating codebase documentation and agent prompts')
-  .version('0.1.0');
+  .description('Scaffold documentation and agent playbooks for your repository')
+  .version(VERSION);
 
 program
   .command('init')
-  .description('Initialize documentation and agent prompts for a repository')
+  .description('Generate docs and agent scaffolding for a repository')
   .argument('<repo-path>', 'Path to the repository to analyze')
-  .argument('[type]', 'Type to initialize: "docs", "agents", "guidelines", or "both" (default: "both")', 'both')
-  .option('-o, --output <dir>', 'Output directory', './.context')
-  .option('-k, --api-key <key>', 'API key for the LLM provider')
-  .option('-m, --model <model>', 'LLM model to use', 'google/gemini-2.5-flash-preview-05-20')
-  .option('-p, --provider <provider>', 'LLM provider (openrouter, openai, anthropic, gemini, grok)', 'openrouter')
-  .option('--exclude <patterns...>', 'Patterns to exclude from analysis')
-  .option('--include <patterns...>', 'Patterns to include in analysis')
-  .option('-v, --verbose', 'Verbose output')
+  .argument('[type]', 'Scaffold type: "docs", "agents", or "both" (default)', 'both')
+  .option('-o, --output <dir>', 'Output directory for generated assets', './.context')
+  .option('--exclude <patterns...>', 'Glob patterns to exclude from analysis')
+  .option('--include <patterns...>', 'Glob patterns to include during analysis')
+  .option('-v, --verbose', 'Enable verbose logging')
   .action(async (repoPath: string, type: string, options: any) => {
     try {
-      // Validate type argument
-      if (!['docs', 'agents', 'guidelines', 'both'].includes(type)) {
-        ui.displayError(`Invalid type "${type}". Must be "docs", "agents", "guidelines", or "both".`);
-        process.exit(1);
-      }
-      
-      // Set options based on type argument
-      if (type === 'docs') {
-        options.docsOnly = true;
-      } else if (type === 'agents') {
-        options.agentsOnly = true;
-      } else if (type === 'guidelines') {
-        options.guidelinesOnly = true;
-      }
-      // For 'both', neither flag is set
-      
-      await runGenerate(repoPath, options);
+      await runInit(repoPath, type, options);
     } catch (error) {
-      ui.displayError('Failed to initialize', error as Error);
+      ui.displayError('Failed to scaffold repository assets', error as Error);
       process.exit(1);
     }
   });
 
 program
-  .command('update')
-  .description('Update documentation for changed files since last run or specified commit')
+  .command('scaffold')
+  .description('Alias for init')
   .argument('<repo-path>', 'Path to the repository to analyze')
-  .option('-o, --output <dir>', 'Output directory', './.context')
+  .argument('[type]', 'Scaffold type: "docs", "agents", or "both" (default)', 'both')
+  .option('-o, --output <dir>', 'Output directory for generated assets', './.context')
+  .option('--exclude <patterns...>', 'Glob patterns to exclude from analysis')
+  .option('--include <patterns...>', 'Glob patterns to include during analysis')
+  .option('-v, --verbose', 'Enable verbose logging')
+  .action(async (repoPath: string, type: string, options: any) => {
+    try {
+      await runInit(repoPath, type, options);
+    } catch (error) {
+      ui.displayError('Failed to scaffold repository assets', error as Error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('llm-fill')
+  .description('Use an LLM to fill or update the generated docs and agent playbooks')
+  .argument('<repo-path>', 'Path to the repository root used to build context')
+  .option('-o, --output <dir>', 'Scaffold directory containing docs/ and agents/', './.context')
   .option('-k, --api-key <key>', 'API key for the LLM provider')
-  .option('-m, --model <model>', 'LLM model to use', 'google/gemini-2.5-flash-preview-05-20')
-  .option('-p, --provider <provider>', 'LLM provider (openrouter, openai, anthropic, gemini, grok)', 'openrouter')
-  .option('--since <commit>', 'Compare against specific commit/branch (default: last processed commit)')
-  .option('--staged', 'Only process staged files (for pre-commit hooks)')
-  .option('--force', 'Force regeneration even if no changes detected')
-  .option('--exclude <patterns...>', 'Patterns to exclude from analysis')
-  .option('--include <patterns...>', 'Patterns to include in analysis')
-  .option('-v, --verbose', 'Verbose output')
+  .option('-m, --model <model>', 'LLM model to use', DEFAULT_MODEL)
+  .option('-p, --provider <provider>', 'LLM provider (openrouter, openai, anthropic, gemini, grok)')
+  .option('--base-url <url>', 'Custom base URL for provider APIs')
+  .option('--prompt <file>', 'Path to an instruction prompt', path.join(__dirname, '../prompts/update_scaffold_prompt.md'))
+  .option('--dry-run', 'Preview updates without writing files', false)
+  .option('--all', 'Process every doc/agent file even if no TODO markers are found', false)
+  .option('--limit <number>', 'Maximum number of files to process', (value: string) => parseInt(value, 10))
+  .option('--exclude <patterns...>', 'Glob patterns to exclude from repository analysis')
+  .option('--include <patterns...>', 'Glob patterns to include during analysis')
+  .option('-v, --verbose', 'Enable verbose logging')
   .action(async (repoPath: string, options: any) => {
     try {
-      await runUpdate(repoPath, options);
+      await runLlmFill(repoPath, options);
     } catch (error) {
-      ui.displayError('Failed to update documentation', error as Error);
+      ui.displayError('Failed to update documentation with LLM assistance', error as Error);
       process.exit(1);
     }
   });
 
-program
-  .command('analyze')
-  .description('Analyze repository structure without generating content')
-  .argument('<repo-path>', 'Path to the repository to analyze')
-  .option('--exclude <patterns...>', 'Patterns to exclude from analysis')
-  .option('--include <patterns...>', 'Patterns to include in analysis')
-  .option('--input-price <price>', 'Input token price per 1M tokens (e.g., 2.50)', parseFloat)
-  .option('--output-price <price>', 'Output token price per 1M tokens (e.g., 10.00)', parseFloat)
-  .option('-v, --verbose', 'Verbose output')
-  .action(async (repoPath: string, options: any) => {
-    try {
-      await runAnalyze(repoPath, options);
-    } catch (error) {
-      ui.displayError('Failed to analyze repository', error as Error);
-      process.exit(1);
-    }
-  });
+program.parseAsync(process.argv);
 
-program
-  .command('preview')
-  .description('Preview what documentation updates would be made without actually updating')
-  .argument('<repo-path>', 'Path to the repository to analyze')
-  .option('--since <commit>', 'Compare against specific commit/branch (default: last processed commit)')
-  .option('--staged', 'Only analyze staged files (for pre-commit hooks)')
-  .option('--exclude <patterns...>', 'Patterns to exclude from analysis')
-  .option('--include <patterns...>', 'Patterns to include in analysis')
-  .option('--input-price <price>', 'Input token price per 1M tokens (e.g., 2.50)', parseFloat)
-  .option('--output-price <price>', 'Output token price per 1M tokens (e.g., 10.00)', parseFloat)
-  .option('-v, --verbose', 'Verbose output with detailed file lists')
-  .addHelpText('after', `
-Examples:
-  $ ai-context preview ./                     # Preview changes since last run
-  $ ai-context preview ./ --staged           # Preview staged files only
-  $ ai-context preview ./ --since HEAD~3     # Preview changes since 3 commits ago
-  $ ai-context preview ./ --verbose          # Show detailed file change lists
-  $ ai-context preview ./ --input-price 2.50 --output-price 10.00`)
-  .action(async (repoPath: string, options: any) => {
-    try {
-      await runPreview(repoPath, options);
-    } catch (error) {
-      ui.displayError('Failed to preview updates', error as Error);
-      process.exit(1);
-    }
-  });
+interface InitOptions {
+  repoPath: string;
+  outputDir: string;
+  include?: string[];
+  exclude?: string[];
+  verbose: boolean;
+  scaffoldDocs: boolean;
+  scaffoldAgents: boolean;
+}
 
-program
-  .command('guidelines')
-  .description('Generate software development guidelines for a repository')
-  .argument('<repo-path>', 'Path to the repository to analyze')
-  .argument('[categories...]', 'Specific guideline categories to generate (testing, frontend, backend, database, security, performance, code-style, git-workflow, deployment, monitoring, documentation, architecture)')
-  .option('-o, --output <dir>', 'Output directory', './.context')
-  .option('-k, --api-key <key>', 'API key for the LLM provider')
-  .option('-m, --model <model>', 'LLM model to use', 'google/gemini-2.5-flash-preview-05-20')
-  .option('-p, --provider <provider>', 'LLM provider (openrouter, openai, anthropic, gemini, grok)', 'openrouter')
-  .option('--project-type <type>', 'Project type (frontend, backend, fullstack, mobile, desktop, library)', 'auto')
-  .option('--complexity <level>', 'Project complexity (simple, moderate, complex)', 'auto')
-  .option('--team-size <size>', 'Team size (small, medium, large)', 'auto')
-  .option('--include-examples', 'Include code examples in guidelines', false)
-  .option('--include-tools', 'Include tool recommendations in guidelines', false)
-  .option('--exclude <patterns...>', 'Patterns to exclude from analysis')
-  .option('--include <patterns...>', 'Patterns to include in analysis')
-  .option('-v, --verbose', 'Verbose output')
-  .addHelpText('after', `
-Examples:
-  $ ai-context guidelines ./                           # Generate comprehensive guidelines
-  $ ai-context guidelines ./ testing security         # Generate only testing and security guidelines
-  $ ai-context guidelines ./ --project-type frontend  # Generate guidelines for frontend project
-  $ ai-context guidelines ./ --include-examples       # Include code examples in guidelines`)
-  .action(async (repoPath: string, categories: string[], options: any) => {
-    try {
-      await runGuidelines(repoPath, categories, options);
-    } catch (error) {
-      ui.displayError('Failed to generate guidelines', error as Error);
-      process.exit(1);
-    }
-  });
+async function runInit(repoPath: string, type: string, rawOptions: any): Promise<void> {
+  const resolvedType = resolveScaffoldType(type, rawOptions);
 
-export async function runGenerate(repoPath: string, options: any): Promise<void> {
-  const provider = options.provider || LLMClientFactory.detectProviderFromModel(options.model);
-  
-  // Get API key from options or environment variables
-  let apiKey = options.apiKey;
-  if (!apiKey) {
-    const envVars = LLMClientFactory.getEnvironmentVariables()[provider as LLMConfig['provider']];
-    for (const envVar of envVars) {
-      apiKey = process.env[envVar];
-      if (apiKey) break;
-    }
-  }
-
-  const cliOptions: CLIOptions = {
+  const options: InitOptions = {
     repoPath: path.resolve(repoPath),
-    outputDir: path.resolve(options.output),
-    model: options.model,
-    apiKey,
-    provider,
-    exclude: options.exclude || [],
-    include: options.include,
-    verbose: options.verbose || false
+    outputDir: path.resolve(rawOptions.output || './.context'),
+    include: rawOptions.include,
+    exclude: rawOptions.exclude || [],
+    verbose: rawOptions.verbose || false,
+    scaffoldDocs: resolvedType === 'docs' || resolvedType === 'both',
+    scaffoldAgents: resolvedType === 'agents' || resolvedType === 'both'
   };
 
-  if (!cliOptions.apiKey) {
-    const envVars = LLMClientFactory.getEnvironmentVariables()[provider as LLMConfig['provider']];
-    ui.displayError(`${provider.toUpperCase()} API key is required. Set one of these environment variables: ${envVars.join(', ')} or use --api-key option.`);
-    process.exit(1);
-  }
+  await ensurePaths(options);
 
-  // Display welcome message
-  ui.displayWelcome('0.1.0');
-  ui.displayProjectInfo(cliOptions.repoPath, cliOptions.outputDir!, cliOptions.model!, cliOptions.provider);
-  
-  // Show usage warning for expensive models
-  if (cliOptions.model && ['anthropic/claude-3-opus', 'openai/gpt-4'].includes(cliOptions.model)) {
-    ui.displayUsageWarning(2.0); // Estimate high cost for warning
-  }
+  ui.displayWelcome(VERSION);
+  ui.displayProjectInfo(options.repoPath, options.outputDir, resolvedType);
 
-  // Initialize components
-  const fileMapper = new FileMapper(cliOptions.exclude);
-  const llmConfig: LLMConfig = {
-    apiKey: cliOptions.apiKey,
-    model: cliOptions.model || 'google/gemini-2.5-flash-preview-05-20',
-    provider: cliOptions.provider || 'openrouter'
-  };
-  const llmClient = LLMClientFactory.createClient(llmConfig);
-  const docGenerator = new DocumentationGenerator(fileMapper, llmClient);
-  const agentGenerator = new AgentGenerator(fileMapper, llmClient);
-  const guidelinesGenerator = new GuidelinesGenerator(fileMapper, llmClient);
+  const fileMapper = new FileMapper(options.exclude);
 
-  // Step 1: Map repository structure
-  ui.displayStep(1, 4, 'Analyzing repository structure');
-  ui.startSpinner('Scanning files and directories...');
-  
-  const repoStructure = await fileMapper.mapRepository(
-    cliOptions.repoPath,
-    cliOptions.include
-  );
+  ui.displayStep(1, 3, 'Analyzing repository structure');
+  ui.startSpinner('Scanning repository...');
 
-  ui.updateSpinner(`Found ${repoStructure.totalFiles} files in ${repoStructure.directories.length} directories`, 'success');
-
-  // Display analysis results
-  if (cliOptions.verbose) {
-    ui.displayAnalysisResults(
-      repoStructure.totalFiles,
-      repoStructure.directories.length,
-      ui.formatBytes(repoStructure.totalSize)
-    );
-
-    // Show file distribution
-    const extensions = new Map<string, number>();
-    repoStructure.files.forEach(file => {
-      const ext = file.extension || 'no-extension';
-      extensions.set(ext, (extensions.get(ext) || 0) + 1);
-    });
-    ui.displayFileTypeDistribution(extensions, repoStructure.totalFiles);
-  }
+  const repoStructure = await fileMapper.mapRepository(options.repoPath, options.include);
+  ui.updateSpinner(`Found ${repoStructure.totalFiles} files across ${repoStructure.directories.length} directories`, 'success');
 
   let docsGenerated = 0;
   let agentsGenerated = 0;
-  let guidelinesGenerated = 0;
+  const docGenerator = new DocumentationGenerator();
+  const agentGenerator = new AgentGenerator();
 
-  // Step 2: Generate documentation
-  if (!options.agentsOnly && !options.guidelinesOnly) {
-    ui.displayStep(2, 4, 'Generating documentation');
-    ui.startSpinner('Creating comprehensive documentation...');
-    
-    try {
-      await docGenerator.generateDocumentation(
-        repoStructure,
-        cliOptions.outputDir!,
-        {}, // Default config
-        false // We'll handle our own progress display
-      );
-      docsGenerated = 10; // Number of doc files generated (README, STRUCTURE, DEVELOPMENT, API, DEPLOYMENT, TROUBLESHOOTING, configuration + modules)
-      ui.updateSpinner('Documentation generated successfully', 'success');
-    } catch (error) {
-      ui.updateSpinner('Failed to generate documentation', 'fail');
-      throw error;
-    }
+  if (options.scaffoldDocs) {
+    ui.displayStep(2, 3, 'Scaffolding documentation');
+    ui.startSpinner('Creating docs directory and templates...');
+    docsGenerated = await docGenerator.generateDocumentation(repoStructure, options.outputDir, {}, options.verbose);
+    ui.updateSpinner(`Documentation scaffold created (${docsGenerated} files)`, 'success');
   }
 
-  // Step 3: Generate agent prompts
-  if (!options.docsOnly && !options.guidelinesOnly) {
-    ui.displayStep(3, 4, 'Generating AI agent prompts');
-    ui.startSpinner('Creating specialized agent prompts...');
-    
-    try {
-      await agentGenerator.generateAgentPrompts(
-        repoStructure,
-        cliOptions.outputDir!,
-        false // We'll handle our own progress display
-      );
-      agentsGenerated = 9; // Number of agent files generated
-      ui.updateSpinner('Agent prompts generated successfully', 'success');
-    } catch (error) {
-      ui.updateSpinner('Failed to generate agent prompts', 'fail');
-      throw error;
-    }
+  if (options.scaffoldAgents) {
+    ui.displayStep(3, options.scaffoldDocs ? 3 : 2, 'Scaffolding agent playbooks');
+    ui.startSpinner('Creating agent directory and templates...');
+    agentsGenerated = await agentGenerator.generateAgentPrompts(repoStructure, options.outputDir, options.verbose);
+    ui.updateSpinner(`Agent scaffold created (${agentsGenerated} files)`, 'success');
   }
 
-  // Step 3/4: Generate guidelines (if guidelines-only or as part of comprehensive generation)
-  if (options.guidelinesOnly) {
-    ui.displayStep(3, 4, 'Generating software development guidelines');
-    ui.startSpinner('Creating comprehensive development guidelines...');
-    
-    try {
-      await guidelinesGenerator.generateGuidelines(
-        repoStructure,
-        cliOptions.outputDir!,
-        {}, // Default config
-        false // We'll handle our own progress display
-      );
-      guidelinesGenerated = 12; // Number of guideline categories
-      ui.updateSpinner('Guidelines generated successfully', 'success');
-    } catch (error) {
-      ui.updateSpinner('Failed to generate guidelines', 'fail');
-      throw error;
-    }
-  }
-
-  // Step 4: Complete
-  ui.displayStep(4, 4, 'Finalizing output');
-  
-  // Get usage statistics from the LLM client
-  const usageStats = llmClient.getUsageStats();
-  ui.displayGenerationSummary(docsGenerated, agentsGenerated, usageStats);
-  
-  if (options.guidelinesOnly && guidelinesGenerated > 0) {
-    ui.displaySuccess(`Guidelines generated! Output saved to: ${cliOptions.outputDir}`);
-  } else {
-    ui.displaySuccess(`Output saved to: ${cliOptions.outputDir}`);
-  }
+  ui.displayGenerationSummary(docsGenerated, agentsGenerated);
+  ui.displaySuccess(`Scaffold ready in ${chalk.cyan(options.outputDir)}`);
 }
 
-export async function runGuidelines(repoPath: string, categories: string[], options: any): Promise<void> {
-  const provider = options.provider || LLMClientFactory.detectProviderFromModel(options.model);
-  
-  // Get API key from options or environment variables
-  let apiKey = options.apiKey;
+function resolveScaffoldType(type: string, rawOptions: any): 'docs' | 'agents' | 'both' {
+  const normalized = (type || 'both').toLowerCase();
+  const allowed = ['docs', 'agents', 'both'];
+
+  if (!allowed.includes(normalized)) {
+    throw new Error(`Invalid scaffold type "${type}". Expected one of: ${allowed.join(', ')}`);
+  }
+
+  if (rawOptions.docsOnly) {
+    return 'docs';
+  }
+  if (rawOptions.agentsOnly) {
+    return 'agents';
+  }
+
+  return normalized as 'docs' | 'agents' | 'both';
+}
+
+async function ensurePaths(options: InitOptions): Promise<void> {
+  const exists = await fs.pathExists(options.repoPath);
+  if (!exists) {
+    throw new Error(`Repository path does not exist: ${options.repoPath}`);
+  }
+
+  await fs.ensureDir(options.outputDir);
+}
+
+export async function runGenerate(repoPath: string, options: any): Promise<void> {
+  const type = options?.docsOnly ? 'docs' : options?.agentsOnly ? 'agents' : (options?.type || 'both');
+
+  await runInit(repoPath, type, {
+    output: options?.output ?? options?.outputDir ?? './.context',
+    include: options?.include,
+    exclude: options?.exclude,
+    verbose: options?.verbose,
+    docsOnly: options?.docsOnly,
+    agentsOnly: options?.agentsOnly
+  });
+}
+
+export async function runAnalyze(..._args: unknown[]): Promise<void> {
+  throw new Error('The analyze command has been removed in the scaffolding-only version of ai-context.');
+}
+
+export async function runUpdate(..._args: unknown[]): Promise<void> {
+  throw new Error('The update command is no longer supported. Re-run `ai-context init` to refresh scaffolds.');
+}
+
+export async function runPreview(..._args: unknown[]): Promise<void> {
+  throw new Error('Preview mode has been retired. Use the generated docs and agent templates directly.');
+}
+
+export async function runGuidelines(..._args: unknown[]): Promise<void> {
+  throw new Error('Guidelines generation relied on LLMs and is no longer available.');
+}
+
+export { runInit };
+
+interface LlmFillOptions {
+  repoPath: string;
+  outputDir: string;
+  promptPath: string;
+  provider: LLMConfig['provider'];
+  model: string;
+  apiKey: string;
+  baseUrl?: string;
+  include?: string[];
+  exclude?: string[];
+  verbose: boolean;
+  dryRun: boolean;
+  processAll: boolean;
+  limit?: number;
+}
+
+async function runLlmFill(repoPath: string, rawOptions: any): Promise<void> {
+  const resolvedRepo = path.resolve(repoPath);
+  const outputDir = path.resolve(rawOptions.output || './.context');
+  const docsDir = path.join(outputDir, 'docs');
+  const agentsDir = path.join(outputDir, 'agents');
+
+  await ensureDirectoryExists(docsDir, 'Documentation scaffold not found. Run `ai-context init` first.');
+  await ensureDirectoryExists(agentsDir, 'Agent scaffold not found. Run `ai-context init` first.');
+
+  const promptPath = path.resolve(rawOptions.prompt);
+  if (!(await fs.pathExists(promptPath))) {
+    throw new Error(`Prompt file not found at ${promptPath}.`);
+  }
+
+  const providerEnvMap = LLMClientFactory.getEnvironmentVariables();
+  const defaultModels = LLMClientFactory.getDefaultModels();
+
+  let provider = rawOptions.provider as LLMConfig['provider'] | undefined;
+  let model = rawOptions.model as string | undefined;
+  let apiKey = rawOptions.apiKey as string | undefined;
+
   if (!apiKey) {
-    const envVars = LLMClientFactory.getEnvironmentVariables()[provider as LLMConfig['provider']];
-    for (const envVar of envVars) {
-      apiKey = process.env[envVar];
-      if (apiKey) break;
-    }
-  }
-
-  const cliOptions: CLIOptions = {
-    repoPath: path.resolve(repoPath),
-    outputDir: path.resolve(options.output),
-    model: options.model,
-    apiKey,
-    provider,
-    exclude: options.exclude || [],
-    include: options.include,
-    verbose: options.verbose || false
-  };
-
-  if (!cliOptions.apiKey) {
-    const envVars = LLMClientFactory.getEnvironmentVariables()[provider as LLMConfig['provider']];
-    ui.displayError(`${provider.toUpperCase()} API key is required. Set one of these environment variables: ${envVars.join(', ')} or use --api-key option.`);
-    process.exit(1);
-  }
-
-  // Display welcome message
-  ui.displayWelcome('0.1.0');
-  ui.displayProjectInfo(cliOptions.repoPath, cliOptions.outputDir!, cliOptions.model!, cliOptions.provider);
-  
-  // Show usage warning for expensive models
-  if (cliOptions.model && ['anthropic/claude-3-opus', 'openai/gpt-4'].includes(cliOptions.model)) {
-    ui.displayUsageWarning(1.0); // Lower estimate for guidelines only
-  }
-
-  // Initialize components
-  const fileMapper = new FileMapper(cliOptions.exclude);
-  const llmConfig: LLMConfig = {
-    apiKey: cliOptions.apiKey,
-    model: cliOptions.model || 'google/gemini-2.5-flash-preview-05-20',
-    provider: cliOptions.provider || 'openrouter'
-  };
-  const llmClient = LLMClientFactory.createClient(llmConfig);
-  const guidelinesGenerator = new GuidelinesGenerator(fileMapper, llmClient);
-
-  // Step 1: Map repository structure
-  ui.displayStep(1, 4, 'Analyzing repository structure');
-  ui.startSpinner('Scanning files and directories...');
-  
-  const repoStructure = await fileMapper.mapRepository(
-    cliOptions.repoPath,
-    cliOptions.include
-  );
-
-  ui.updateSpinner(`Found ${repoStructure.totalFiles} files in ${repoStructure.directories.length} directories`, 'success');
-
-  // Display analysis results
-  if (cliOptions.verbose) {
-    ui.displayAnalysisResults(
-      repoStructure.totalFiles,
-      repoStructure.directories.length,
-      ui.formatBytes(repoStructure.totalSize)
-    );
-  }
-
-  // Step 2: Analyze codebase for guidelines
-  ui.displayStep(2, 4, 'Analyzing codebase for guideline recommendations');
-  ui.startSpinner('Detecting technologies and patterns...');
-  
-  try {
-    const analysis = await guidelinesGenerator.analyzeCodebaseOnly(repoStructure, cliOptions.verbose);
-    
-    ui.updateSpinner('Technology analysis complete', 'success');
-    
-    if (cliOptions.verbose) {
-      console.log(chalk.bold('\n📊 Analysis Results:'));
-      console.log(chalk.gray('─'.repeat(50)));
-      console.log(`${chalk.blue('Project Type:')} ${analysis.projectType}`);
-      console.log(`${chalk.blue('Complexity:')} ${analysis.complexity}`);
-      console.log(`${chalk.blue('Technologies:')} ${analysis.technologies.map(t => t.name).join(', ')}`);
-      console.log(`${chalk.blue('Recommended Categories:')} ${analysis.recommendedCategories.join(', ')}`);
-    }
-  } catch (error) {
-    ui.updateSpinner('Failed to analyze codebase', 'fail');
-    throw error;
-  }
-
-  // Step 3: Generate guidelines
-  ui.displayStep(3, 4, 'Generating software development guidelines');
-  ui.startSpinner('Creating comprehensive development guidelines...');
-  
-  try {
-    // Build configuration from CLI options
-    const guidelineConfig: any = {};
-    
-    // Set specific categories if provided
-    if (categories && categories.length > 0) {
-      // Validate categories
-      const validCategories = ['testing', 'frontend', 'backend', 'database', 'security', 'performance', 'code-style', 'git-workflow', 'deployment', 'monitoring', 'documentation', 'architecture'];
-      const invalidCategories = categories.filter(cat => !validCategories.includes(cat));
-      if (invalidCategories.length > 0) {
-        ui.displayError(`Invalid categories: ${invalidCategories.join(', ')}. Valid categories are: ${validCategories.join(', ')}`);
-        process.exit(1);
+    if (provider) {
+      for (const envVar of providerEnvMap[provider]) {
+        const value = process.env[envVar];
+        if (value) {
+          apiKey = value;
+          break;
+        }
       }
-      guidelineConfig.categories = categories;
+    } else {
+      outer: for (const [prov, envVars] of Object.entries(providerEnvMap)) {
+        for (const envVar of envVars) {
+          const value = process.env[envVar];
+          if (value) {
+            apiKey = value;
+            provider = prov as LLMConfig['provider'];
+            break outer;
+          }
+        }
+      }
     }
-    
-    // Set project configuration from CLI options
-    if (options.projectType && options.projectType !== 'auto') {
-      guidelineConfig.projectType = options.projectType;
-    }
-    if (options.complexity && options.complexity !== 'auto') {
-      guidelineConfig.complexity = options.complexity;
-    }
-    if (options.teamSize && options.teamSize !== 'auto') {
-      guidelineConfig.teamSize = options.teamSize;
-    }
-    
-    // Set feature flags
-    if (options.includeExamples) {
-      guidelineConfig.includeExamples = true;
-    }
-    if (options.includeTools) {
-      guidelineConfig.includeTools = true;
-    }
-    
-    await guidelinesGenerator.generateGuidelines(
-      repoStructure,
-      cliOptions.outputDir!,
-      guidelineConfig,
-      cliOptions.verbose
-    );
-    
-    ui.updateSpinner('Guidelines generated successfully', 'success');
-  } catch (error) {
-    ui.updateSpinner('Failed to generate guidelines', 'fail');
-    throw error;
   }
 
-  // Step 4: Complete
-  ui.displayStep(4, 4, 'Finalizing output');
-  
-  // Get usage statistics from the LLM client
-  const usageStats = llmClient.getUsageStats();
-  ui.displayGenerationSummary(0, 0, usageStats); // No docs or agents generated
-  
-  const guidelinesPath = path.join(cliOptions.outputDir!, 'guidelines');
-  ui.displaySuccess(`Guidelines generated! Output saved to: ${guidelinesPath}`);
-  
-  // Display helpful next steps
-  console.log(chalk.bold('\n💡 Next Steps:'));
-  console.log(chalk.gray('─'.repeat(50)));
-  console.log(`${chalk.blue('1. Review:')} Check the generated guidelines in ${guidelinesPath}`);
-  console.log(`${chalk.blue('2. Customize:')} Modify guidelines to match your team's specific needs`);
-  console.log(`${chalk.blue('3. Share:')} Distribute guidelines to your development team`);
-  console.log(`${chalk.blue('4. Integrate:')} Include guidelines in your project documentation`);
-}
+  if (!provider) {
+    if (model) {
+      provider = LLMClientFactory.detectProviderFromModel(model);
+    } else if (apiKey) {
+      provider = LLMClientFactory.getProviderFromApiKey(apiKey);
+    }
+  }
 
-export async function runAnalyze(repoPath: string, options: any): Promise<void> {
-  const resolvedPath = path.resolve(repoPath);
-  
-  // Display welcome
-  ui.displayWelcome('0.1.0');
-  
-  ui.startSpinner('Analyzing repository structure...');
+  if (!model) {
+    if (provider === 'openrouter' && process.env.OPENROUTER_MODEL) {
+      model = process.env.OPENROUTER_MODEL;
+    } else if (provider && defaultModels[provider]?.length) {
+      model = defaultModels[provider][0];
+    } else {
+      model = DEFAULT_MODEL;
+      provider = LLMClientFactory.detectProviderFromModel(model);
+    }
+  }
 
-  const fileMapper = new FileMapper(options.exclude || []);
-  const repoStructure = await fileMapper.mapRepository(
-    resolvedPath,
-    options.include
-  );
+  if (!provider) {
+    provider = LLMClientFactory.detectProviderFromModel(model || DEFAULT_MODEL);
+  }
 
-  ui.stopSpinner();
+  if (!apiKey) {
+    for (const envVar of providerEnvMap[provider]) {
+      const value = process.env[envVar];
+      if (value) {
+        apiKey = value;
+        break;
+      }
+    }
+  }
 
-  // Display analysis results
-  ui.displayAnalysisResults(
-    repoStructure.totalFiles,
-    repoStructure.directories.length,
-    ui.formatBytes(repoStructure.totalSize)
-  );
+  if (!apiKey) {
+    const envVars = providerEnvMap[provider];
+    throw new Error(`${provider.toUpperCase()} API key is required. Set one of ${envVars.join(', ')} or use --api-key.`);
+  }
 
-  // File type distribution
-  const extensions = new Map<string, number>();
-  repoStructure.files.forEach(file => {
-    const ext = file.extension || 'no-extension';
-    extensions.set(ext, (extensions.get(ext) || 0) + 1);
+  const options: LlmFillOptions = {
+    repoPath: resolvedRepo,
+    outputDir,
+    promptPath,
+    provider,
+    model,
+    apiKey,
+    baseUrl: rawOptions.baseUrl,
+    include: rawOptions.include,
+    exclude: rawOptions.exclude,
+    verbose: rawOptions.verbose || false,
+    dryRun: rawOptions.dryRun || false,
+    processAll: rawOptions.all || false,
+    limit: rawOptions.limit
+  };
+
+  ui.displayWelcome(VERSION);
+  ui.displayProjectInfo(options.repoPath, options.outputDir, `llm-fill:${options.provider}`);
+
+  const fileMapper = new FileMapper(options.exclude);
+  ui.displayStep(1, 3, 'Analyzing repository structure');
+  ui.startSpinner('Scanning repository...');
+  const repoStructure = await fileMapper.mapRepository(options.repoPath, options.include);
+  ui.updateSpinner(`Found ${repoStructure.totalFiles} files across ${repoStructure.directories.length} directories`, 'success');
+
+  const systemPrompt = await fs.readFile(options.promptPath, 'utf-8');
+  const llmClient = LLMClientFactory.createClient({
+    apiKey: options.apiKey,
+    model: options.model,
+    provider: options.provider,
+    baseUrl: options.baseUrl
   });
 
-  ui.displayFileTypeDistribution(extensions, repoStructure.totalFiles);
-
-  // Directory structure (top level)
-  const topDirs = repoStructure.directories
-    .filter(dir => !dir.relativePath.includes('/'))
-    .slice(0, 10);
-
-  if (topDirs.length > 0) {
-    console.log(chalk.bold('\n📂 Top-level Directories:'));
-    console.log(chalk.gray('─'.repeat(50)));
-    topDirs.forEach(dir => {
-      console.log(`  ${chalk.blue('▸')} ${chalk.white(dir.relativePath)}`);
-    });
-  }
-
-  // Token estimation for full documentation generation
-  ui.startSpinner('Estimating token usage for full documentation generation...');
-  
-  // Create pricing if provided (optional for analyze command)
-  let pricing = undefined;
-  if (options.inputPrice !== undefined && options.outputPrice !== undefined) {
-    pricing = {
-      input: options.inputPrice,
-      output: options.outputPrice
-    };
-  } else if (options.inputPrice !== undefined || options.outputPrice !== undefined) {
-    ui.displayError('Pricing requires both options: --input-price and --output-price');
-    process.exit(1);
-  }
-  
-  const tokenEstimator = new TokenEstimator(fileMapper, pricing);
-  const tokenEstimate = await tokenEstimator.estimateTokensForFullGeneration(repoStructure);
-  
-  ui.stopSpinner();
-  
-  console.log(tokenEstimator.formatTokenEstimate(tokenEstimate));
-
-  ui.displaySuccess('Analysis complete!');
-}
-
-export async function runUpdate(repoPath: string, options: any): Promise<void> {
-  const provider = options.provider || LLMClientFactory.detectProviderFromModel(options.model);
-  
-  // Get API key from options or environment variables
-  let apiKey = options.apiKey;
-  if (!apiKey) {
-    const envVars = LLMClientFactory.getEnvironmentVariables()[provider as LLMConfig['provider']];
-    for (const envVar of envVars) {
-      apiKey = process.env[envVar];
-      if (apiKey) break;
-    }
-  }
-
-  const cliOptions: CLIOptions = {
-    repoPath: path.resolve(repoPath),
-    outputDir: path.resolve(options.output),
-    model: options.model,
-    apiKey,
-    provider,
-    exclude: options.exclude || [],
-    include: options.include,
-    verbose: options.verbose || false,
-    since: options.since,
-    staged: options.staged || false,
-    force: options.force || false
-  };
-
-  if (!cliOptions.apiKey) {
-    const envVars = LLMClientFactory.getEnvironmentVariables()[provider as LLMConfig['provider']];
-    ui.displayError(`${provider.toUpperCase()} API key is required. Set one of these environment variables: ${envVars.join(', ')} or use --api-key option.`);
-    process.exit(1);
-  }
-
-  // Initialize git service
-  const gitService = new GitService(cliOptions.repoPath);
-
-  if (!gitService.isGitRepository()) {
-    ui.displayError('This command requires a Git repository. Initialize git first or use the generate command instead.');
-    process.exit(1);
-  }
-
-  // Check if context has been initialized
-  if (!gitService.hasContextBeenInitialized(cliOptions.outputDir!)) {
-    ui.displayError('No documentation context found. You should run analyze and init before updating.');
-    console.log(chalk.bold('\n💡 Getting Started:'));
-    console.log(chalk.gray('─'.repeat(50)));
-    console.log(`${chalk.blue('1. Analyze:')} ai-context analyze ${cliOptions.repoPath}`);
-    console.log(`${chalk.blue('2. Initialize:')} ai-context init ${cliOptions.repoPath}`);
-    console.log(`${chalk.blue('3. Update:')} ai-context update ${cliOptions.repoPath}`);
-    console.log(chalk.gray('─'.repeat(50)));
-    console.log(chalk.gray('The analyze command shows token estimates and costs.'));
-    console.log(chalk.gray('The init command creates the initial documentation.'));
-    console.log(chalk.gray('The update command incrementally updates existing documentation.'));
-    process.exit(1);
-  }
-
-  // Display welcome message
-  ui.displayWelcome('0.1.0');
-  ui.displayProjectInfo(cliOptions.repoPath, cliOptions.outputDir!, cliOptions.model!, cliOptions.provider);
-
-  // Initialize components
-  const fileMapper = new FileMapper(cliOptions.exclude);
-  const llmConfig: LLMConfig = {
-    apiKey: cliOptions.apiKey,
-    model: cliOptions.model || 'google/gemini-2.5-flash-preview-05-20',
-    provider: cliOptions.provider || 'openrouter'
-  };
-  const llmClient = LLMClientFactory.createClient(llmConfig);
-  const incrementalGenerator = new IncrementalDocumentationGenerator(fileMapper, llmClient, gitService);
-
-  // Step 1: Analyze repository structure
-  ui.displayStep(1, 4, 'Analyzing repository structure');
-  ui.startSpinner('Scanning files and directories...');
-  
-  const repoStructure = await fileMapper.mapRepository(
-    cliOptions.repoPath,
-    cliOptions.include
-  );
-
-  ui.updateSpinner(`Found ${repoStructure.totalFiles} files in ${repoStructure.directories.length} directories`, 'success');
-
-  // Step 2: Detect changes
-  ui.displayStep(2, 4, 'Detecting changes');
-  
-  // Display commit tracking info in verbose mode
-  if (cliOptions.verbose) {
-    gitService.displayCommitTrackingInfo(true);
-  }
-  
-  ui.startSpinner('Analyzing git changes...');
-
-  let changes;
-  if (cliOptions.staged) {
-    // For pre-commit hooks - analyze only staged files
-    changes = gitService.getStagedChanges();
-  } else if (cliOptions.since) {
-    // Compare against specific commit
-    changes = gitService.getChangedFiles(cliOptions.since);
-  } else {
-    // Compare against last processed commit
-    changes = gitService.getChangedFiles();
-  }
-
-  const totalChanges = changes.added.length + changes.modified.length + changes.deleted.length + changes.renamed.length;
-
-  if (totalChanges === 0 && !cliOptions.force) {
-    ui.updateSpinner('No changes detected since last run', 'info');
-    ui.displaySuccess('Documentation is up to date!');
+  const targets = await collectTargets(docsDir, agentsDir, options.processAll, options.limit);
+  if (targets.length === 0) {
+    ui.displayWarning('No Markdown files required updates. Use --all or add TODO markers to trigger LLM assistance.');
     return;
   }
 
-  ui.updateSpinner(`Found ${totalChanges} changed files`, 'success');
+  const contextSummary = buildContextSummary(repoStructure);
+  const results: Array<{ file: string; status: 'updated' | 'skipped' | 'failed'; message?: string }> = [];
 
-  // Step 3: Update documentation
-  ui.displayStep(3, 4, 'Updating documentation');
-  ui.startSpinner('Processing changed files...');
+  ui.displayStep(2, 3, `Updating ${targets.length} files with ${options.model}`);
 
-  const result = await incrementalGenerator.updateDocumentation(
-    repoStructure,
-    cliOptions.outputDir!,
-    changes,
-    cliOptions.verbose
-  );
+  for (const target of targets) {
+    const relativePath = path.relative(options.outputDir, target.fullPath);
+    ui.startSpinner(`Processing ${relativePath}...`);
 
-  ui.updateSpinner(`Updated ${result.updated} files, removed ${result.removed} files`, 'success');
+    try {
+      const currentContent = await fs.readFile(target.fullPath, 'utf-8');
+      const userPrompt = buildUserPrompt(relativePath, currentContent, contextSummary, target.isAgent);
+      const updatedContent = await llmClient.generateText(userPrompt, systemPrompt);
 
-  // Step 4: Save state (only if documentation was actually updated)
-  ui.displayStep(4, 4, 'Saving state');
-  const currentCommit = gitService.getCurrentCommit();
-  
-  if (result.updated > 0 || result.removed > 0) {
-    gitService.saveState(currentCommit);
-    if (cliOptions.verbose) {
-      console.log(chalk.gray(`State saved: tracking commit ${currentCommit.substring(0, 8)}`));
-    }
-  } else {
-    if (cliOptions.verbose) {
-      console.log(chalk.gray('No documentation changes made, state not updated'));
+      if (!updatedContent || !updatedContent.trim()) {
+        ui.updateSpinner(`No content received for ${relativePath}`, 'warn');
+        results.push({ file: relativePath, status: 'skipped', message: 'Empty response from LLM' });
+        continue;
+      }
+
+      if (options.dryRun) {
+        ui.updateSpinner(`Dry run - preview for ${relativePath}`, 'info');
+        console.log(chalk.gray('\n--- Preview Start ---'));
+        console.log(updatedContent.trim());
+        console.log(chalk.gray('--- Preview End ---\n'));
+      } else {
+        await fs.writeFile(target.fullPath, ensureTrailingNewline(updatedContent));
+        ui.updateSpinner(`Updated ${relativePath}`, 'success');
+      }
+
+      results.push({ file: relativePath, status: options.dryRun ? 'skipped' : 'updated' });
+    } catch (error) {
+      ui.updateSpinner(`Failed ${relativePath}`, 'fail');
+      results.push({
+        file: relativePath,
+        status: 'failed',
+        message: error instanceof Error ? error.message : String(error)
+      });
     }
   }
 
-  // Display summary of changed files
-  if (result.updatedFiles.length > 0 || result.removedFiles.length > 0) {
-    console.log(chalk.bold('\n📄 Documentation Files Changed:'));
-    console.log(chalk.gray('─'.repeat(50)));
-    
-    if (result.updatedFiles.length > 0) {
-      console.log(chalk.green('\n✅ Updated/Created:'));
-      result.updatedFiles.forEach(file => {
-        console.log(`  ${chalk.green('●')} ${file}`);
-      });
-    }
-    
-    if (result.removedFiles.length > 0) {
-      console.log(chalk.red('\n🗑️  Removed:'));
-      result.removedFiles.forEach(file => {
-        console.log(`  ${chalk.red('●')} ${file}`);
-      });
-    }
-    
-    console.log(chalk.gray('─'.repeat(50)));
-  }
-
-  // Get usage statistics
-  const usageStats = llmClient.getUsageStats();
-  ui.displayGenerationSummary(result.updated, 0, usageStats, true);
-  ui.displaySuccess(`Documentation updated! Processed ${result.updated} files.`);
+  ui.displayStep(3, 3, 'Summarizing LLM usage');
+  printLlmSummary(llmClient.getUsageStats(), results, options.dryRun);
+  ui.displaySuccess('LLM-assisted update complete. Review the changes and commit when ready.');
 }
 
-export async function runPreview(repoPath: string, options: any): Promise<void> {
-  const resolvedPath = path.resolve(repoPath);
-  
-  // Display welcome
-  ui.displayWelcome('0.1.0');
-  
-  ui.startSpinner('Initializing analysis...');
-
-  // Initialize services
-  const fileMapper = new FileMapper(options.exclude || []);
-  const gitService = new GitService(resolvedPath);
-  const changeAnalyzer = new ChangeAnalyzer(gitService, fileMapper);
-
-  // Check if it's a git repository
-  if (!gitService.isGitRepository()) {
-    ui.updateSpinner('Not a git repository', 'fail');
-    ui.displayError('The specified path is not a git repository. Preview requires git tracking.');
-    process.exit(1);
-  }
-
-  // Check if context has been initialized
-  const outputDir = path.resolve(options.output || './.context');
-  if (!gitService.hasContextBeenInitialized(outputDir)) {
-    ui.updateSpinner('Context not initialized', 'fail');
-    ui.displayError('No documentation context found. You should run analyze and init before previewing changes to update.');
-    console.log(chalk.bold('\n💡 Getting Started:'));
-    console.log(chalk.gray('─'.repeat(50)));
-    console.log(`${chalk.blue('1. Analyze:')} ai-context analyze ${repoPath}`);
-    console.log(`${chalk.blue('2. Initialize:')} ai-context init ${repoPath}`);
-    console.log(`${chalk.blue('3. Preview:')} ai-context preview ${repoPath}`);
-    console.log(chalk.gray('─'.repeat(50)));
-    console.log(chalk.gray('The analyze command shows token estimates and costs.'));
-    console.log(chalk.gray('The init command creates the initial documentation.'));
-    console.log(chalk.gray('The preview command shows what would change in updates.'));
-    process.exit(1);
-  }
-
-  ui.updateSpinner('Mapping repository structure...');
-
-  // Map repository structure
-  const repoStructure = await fileMapper.mapRepository(
-    resolvedPath,
-    options.include
-  );
-
-  ui.updateSpinner('Analyzing changes...');
-
-  // Detect changes
-  let changes;
-  if (options.staged) {
-    // For pre-commit hooks - analyze only staged files
-    changes = gitService.getStagedChanges();
-  } else if (options.since) {
-    // Compare against specific commit
-    changes = gitService.getChangedFiles(options.since);
-  } else {
-    // Compare against last processed commit
-    changes = gitService.getChangedFiles();
-  }
-
-  // Analyze the changes
-  const analysis = await changeAnalyzer.analyzeChanges(repoStructure, changes);
-
-  ui.stopSpinner();
-
-  // Display the analysis
-  changeAnalyzer.displayAnalysis(analysis, options.verbose);
-
-  // Add token estimation if there are changes to process
-  if (analysis.affectedModules.length > 0) {
-    ui.startSpinner('Estimating token usage and costs for affected changes...');
-    
-    // Create a subset structure with only affected files
-    const affectedFiles = new Set<string>();
-    
-    // Add all files from affected modules
-    for (const module of analysis.affectedModules) {
-      module.affectedFiles.forEach(filePath => {
-        // Convert to absolute path to match repoStructure.files format
-        const absolutePath = path.resolve(resolvedPath, filePath);
-        if (fileMapper.isTextFile(absolutePath)) {
-          affectedFiles.add(absolutePath);
-        }
-      });
-    }
-    
-    // Also add directly changed files
-    [...changes.added, ...changes.modified].forEach(filePath => {
-      const fullPath = path.resolve(resolvedPath, filePath);
-      if (fileMapper.isTextFile(fullPath)) {
-        affectedFiles.add(fullPath);
-      }
-    });
-    
-    // Debug: Log the affected files and available files for comparison
-    if (options.verbose) {
-      console.log(chalk.gray(`\nDebug: Found ${affectedFiles.size} affected files:`));
-      for (const file of Array.from(affectedFiles).slice(0, 5)) {
-        const relativePath = path.relative(resolvedPath, file);
-        console.log(chalk.gray(`  - ${relativePath}`));
-      }
-      if (affectedFiles.size > 5) {
-        console.log(chalk.gray(`  ... and ${affectedFiles.size - 5} more`));
-      }
-    }
-    
-    // Create a reduced repo structure for estimation
-    const matchedFiles = repoStructure.files.filter(file => affectedFiles.has(file.path));
-    
-    const affectedRepoStructure = {
-      ...repoStructure,
-      files: matchedFiles,
-      totalFiles: matchedFiles.length
-    };
-    
-    if (options.verbose) {
-      console.log(chalk.gray(`Debug: Matched ${matchedFiles.length} files from repo structure`));
-    }
-    
-    // Create pricing if provided (optional for preview command)
-    let pricing = undefined;
-    if (options.inputPrice !== undefined && options.outputPrice !== undefined) {
-      pricing = {
-        input: options.inputPrice,
-        output: options.outputPrice
-      };
-    } else if (options.inputPrice !== undefined || options.outputPrice !== undefined) {
-      ui.displayError('Pricing requires both options: --input-price and --output-price');
-      process.exit(1);
-    }
-    
-    const tokenEstimator = new TokenEstimator(fileMapper, pricing);
-    const tokenEstimate = await tokenEstimator.estimateTokensForFullGeneration(affectedRepoStructure);
-    
-    ui.stopSpinner();
-    
-    // Display the token estimate
-    console.log(chalk.bold('\n🔮 Token & Cost Estimate for Preview Changes:'));
-    console.log(chalk.gray('═'.repeat(60)));
-    console.log(tokenEstimator.formatTokenEstimate(tokenEstimate));
-  }
-
-  // Summary
-  if (analysis.affectedModules.length > 0) {
-    console.log(chalk.green('\n✅ Ready to proceed with update command'));
-    console.log(chalk.gray('Run the same command with "update" instead of "preview" to apply changes'));
-  } else {
-    console.log(chalk.yellow('\n📄 No updates needed - documentation is up to date'));
+async function ensureDirectoryExists(dir: string, message: string): Promise<void> {
+  const exists = await fs.pathExists(dir);
+  if (!exists) {
+    throw new Error(message);
   }
 }
 
-// Check if no arguments were provided (interactive mode)
-if (process.argv.length === 2) {
-  const interactive = new InteractiveMode();
-  interactive.start().catch((error) => {
-    ui.displayError('Interactive mode failed', error);
-    process.exit(1);
+interface TargetFile {
+  fullPath: string;
+  hasMarkers: boolean;
+  isAgent: boolean;
+}
+
+async function collectTargets(
+  docsDir: string,
+  agentsDir: string,
+  processAll: boolean,
+  limit?: number
+): Promise<TargetFile[]> {
+  const docFiles = await glob('**/*.md', { cwd: docsDir, absolute: true });
+  const agentFiles = await glob('**/*.md', { cwd: agentsDir, absolute: true });
+  const candidates = [...docFiles, ...agentFiles];
+
+  const targets: TargetFile[] = [];
+  for (const fullPath of candidates) {
+    const content = await fs.readFile(fullPath, 'utf-8');
+    const hasMarkers = /<!--\s*ai-task:/.test(content) || /<!--\s*ai-slot:/.test(content) || /TODO/.test(content);
+    const isAgent = fullPath.includes(`${path.sep}agents${path.sep}`);
+    if (processAll || hasMarkers || isAgent) {
+      targets.push({ fullPath, hasMarkers, isAgent });
+    }
+    if (limit && targets.length >= limit) {
+      break;
+    }
+  }
+
+  return targets;
+}
+
+function buildContextSummary(repoStructure: RepoStructure): string {
+  const directories = new Set<string>();
+  repoStructure.directories.forEach(dir => {
+    const [first] = dir.relativePath.split(/[\\/]/).filter(Boolean);
+    if (first) {
+      directories.add(first);
+    }
   });
-} else {
-  program.parse();
+
+  const topDirs = Array.from(directories).sort().slice(0, 12);
+  const totalSizeMb = (repoStructure.totalSize / (1024 * 1024)).toFixed(2);
+
+  return [
+    `Top-level directories: ${topDirs.length ? topDirs.join(', ') : 'n/a'}`,
+    `Total files scanned: ${repoStructure.totalFiles}`,
+    `Repository size (approx.): ${totalSizeMb} MB`
+  ].join('\n');
+}
+
+function buildUserPrompt(relativePath: string, currentContent: string, contextSummary: string, isAgent: boolean): string {
+  const guidance: string[] = [
+    '- Preserve YAML front matter and existing `ai-task` sections.',
+    '- Replace TODOs and resolve `ai-slot` placeholders with concrete information.',
+    '- Ensure success criteria in the front matter are satisfied.',
+    '- Return only the full updated Markdown for this file.'
+  ];
+
+  if (isAgent) {
+    guidance.push('- Keep agent responsibilities, best practices, and documentation touchpoints aligned with the latest docs.');
+  } else {
+    guidance.push('- Maintain accurate cross-links between docs and referenced resources.');
+  }
+
+  return [
+    `Target file: ${relativePath}`,
+    'Repository summary:',
+    contextSummary,
+    '',
+    'Guidance:',
+    ...guidance,
+    '',
+    'Current content:',
+    '<file>',
+    currentContent,
+    '</file>'
+  ].join('\n');
+}
+
+function ensureTrailingNewline(content: string): string {
+  return content.endsWith('\n') ? content : `${content}\n`;
+}
+
+function printLlmSummary(usage: UsageStats, results: Array<{ file: string; status: string; message?: string }>, dryRun: boolean): void {
+  const updated = results.filter(r => r.status === 'updated').length;
+  const skipped = results.filter(r => r.status === 'skipped').length;
+  const failed = results.filter(r => r.status === 'failed');
+
+  console.log('\n' + chalk.bold('📄 LLM Fill Summary'));
+  console.log(chalk.gray('─'.repeat(50)));
+  console.log(`${chalk.blue('Updated files:')} ${chalk.white(updated.toString())}`);
+  console.log(`${chalk.blue('Skipped files:')} ${chalk.white(skipped.toString())}${dryRun ? chalk.gray(' (dry run)') : ''}`);
+  console.log(`${chalk.blue('Failures:')} ${failed.length}`);
+
+  if (usage.totalCalls > 0) {
+    console.log(chalk.gray('─'.repeat(50)));
+    console.log(`${chalk.blue('LLM calls:')} ${usage.totalCalls}`);
+    console.log(`${chalk.blue('Prompt tokens:')} ${usage.totalPromptTokens}`);
+    console.log(`${chalk.blue('Completion tokens:')} ${usage.totalCompletionTokens}`);
+    console.log(`${chalk.blue('Estimated cost:')} ${usage.estimatedCost.toFixed(4)}`);
+    console.log(`${chalk.blue('Model:')} ${usage.model}`);
+  }
+
+  if (failed.length > 0) {
+    console.log(chalk.gray('─'.repeat(50)));
+    failed.forEach(f => {
+      console.log(`${chalk.red('✖')} ${chalk.white(f.file)} — ${chalk.gray(f.message || 'Unknown error')}`);
+    });
+  }
 }
