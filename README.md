@@ -40,8 +40,14 @@ npx @ai-coders/context init ./my-repo docs
 # Only generate agent playbooks, with a custom output directory
 npx @ai-coders/context init ./my-repo agents --output ./knowledge-base
 
-# Let an LLM refresh the scaffold (preview the first 3 updates)
-npx @ai-coders/context llm-fill ./my-repo --output ./.context --dry-run --limit 3
+# Fill docs and agents with the repo context (preview the first 3 updates)
+npx @ai-coders/context fill ./my-repo --output ./.context --dry-run --limit 3
+
+# Draft a collaboration plan seeded with agent and doc touchpoints
+npx @ai-coders/context plan release-readiness --output ./.context
+
+# Let the LLM enrich an existing plan with the latest context
+npx @ai-coders/context plan release-readiness --output ./.context --fill --dry-run
 ```
 
 After running the command, inspect the generated structure:
@@ -102,11 +108,11 @@ Options:
 ### `scaffold`
 Alias for `init`. Use whichever verb fits your workflow.
 
-### `llm-fill`
+### `fill`
 Use an LLM to refresh scaffolded docs and agent playbooks automatically.
 
 ```
-Usage: ai-context llm-fill <repo-path>
+Usage: ai-context fill <repo-path>
 
 Options:
   -o, --output <dir>      Scaffold directory containing docs/ and agents/ (default: ./.context)
@@ -124,9 +130,37 @@ Options:
 
 Under the hood, the command loads the prompt above, scans for `ai-task` or `ai-slot` markers, and asks the LLM to produce the fully updated Markdown. Combine it with `--dry-run` to review responses before committing.
 
+### `plan`
+Create a collaboration plan that links documentation guides and agent playbooks, or fill an existing plan with LLM assistance.
+
+```
+Usage: ai-context plan <plan-name>
+
+Options:
+  -o, --output <dir>      Scaffold directory containing docs/ and agents/ (default: ./.context)
+      --title <title>     Custom title for the plan document
+      --summary <text>    Seed the plan with a short summary or goal statement
+      --agents <types...> Agent playbooks to highlight (default: all)
+      --docs <keys...>    Documentation guides to reference (default: all)
+  -f, --force             Overwrite the plan if it already exists (scaffold mode)
+      --fill              Use an LLM to fill or update the plan instead of scaffolding
+  -r, --repo <path>       Repository root to summarize for additional context (fill mode)
+  -k, --api-key <key>     API key for the selected LLM provider (fill mode)
+  -m, --model <model>     LLM model to use (default: x-ai/grok-4-fast:free)
+  -p, --provider <name>   Provider (openrouter, openai, anthropic, gemini, grok)
+      --base-url <url>    Custom base URL for provider APIs
+      --prompt <file>     Instruction prompt to follow (default: prompts/update_plan_prompt.md)
+      --dry-run           Preview changes without writing files
+      --include <patterns...>  Glob patterns to include during repository analysis
+      --exclude <patterns...>  Glob patterns to exclude from repository analysis
+  -h, --help              Display help for command
+```
+
+In scaffold mode the command creates `.context/plans/<plan-name>.md`, keeps a `plans/README.md` index, and reminds contributors to consult the agent handbook before delegating work to an AI assistant. In fill mode it will scaffold the plan automatically if it does not exist, then read the plan plus its referenced docs and agent playbooks, send that context to the LLM, and either preview or write the updated Markdown.
+
 💡 Tip: run `npx @ai-coders/context` with no arguments to enter an interactive mode that guides you through scaffold and LLM-fill options.
 
-Prefer driving the update elsewhere? Just grab [`prompts/update_scaffold_prompt.md`](./prompts/update_scaffold_prompt.md) and run it in your favorite playground or agent host. When you’re ready to automate, drop your API key in `.env` (for example `OPENROUTER_API_KEY` and `OPENROUTER_MODEL`) and let `llm-fill` handle the edits inline.
+Prefer driving the update elsewhere? Just grab [`prompts/update_scaffold_prompt.md`](./prompts/update_scaffold_prompt.md) and run it in your favorite playground or agent host. When you’re ready to automate, drop your API key in `.env` (for example `OPENROUTER_API_KEY` and `OPENROUTER_MODEL`) and let `fill` handle the edits inline.
 
 ## 🧰 Local Development
 

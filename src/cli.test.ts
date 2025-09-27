@@ -16,7 +16,8 @@ describe('CLI Commands', () => {
       expect(output).toContain('Commands:');
       expect(output).toContain('init');
       expect(output).toContain('scaffold');
-      expect(output).toContain('llm-fill');
+      expect(output).toContain('fill');
+      expect(output).toContain('plan');
     });
 
     it('should display version when --version flag is used', () => {
@@ -32,16 +33,63 @@ describe('CLI Commands', () => {
       expect(output).toContain('"docs", "agents", or "both"');
       expect(output).toContain('[type]');
       expect(output).toContain('(default)');
+      [
+        '-o, --output <dir>',
+        '--docs <keys...>',
+        '--agents <keys...>',
+        '--exclude <patterns...>',
+        '--include <patterns...>',
+        '-v, --verbose'
+      ].forEach(option => expect(output).toContain(option));
     });
   });
 
-  describe('llm-fill command', () => {
-    it('should display help for llm-fill command', () => {
-      const output = execSync(`node ${cliPath} llm-fill --help`, { encoding: 'utf8' });
-      expect(output).toContain('Use an LLM to fill or update the generated docs and agent playbooks');
-      expect(output).toContain('--prompt <file>');
-      expect(output).toContain('--dry-run');
-      expect(output).toContain('--all');
+  describe('fill command', () => {
+    it('should display help for fill command', () => {
+      const output = execSync(`node ${cliPath} fill --help`, { encoding: 'utf8' });
+      expect(output).toContain('Use an LLM to fill generated docs and agent playbooks');
+      [
+        '-o, --output <dir>',
+        '-k, --api-key <key>',
+        '-m, --model <model>',
+        '-p, --provider <provider>',
+        '--base-url <url>',
+        '--prompt <file>',
+        '--dry-run',
+        '--all',
+        '--limit <number>',
+        '--docs <keys...>',
+        '--agents <keys...>',
+        '--exclude <patterns...>',
+        '--include <patterns...>',
+        '-v, --verbose'
+      ].forEach(option => expect(output).toContain(option));
+    });
+  });
+
+  describe('plan command', () => {
+    it('should display help for plan command', () => {
+      const output = execSync(`node ${cliPath} plan --help`, { encoding: 'utf8' });
+      expect(output).toContain('Create a collaboration plan');
+      [
+        '-o, --output <dir>',
+        '--title <title>',
+        '--summary <text>',
+        '--agents <types...>',
+        '--docs <keys...>',
+        '-f, --force',
+        '--fill',
+        '-r, --repo <path>',
+        '-k, --api-key <key>',
+        '-m, --model <model>',
+        '-p, --provider <provider>',
+        '--base-url <url>',
+        '--prompt <file>',
+        '--dry-run',
+        '--include <patterns...>',
+        '--exclude <patterns...>',
+        '-v, --verbose'
+      ].forEach(option => expect(output).toContain(option));
     });
   });
 });
