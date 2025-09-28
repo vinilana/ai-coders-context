@@ -36,7 +36,7 @@ const localeLabelKeys: Record<Locale, TranslationKey> = {
 
 const program = new Command();
 const ui = new CLIInterface(t);
-const VERSION = '0.3.0';
+const VERSION = '0.3.1';
 const DEFAULT_MODEL = 'x-ai/grok-4-fast:free';
 
 const DOC_CHOICES = DOCUMENT_GUIDES.map(guide => ({
