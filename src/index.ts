@@ -1224,7 +1224,7 @@ function formatAgentLabel(value: string): string {
     .join(' ');
 }
 
-async function runInteractive(): Promise<void> {
+async function selectLocale(showWelcome: boolean): Promise<void> {
   const { locale } = await inquirer.prompt<{ locale: Locale }>([
     {
       type: 'list',
@@ -1242,28 +1242,58 @@ async function runInteractive(): Promise<void> {
   currentLocale = normalizedLocale;
   translateFn = createTranslator(normalizedLocale);
 
-  ui.displayWelcome(VERSION);
-
-  const { action } = await inquirer.prompt<{ action: 'scaffold' | 'fill' | 'plan' }>([
-    {
-      type: 'list',
-      name: 'action',
-      message: t('prompts.main.action'),
-      choices: [
-        { name: t('prompts.main.choice.scaffold'), value: 'scaffold' },
-        { name: t('prompts.main.choice.fill'), value: 'fill' },
-        { name: t('prompts.main.choice.plan'), value: 'plan' }
-      ]
-    }
-  ]);
-
-  if (action === 'scaffold') {
-    await runInteractiveScaffold();
-  } else if (action === 'fill') {
-    await runInteractiveLlmFill();
-  } else {
-    await runInteractivePlan();
+  if (showWelcome) {
+    ui.displayWelcome(VERSION);
   }
+}
+
+type InteractiveAction = 'scaffold' | 'fill' | 'plan' | 'changeLanguage' | 'exit';
+
+async function runInteractive(): Promise<void> {
+  await selectLocale(true);
+
+  let exitRequested = false;
+  while (!exitRequested) {
+    const { action } = await inquirer.prompt<{ action: InteractiveAction }>([
+      {
+        type: 'list',
+        name: 'action',
+        message: t('prompts.main.action'),
+        choices: [
+          { name: t('prompts.main.choice.scaffold'), value: 'scaffold' },
+          { name: t('prompts.main.choice.fill'), value: 'fill' },
+          { name: t('prompts.main.choice.plan'), value: 'plan' },
+          { name: t('prompts.main.choice.changeLanguage'), value: 'changeLanguage' },
+          { name: t('prompts.main.choice.exit'), value: 'exit' }
+        ]
+      }
+    ]);
+
+    if (action === 'changeLanguage') {
+      await selectLocale(true);
+      continue;
+    }
+
+    if (action === 'exit') {
+      exitRequested = true;
+      break;
+    }
+
+    if (action === 'scaffold') {
+      await runInteractiveScaffold();
+    } else if (action === 'fill') {
+      await runInteractiveLlmFill();
+    } else {
+      await runInteractivePlan();
+    }
+
+    ui.displayInfo(
+      t('info.interactive.returning.title'),
+      t('info.interactive.returning.detail')
+    );
+  }
+
+  ui.displaySuccess(t('success.interactive.goodbye'));
 }
 
 async function runInteractiveScaffold(): Promise<void> {

@@ -140,6 +140,8 @@ const englishMessages = {
   'prompts.main.choice.scaffold': 'Generate documentation/agent scaffolding',
   'prompts.main.choice.fill': 'Fill docs and agents with an LLM',
   'prompts.main.choice.plan': 'Create a development plan',
+  'prompts.main.choice.changeLanguage': 'Change language',
+  'prompts.main.choice.exit': 'Exit interactive mode',
   'prompts.scaffold.repoPath': 'Repository path to analyze',
   'prompts.scaffold.includeDocs': 'Generate documentation scaffolding?',
   'prompts.scaffold.selectDocs': 'Select documentation guides to scaffold',
@@ -176,7 +178,10 @@ const englishMessages = {
   'prompts.language.option.pt-BR': 'Portuguese (Brazil) / Português (Brasil)',
   'errors.plan.fillFailed': 'Failed to fill plan with LLM assistance',
   'errors.fill.promptMissing': 'Prompt file not found at {path}.',
-  'errors.fill.apiKeyMissing': '{provider} API key is required. Set one of {envVars} or use --api-key.'
+  'errors.fill.apiKeyMissing': '{provider} API key is required. Set one of {envVars} or use --api-key.',
+  'info.interactive.returning.title': 'Main menu',
+  'info.interactive.returning.detail': 'Returning to the interactive menu. Pick another action or choose Exit.',
+  'success.interactive.goodbye': 'Goodbye! Thanks for using ai-context.'
 } as const;
 
 export type TranslationKey = keyof typeof englishMessages;
@@ -320,6 +325,8 @@ const portugueseMessages: TranslationDictionary = {
   'prompts.main.choice.scaffold': 'Gerar bases de documentação/agentes',
   'prompts.main.choice.fill': 'Preencher docs e agentes com um LLM',
   'prompts.main.choice.plan': 'Criar um plano de desenvolvimento',
+  'prompts.main.choice.changeLanguage': 'Mudar idioma',
+  'prompts.main.choice.exit': 'Sair do modo interativo',
   'prompts.scaffold.repoPath': 'Caminho do repositório para analisar',
   'prompts.scaffold.includeDocs': 'Gerar bases de documentação?',
   'prompts.scaffold.selectDocs': 'Selecione as guias de documentação para gerar bases',
@@ -356,7 +363,10 @@ const portugueseMessages: TranslationDictionary = {
   'prompts.language.option.pt-BR': 'Português (Brasil) / Portuguese (Brazil)',
   'errors.plan.fillFailed': 'Falha ao preencher o plano com ajuda de um assistente de IA',
   'errors.fill.promptMissing': 'Arquivo de prompt não encontrado em {path}.',
-  'errors.fill.apiKeyMissing': 'É necessária uma chave de API {provider}. Defina uma das variáveis {envVars} ou use --api-key.'
+  'errors.fill.apiKeyMissing': 'É necessária uma chave de API {provider}. Defina uma das variáveis {envVars} ou use --api-key.',
+  'info.interactive.returning.title': 'Menu principal',
+  'info.interactive.returning.detail': 'Voltando ao menu interativo. Escolha outra ação ou selecione Sair.',
+  'success.interactive.goodbye': 'Até logo! Obrigado por usar o ai-context.'
 };
 
 const dictionaries: Record<Locale, TranslationDictionary> = {
