@@ -57,18 +57,30 @@ ${agentTableRows}
 | --- | --- | --- | --- |
 ${docsTableRows}
 
-## Working Stages
-### Stage 1 — Discovery & Alignment
-- TODO: Outline discovery tasks and the agent/owner who leads them.
-- TODO: Capture open questions that require clarification.
+## Working Phases
+### Phase 1 — Discovery & Alignment
+**Steps**
+1. TODO: Outline discovery tasks and assign the accountable owner.
+2. TODO: Capture open questions that require clarification.
 
-### Stage 2 — Implementation & Iteration
-- TODO: Note build tasks, pairing expectations, and review cadence.
-- TODO: Reference docs or playbooks to keep changes aligned.
+**Commit Checkpoint**
+- After completing this phase, capture the agreed context and create a commit (for example, \`git commit -m "chore(plan): complete phase 1 discovery"\`).
 
-### Stage 3 — Validation & Handoff
-- TODO: Detail testing, verification, and documentation updates.
-- TODO: Document evidence the team must capture for maintainers.
+### Phase 2 — Implementation & Iteration
+**Steps**
+1. TODO: Note build tasks, pairing expectations, and review cadence.
+2. TODO: Reference docs or playbooks to keep changes aligned.
+
+**Commit Checkpoint**
+- Summarize progress, update cross-links, and create a commit documenting the outcomes of this phase (for example, \`git commit -m "chore(plan): complete phase 2 implementation"\`).
+
+### Phase 3 — Validation & Handoff
+**Steps**
+1. TODO: Detail testing, verification, and documentation updates.
+2. TODO: Document evidence the team must capture for maintainers.
+
+**Commit Checkpoint**
+- Record the validation evidence and create a commit signalling the handoff completion (for example, \`git commit -m "chore(plan): complete phase 3 validation"\`).
 
 ## Agent Playbook Checklist
 1. Pick the agent that matches your task.

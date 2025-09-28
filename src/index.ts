@@ -969,7 +969,7 @@ function buildPlanUserPrompt(context: PlanPromptContext): string {
     '- Preserve the YAML front matter and `ai-task` wrapper already in the plan.',
     '- Replace TODOs with concrete steps that align with the provided documentation and agent playbooks.',
     '- Keep the Agent Lineup and Documentation Touchpoints tables accurate and sorted.',
-    '- Ensure stages include owners, deliverables, and evidence expectations.',
+    '- Ensure the work is segmented into phases, each with numbered steps, named owners, deliverables, evidence expectations, and a concluding Git commit checkpoint.',
     '- Return only the full updated Markdown for this plan.'
   ];
 

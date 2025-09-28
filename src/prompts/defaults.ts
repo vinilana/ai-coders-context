@@ -71,9 +71,10 @@ You are an AI assistant responsible for refining collaboration plans that live i
    - Map each plan stage to the docs excerpts provided, highlighting which sections need to be updated during execution.
    - Keep the table sorted and ensure the listed \`ai-task\` markers exist.
 
-4. **Working Stages**
-   - Break the work into clear stages with owners, deliverables, and evidence checkpoints.
-   - Reference documentation and agent resources that the team should consult while executing each stage.
+4. **Working Phases**
+   - Break the work into sequential phases that each include a numbered list of steps, accountable owners, deliverables, and evidence expectations.
+   - Close every phase with an explicit Git commit checkpoint (for example, \`git commit -m "chore(plan): complete phase 1"\`) so progress is recorded in version control.
+   - Reference documentation and agent resources that the team should consult while executing each phase.
 
 5. **Evidence & Follow-up**
    - Specify the artefacts that must be captured (PR links, test runs, change logs) before the plan is considered complete.
@@ -82,7 +83,7 @@ You are an AI assistant responsible for refining collaboration plans that live i
 ## Acceptance Criteria
 - Every TODO or placeholder inside the plan’s \`ai-task\` block is resolved or accompanied by a clear escalation note.
 - Tables reference existing files and stay in sync with the docs/agent indices.
-- Stages provide actionable guidance, owners, and success signals.
+- Phases provide actionable guidance, include numbered steps, and end with an explicit Git commit checkpoint.
 - The plan remains fully self-contained and ready for contributors to execute.
 
 ## Deliverables

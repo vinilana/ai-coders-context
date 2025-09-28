@@ -40,6 +40,8 @@ describe('PlanGenerator', () => {
     expect(content).toContain('id: plan-new-initiative');
     expect(content).toContain('<!-- ai-task:plan-new-initiative -->');
     expect(content).toContain('# New Initiative Plan');
+    expect(content).toContain('## Working Phases');
+    expect(content).toContain('**Commit Checkpoint**');
 
     const indexContent = await fs.readFile(path.join(outputDir, 'plans', 'README.md'), 'utf8');
     expect(indexContent).toContain('1. [New Initiative](./new-initiative.md)');
