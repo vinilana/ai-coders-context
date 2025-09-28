@@ -74,8 +74,8 @@ function scheduleVersionCheck(force: boolean = false): Promise<void> {
   return versionCheckPromise;
 }
 
-program.hook('preAction', async () => {
-  await scheduleVersionCheck();
+program.hook('preAction', () => {
+  void scheduleVersionCheck();
 });
 
 program
@@ -1829,7 +1829,7 @@ function filterOutLocaleArgs(args: string[]): string[] {
 
 async function main(): Promise<void> {
   const userArgs = process.argv.slice(2);
-  await scheduleVersionCheck();
+  void scheduleVersionCheck();
   const meaningfulArgs = filterOutLocaleArgs(userArgs);
   if (meaningfulArgs.length === 0) {
     await runInteractive();
