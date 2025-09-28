@@ -7,12 +7,19 @@ export interface FileInfo {
   type: 'file' | 'directory';
 }
 
+export interface TopLevelDirectoryStats {
+  name: string;
+  fileCount: number;
+  totalSize: number;
+}
+
 export interface RepoStructure {
   rootPath: string;
   files: FileInfo[];
   directories: FileInfo[];
   totalFiles: number;
   totalSize: number;
+  topLevelDirectoryStats: TopLevelDirectoryStats[];
 }
 
 export interface OpenRouterConfig {

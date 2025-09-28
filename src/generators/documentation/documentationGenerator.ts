@@ -14,7 +14,7 @@ import {
   renderSecurity,
   renderToolingGuide
 } from './templates';
-import { DOCUMENT_GUIDES, getGuidesByKeys } from './guideRegistry';
+import { getGuidesByKeys } from './guideRegistry';
 
 interface DocSection {
   fileName: string;
@@ -26,8 +26,6 @@ interface DocumentationGenerationConfig {
 }
 
 export class DocumentationGenerator {
-  private readonly guides: GuideMeta[] = DOCUMENT_GUIDES;
-
   constructor(..._legacyArgs: unknown[]) {}
 
   async generateDocumentation(
@@ -58,20 +56,17 @@ export class DocumentationGenerator {
     repoStructure: RepoStructure,
     guides: GuideMeta[]
   ): DocumentationTemplateContext {
-    const directorySet = new Set<string>();
+    const topLevelStats = repoStructure.topLevelDirectoryStats ?? [];
+    const topLevelDirectories = topLevelStats.length
+      ? topLevelStats.map(stat => stat.name)
+      : this.deriveTopLevelDirectories(repoStructure);
 
-    repoStructure.directories.forEach(dir => {
-      const [firstSegment] = dir.relativePath.split(/[\\/]/).filter(Boolean);
-      if (firstSegment) {
-        directorySet.add(firstSegment);
-      }
-    });
-
-    const topLevelDirectories = Array.from(directorySet).sort();
-    const directoryStats = topLevelDirectories.map(name => ({
-      name,
-      fileCount: repoStructure.files.filter(file => file.relativePath.startsWith(`${name}/`)).length
-    }));
+    const directoryStats = topLevelStats.length
+      ? topLevelStats.map(stat => ({ name: stat.name, fileCount: stat.fileCount }))
+      : topLevelDirectories.map(name => ({
+          name,
+          fileCount: repoStructure.files.filter(file => file.relativePath.startsWith(`${name}/`)).length
+        }));
     const primaryLanguages = GeneratorUtils.getTopFileExtensions(repoStructure, 5)
       .filter(([ext]) => !!ext)
       .map(([extension, count]) => ({ extension, count }));
@@ -83,6 +78,17 @@ export class DocumentationGenerator {
       directoryStats,
       guides
     };
+  }
+
+  private deriveTopLevelDirectories(repoStructure: RepoStructure): string[] {
+    const directorySet = new Set<string>();
+    repoStructure.directories.forEach(dir => {
+      const [firstSegment] = dir.relativePath.split(/[\\/]/).filter(Boolean);
+      if (firstSegment) {
+        directorySet.add(firstSegment);
+      }
+    });
+    return Array.from(directorySet).sort();
   }
 
   private getDocSections(guides: GuideMeta[]): DocSection[] {

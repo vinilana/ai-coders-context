@@ -42,7 +42,24 @@ function createRepoStructure(rootPath: string): RepoStructure {
       }
     ],
     totalFiles: 1,
-    totalSize: 128
+    totalSize: 128,
+    topLevelDirectoryStats: [
+      {
+        name: 'src',
+        fileCount: 1,
+        totalSize: 128
+      },
+      {
+        name: 'docs',
+        fileCount: 0,
+        totalSize: 0
+      },
+      {
+        name: 'agents',
+        fileCount: 0,
+        totalSize: 0
+      }
+    ]
   };
 }
 

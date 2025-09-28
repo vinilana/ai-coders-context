@@ -1,7 +1,7 @@
 import * as fs from 'fs-extra';
 import * as path from 'path';
 import { glob } from 'glob';
-import { FileInfo, RepoStructure } from '../types';
+import { FileInfo, RepoStructure, TopLevelDirectoryStats } from '../types';
 
 export class FileMapper {
   private excludePatterns: string[] = [
@@ -15,7 +15,7 @@ export class FileMapper {
     '**/.DS_Store'
   ];
 
-  constructor(private customExcludes: string[] = []) {
+  constructor(customExcludes: string[] = []) {
     this.excludePatterns = [...this.excludePatterns, ...customExcludes];
   }
 
@@ -43,33 +43,55 @@ export class FileMapper {
     const fileInfos: FileInfo[] = [];
     const directories: FileInfo[] = [];
     let totalSize = 0;
+    const topLevelStats = new Map<string, { fileCount: number; totalSize: number }>();
+    const concurrency = 32;
 
-    for (const file of uniqueFiles) {
-      const fullPath = path.join(absolutePath, file);
-      const stats = await fs.stat(fullPath);
-      
-      const fileInfo: FileInfo = {
-        path: fullPath,
-        relativePath: file,
-        extension: path.extname(file),
-        size: stats.size,
-        type: stats.isDirectory() ? 'directory' : 'file'
-      };
+    for (let index = 0; index < uniqueFiles.length; index += concurrency) {
+      const slice = uniqueFiles.slice(index, index + concurrency);
+      await Promise.all(
+        slice.map(async relativePath => {
+          const fullPath = path.join(absolutePath, relativePath);
+          const stats = await fs.stat(fullPath);
+          const info: FileInfo = {
+            path: fullPath,
+            relativePath,
+            extension: path.extname(relativePath),
+            size: stats.size,
+            type: stats.isDirectory() ? 'directory' : 'file'
+          };
 
-      if (stats.isDirectory()) {
-        directories.push(fileInfo);
-      } else {
-        fileInfos.push(fileInfo);
-        totalSize += stats.size;
-      }
+          const topLevelSegment = this.extractTopLevelSegment(relativePath);
+          if (topLevelSegment) {
+            const current = topLevelStats.get(topLevelSegment) ?? { fileCount: 0, totalSize: 0 };
+            if (!stats.isDirectory()) {
+              current.fileCount += 1;
+              current.totalSize += stats.size;
+            }
+            topLevelStats.set(topLevelSegment, current);
+          }
+
+          if (stats.isDirectory()) {
+            directories.push(info);
+          } else {
+            fileInfos.push(info);
+            totalSize += stats.size;
+          }
+
+        })
+      );
     }
+
+    const topLevelDirectoryStats: TopLevelDirectoryStats[] = Array.from(topLevelStats.entries())
+      .map(([name, stats]) => ({ name, fileCount: stats.fileCount, totalSize: stats.totalSize }))
+      .sort((a, b) => a.name.localeCompare(b.name));
 
     return {
       rootPath: absolutePath,
       files: fileInfos,
       directories,
       totalFiles: fileInfos.length,
-      totalSize
+      totalSize,
+      topLevelDirectoryStats
     };
   }
 
@@ -93,8 +115,13 @@ export class FileMapper {
       '.rs', '.swift', '.kt', '.scala', '.r', '.m', '.pl', '.lua', '.vim',
       '.dockerfile', '.gitignore', '.env'
     ];
-    
+
     const ext = path.extname(filePath).toLowerCase();
     return textExtensions.includes(ext) || !ext;
+  }
+
+  private extractTopLevelSegment(relativePath: string): string | null {
+    const parts = relativePath.split(/[/\\]/).filter(Boolean);
+    return parts.length > 0 ? parts[0] : null;
   }
 }
