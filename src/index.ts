@@ -15,6 +15,7 @@ import { PlanGenerator } from './generators/plans/planGenerator';
 import { GeneratorUtils } from './generators/shared';
 import { CLIInterface } from './utils/cliUI';
 import { resolvePlanPrompt, resolveScaffoldPrompt } from './utils/promptLoader';
+import { checkForUpdates } from './utils/versionChecker';
 import { createTranslator, detectLocale, SUPPORTED_LOCALES, normalizeLocale } from './utils/i18n';
 import type { TranslateFn, Locale, TranslationKey } from './utils/i18n';
 import { LLMClientFactory } from './services/llmClientFactory';
@@ -37,6 +38,7 @@ const localeLabelKeys: Record<Locale, TranslationKey> = {
 const program = new Command();
 const ui = new CLIInterface(t);
 const VERSION = '0.3.1';
+const PACKAGE_NAME = '@ai-coders/context';
 const DEFAULT_MODEL = 'x-ai/grok-4-fast:free';
 
 const DOC_CHOICES = DOCUMENT_GUIDES.map(guide => ({
@@ -55,6 +57,26 @@ program
   .version(VERSION);
 
 program.option('-l, --lang <locale>', t('global.options.lang'), initialLocale);
+
+let versionCheckPromise: Promise<void> | null = null;
+
+function scheduleVersionCheck(force: boolean = false): Promise<void> {
+  if (!versionCheckPromise || force) {
+    versionCheckPromise = checkForUpdates({
+      packageName: PACKAGE_NAME,
+      currentVersion: VERSION,
+      ui,
+      t,
+      force
+    }).catch(() => {});
+  }
+
+  return versionCheckPromise;
+}
+
+program.hook('preAction', async () => {
+  await scheduleVersionCheck();
+});
 
 program
   .command('init')
@@ -1777,6 +1799,7 @@ function filterOutLocaleArgs(args: string[]): string[] {
 
 async function main(): Promise<void> {
   const userArgs = process.argv.slice(2);
+  await scheduleVersionCheck();
   const meaningfulArgs = filterOutLocaleArgs(userArgs);
   if (meaningfulArgs.length === 0) {
     await runInteractive();

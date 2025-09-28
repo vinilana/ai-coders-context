@@ -54,6 +54,8 @@ npx @ai-coders/context plan release-readiness --output ./.context
 npx @ai-coders/context plan release-readiness --output ./.context --fill --dry-run
 ```
 
+> ℹ️ The CLI pings npm for fresh releases at startup. Set `AI_CONTEXT_DISABLE_UPDATE_CHECK=true` to skip the check.
+
 After running the command, inspect the generated structure:
 
 ```
