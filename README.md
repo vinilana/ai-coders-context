@@ -57,6 +57,8 @@ npx @ai-coders/context plan release-readiness --output ./.context
 npx @ai-coders/context plan release-readiness --output ./.context --fill --dry-run
 ```
 
+> ℹ️ The CLI pings npm for fresh releases at startup. Set `AI_CONTEXT_DISABLE_UPDATE_CHECK=true` to skip the check.
+
 After running the command, inspect the generated structure:
 
 ```
@@ -126,7 +128,7 @@ Options:
   -k, --api-key <key>     API key for the selected LLM provider
   -m, --model <model>     LLM model to use (default: google/gemini-2.5-flash-preview-05-20)
   -p, --provider <name>   Provider (openrouter, openai, anthropic, gemini, grok)
-      --prompt <file>     Instruction prompt to follow (default: prompts/update_scaffold_prompt.md)
+      --prompt <file>     Instruction prompt to follow (optional; uses bundled instructions when omitted)
       --docs <keys...>    Doc keys to update (default: all)
       --agents <keys...>  Agent types to update (default: all)
       --dry-run           Preview changes without writing files
@@ -156,7 +158,7 @@ Options:
   -m, --model <model>     LLM model to use (default: x-ai/grok-4-fast:free)
   -p, --provider <name>   Provider (openrouter, openai, anthropic, gemini, grok)
       --base-url <url>    Custom base URL for provider APIs
-      --prompt <file>     Instruction prompt to follow (default: prompts/update_plan_prompt.md)
+      --prompt <file>     Instruction prompt to follow (optional; uses bundled instructions when omitted)
       --dry-run           Preview changes without writing files
       --include <patterns...>  Glob patterns to include during repository analysis
       --exclude <patterns...>  Glob patterns to exclude from repository analysis

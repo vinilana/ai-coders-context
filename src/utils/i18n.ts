@@ -25,6 +25,12 @@ const englishMessages = {
   'ui.generationSummary.timeElapsed': 'Time elapsed',
   'ui.generationSummary.nextStep': 'Next step: customize the generated templates to match your project.',
   'ui.error.title': '❌ Error Occurred',
+  'info.prompt.title': 'System Prompt',
+  'info.prompt.usingCustom': 'Using prompt from {path}.',
+  'info.prompt.usingPackage': 'Using packaged prompt at {path}.',
+  'info.prompt.usingBundled': 'Using built-in prompt bundled with ai-context.',
+  'info.update.available.title': 'Update available',
+  'info.update.available.detail': 'A newer version {latest} is available (current {current}). Update with {command}.',
   'commands.init.description': 'Generate docs and agent scaffolding for a repository',
   'commands.init.arguments.repoPath': 'Path to the repository to analyze',
   'commands.init.arguments.type': 'Scaffold type: "docs", "agents", or "both" (default)',
@@ -134,6 +140,8 @@ const englishMessages = {
   'prompts.main.choice.scaffold': 'Generate documentation/agent scaffolding',
   'prompts.main.choice.fill': 'Fill docs and agents with an LLM',
   'prompts.main.choice.plan': 'Create a development plan',
+  'prompts.main.choice.changeLanguage': 'Change language',
+  'prompts.main.choice.exit': 'Exit interactive mode',
   'prompts.scaffold.repoPath': 'Repository path to analyze',
   'prompts.scaffold.includeDocs': 'Generate documentation scaffolding?',
   'prompts.scaffold.selectDocs': 'Select documentation guides to scaffold',
@@ -141,7 +149,7 @@ const englishMessages = {
   'prompts.scaffold.selectAgents': 'Select agent playbooks to scaffold',
   'prompts.common.verbose': 'Enable verbose logging?',
   'prompts.fill.repoPath': 'Repository path containing the scaffold',
-  'prompts.fill.promptPath': 'Instruction prompt to follow',
+  'prompts.fill.promptPath': 'Custom prompt path (leave blank to use the bundled default)',
   'prompts.fill.dryRun': 'Preview changes without writing files?',
   'prompts.fill.processAll': 'Process every Markdown file regardless of markers?',
   'prompts.fill.limit': 'Maximum number of files to update (leave blank for all)',
@@ -170,7 +178,10 @@ const englishMessages = {
   'prompts.language.option.pt-BR': 'Portuguese (Brazil) / Português (Brasil)',
   'errors.plan.fillFailed': 'Failed to fill plan with LLM assistance',
   'errors.fill.promptMissing': 'Prompt file not found at {path}.',
-  'errors.fill.apiKeyMissing': '{provider} API key is required. Set one of {envVars} or use --api-key.'
+  'errors.fill.apiKeyMissing': '{provider} API key is required. Set one of {envVars} or use --api-key.',
+  'info.interactive.returning.title': 'Main menu',
+  'info.interactive.returning.detail': 'Returning to the interactive menu. Pick another action or choose Exit.',
+  'success.interactive.goodbye': 'Goodbye! Thanks for using ai-context.'
 } as const;
 
 export type TranslationKey = keyof typeof englishMessages;
@@ -199,6 +210,12 @@ const portugueseMessages: TranslationDictionary = {
   'ui.generationSummary.timeElapsed': 'Tempo decorrido',
   'ui.generationSummary.nextStep': 'Próximo passo: personalize os templates gerados para o seu projeto.',
   'ui.error.title': '❌ Ocorreu um erro',
+  'info.prompt.title': 'Prompt do sistema',
+  'info.prompt.usingCustom': 'Usando prompt em {path}.',
+  'info.prompt.usingPackage': 'Usando prompt empacotado em {path}.',
+  'info.prompt.usingBundled': 'Usando prompt padrão incluído no ai-context.',
+  'info.update.available.title': 'Atualização disponível',
+  'info.update.available.detail': 'Uma nova versão {latest} está disponível (atual {current}). Atualize com {command}.',
   'commands.init.description': 'Gerar bases de documentação e agentes para um repositório',
   'commands.init.arguments.repoPath': 'Caminho do repositório a ser analisado',
   'commands.init.arguments.type': 'Tipo de base: "docs", "agents" ou "both" (padrão)',
@@ -308,6 +325,8 @@ const portugueseMessages: TranslationDictionary = {
   'prompts.main.choice.scaffold': 'Gerar bases de documentação/agentes',
   'prompts.main.choice.fill': 'Preencher docs e agentes com um LLM',
   'prompts.main.choice.plan': 'Criar um plano de desenvolvimento',
+  'prompts.main.choice.changeLanguage': 'Mudar idioma',
+  'prompts.main.choice.exit': 'Sair do modo interativo',
   'prompts.scaffold.repoPath': 'Caminho do repositório para analisar',
   'prompts.scaffold.includeDocs': 'Gerar bases de documentação?',
   'prompts.scaffold.selectDocs': 'Selecione as guias de documentação para gerar bases',
@@ -315,7 +334,7 @@ const portugueseMessages: TranslationDictionary = {
   'prompts.scaffold.selectAgents': 'Selecione os playbooks de agente para gerar bases',
   'prompts.common.verbose': 'Ativar logs detalhados?',
   'prompts.fill.repoPath': 'Caminho do repositório que contém a base',
-  'prompts.fill.promptPath': 'Prompt de instrução a seguir',
+  'prompts.fill.promptPath': 'Caminho do prompt personalizado (deixe em branco para usar o padrão incluso)',
   'prompts.fill.dryRun': 'Pré-visualizar alterações sem escrever arquivos?',
   'prompts.fill.processAll': 'Processar todos os arquivos Markdown independentemente dos marcadores?',
   'prompts.fill.limit': 'Número máximo de arquivos a atualizar (deixe em branco para todos)',
@@ -344,7 +363,10 @@ const portugueseMessages: TranslationDictionary = {
   'prompts.language.option.pt-BR': 'Português (Brasil) / Portuguese (Brazil)',
   'errors.plan.fillFailed': 'Falha ao preencher o plano com ajuda de um assistente de IA',
   'errors.fill.promptMissing': 'Arquivo de prompt não encontrado em {path}.',
-  'errors.fill.apiKeyMissing': 'É necessária uma chave de API {provider}. Defina uma das variáveis {envVars} ou use --api-key.'
+  'errors.fill.apiKeyMissing': 'É necessária uma chave de API {provider}. Defina uma das variáveis {envVars} ou use --api-key.',
+  'info.interactive.returning.title': 'Menu principal',
+  'info.interactive.returning.detail': 'Voltando ao menu interativo. Escolha outra ação ou selecione Sair.',
+  'success.interactive.goodbye': 'Até logo! Obrigado por usar o ai-context.'
 };
 
 const dictionaries: Record<Locale, TranslationDictionary> = {
