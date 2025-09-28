@@ -14,6 +14,7 @@ import { AgentGenerator } from './generators/agents/agentGenerator';
 import { PlanGenerator } from './generators/plans/planGenerator';
 import { GeneratorUtils } from './generators/shared';
 import { CLIInterface } from './utils/cliUI';
+import { resolvePlanPrompt, resolveScaffoldPrompt } from './utils/promptLoader';
 import { createTranslator, detectLocale, SUPPORTED_LOCALES, normalizeLocale } from './utils/i18n';
 import type { TranslateFn, Locale, TranslationKey } from './utils/i18n';
 import { LLMClientFactory } from './services/llmClientFactory';
@@ -104,7 +105,7 @@ program
   .option('-m, --model <model>', t('commands.fill.options.model'), DEFAULT_MODEL)
   .option('-p, --provider <provider>', t('commands.fill.options.provider'))
   .option('--base-url <url>', t('commands.fill.options.baseUrl'))
-  .option('--prompt <file>', t('commands.fill.options.prompt'), path.join(__dirname, '../prompts/update_scaffold_prompt.md'))
+  .option('--prompt <file>', t('commands.fill.options.prompt'))
   .option('--dry-run', t('commands.fill.options.dryRun'), false)
   .option('--all', t('commands.fill.options.all'), false)
   .option('--limit <number>', t('commands.fill.options.limit'), (value: string) => parseInt(value, 10))
@@ -138,7 +139,7 @@ program
   .option('-m, --model <model>', t('commands.plan.options.model'), DEFAULT_MODEL)
   .option('-p, --provider <provider>', t('commands.plan.options.provider'))
   .option('--base-url <url>', t('commands.plan.options.baseUrl'))
-  .option('--prompt <file>', t('commands.plan.options.prompt'), path.join(__dirname, '../prompts/update_plan_prompt.md'))
+  .option('--prompt <file>', t('commands.plan.options.prompt'))
   .option('--dry-run', t('commands.plan.options.dryRun'), false)
   .option('--include <patterns...>', t('commands.plan.options.include'))
   .option('--exclude <patterns...>', t('commands.plan.options.exclude'))
@@ -359,7 +360,6 @@ export { runInit };
 interface LlmFillOptions {
   repoPath: string;
   outputDir: string;
-  promptPath: string;
   provider: LLMConfig['provider'];
   model: string;
   apiKey: string;
@@ -380,19 +380,13 @@ interface ResolvedLlmConfig {
   provider: LLMConfig['provider'];
   model: string;
   apiKey: string;
-  promptPath: string;
   baseUrl?: string;
 }
 
 async function resolveLlmConfig(
   rawOptions: any,
-  defaults: { promptPath: string; fallbackModel: string }
+  defaults: { fallbackModel: string }
 ): Promise<ResolvedLlmConfig> {
-  const promptPath = path.resolve(rawOptions.prompt || defaults.promptPath);
-  if (!(await fs.pathExists(promptPath))) {
-    throw new Error(t('errors.fill.promptMissing', { path: promptPath }));
-  }
-
   const providerEnvMap = LLMClientFactory.getEnvironmentVariables();
   const defaultModels = LLMClientFactory.getDefaultModels();
 
@@ -470,7 +464,6 @@ async function resolveLlmConfig(
     provider,
     model: model || defaults.fallbackModel,
     apiKey,
-    promptPath,
     baseUrl: rawOptions.baseUrl
   };
 }
@@ -495,10 +488,14 @@ async function runLlmFill(repoPath: string, rawOptions: any): Promise<void> {
     ui.displayWarning(t('warnings.agents.unknown', { values: agentSelection.invalid.join(', ') }));
   }
 
-  const { provider, model, apiKey, promptPath, baseUrl } = await resolveLlmConfig(rawOptions, {
-    promptPath: path.join(__dirname, '../prompts/update_scaffold_prompt.md'),
+  const { provider, model, apiKey, baseUrl } = await resolveLlmConfig(rawOptions, {
     fallbackModel: DEFAULT_MODEL
   });
+
+  const scaffoldPrompt = await resolveScaffoldPrompt(
+    rawOptions.prompt,
+    missingPath => t('errors.fill.promptMissing', { path: missingPath })
+  );
 
   const docAllowlist = docSelection.explicitNone
     ? new Set<string>()
@@ -510,7 +507,6 @@ async function runLlmFill(repoPath: string, rawOptions: any): Promise<void> {
   const options: LlmFillOptions = {
     repoPath: resolvedRepo,
     outputDir,
-    promptPath,
     provider,
     model,
     apiKey,
@@ -527,6 +523,24 @@ async function runLlmFill(repoPath: string, rawOptions: any): Promise<void> {
     selectedAgentFiles: agentAllowlist
   };
 
+  const scaffoldPromptDisplayPath = scaffoldPrompt.path
+    ? path.relative(process.cwd(), scaffoldPrompt.path) || scaffoldPrompt.path
+    : undefined;
+
+  if (scaffoldPrompt.source === 'custom' && scaffoldPromptDisplayPath) {
+    ui.displayInfo(
+      t('info.prompt.title'),
+      t('info.prompt.usingCustom', { path: scaffoldPromptDisplayPath })
+    );
+  } else if (scaffoldPrompt.source === 'package' && scaffoldPromptDisplayPath) {
+    ui.displayInfo(
+      t('info.prompt.title'),
+      t('info.prompt.usingPackage', { path: scaffoldPromptDisplayPath })
+    );
+  } else {
+    ui.displayInfo(t('info.prompt.title'), t('info.prompt.usingBundled'));
+  }
+
   ui.displayWelcome(VERSION);
   ui.displayProjectInfo(options.repoPath, options.outputDir, `fill:${options.provider}`);
 
@@ -542,7 +556,7 @@ async function runLlmFill(repoPath: string, rawOptions: any): Promise<void> {
     'success'
   );
 
-  const systemPrompt = await fs.readFile(options.promptPath, 'utf-8');
+  const systemPrompt = scaffoldPrompt.content;
   const llmClient = LLMClientFactory.createClient({
     apiKey: options.apiKey,
     model: options.model,
@@ -706,10 +720,14 @@ async function runPlanFill(planName: string, rawOptions: any): Promise<void> {
     throw new Error(t('errors.common.repoMissing', { path: repoPath }));
   }
 
-  const { provider, model, apiKey, promptPath, baseUrl } = await resolveLlmConfig(rawOptions, {
-    promptPath: path.join(__dirname, '../prompts/update_plan_prompt.md'),
+  const { provider, model, apiKey, baseUrl } = await resolveLlmConfig(rawOptions, {
     fallbackModel: DEFAULT_MODEL
   });
+
+  const planPrompt = await resolvePlanPrompt(
+    rawOptions.prompt,
+    missingPath => t('errors.fill.promptMissing', { path: missingPath })
+  );
 
   const planContent = await fs.readFile(planPath, 'utf-8');
   const docsIndexPath = path.join(docsDir, 'README.md');
@@ -719,6 +737,24 @@ async function runPlanFill(planName: string, rawOptions: any): Promise<void> {
 
   const referencedDocs = await loadReferencedMarkdown(docsDir, extractPlanReferences(planContent, 'docs'));
   const referencedAgents = await loadReferencedMarkdown(agentsDir, extractPlanReferences(planContent, 'agents'));
+
+  const planPromptDisplayPath = planPrompt.path
+    ? path.relative(process.cwd(), planPrompt.path) || planPrompt.path
+    : undefined;
+
+  if (planPrompt.source === 'custom' && planPromptDisplayPath) {
+    ui.displayInfo(
+      t('info.prompt.title'),
+      t('info.prompt.usingCustom', { path: planPromptDisplayPath })
+    );
+  } else if (planPrompt.source === 'package' && planPromptDisplayPath) {
+    ui.displayInfo(
+      t('info.prompt.title'),
+      t('info.prompt.usingPackage', { path: planPromptDisplayPath })
+    );
+  } else {
+    ui.displayInfo(t('info.prompt.title'), t('info.prompt.usingBundled'));
+  }
 
   ui.displayWelcome(VERSION);
   ui.displayProjectInfo(repoPath, outputDir, `plan-fill:${provider}`);
@@ -730,7 +766,7 @@ async function runPlanFill(planName: string, rawOptions: any): Promise<void> {
   const contextSummary = buildContextSummary(repoStructure);
   ui.updateSpinner(t('spinner.planFill.summaryReady'), 'success');
 
-  const systemPrompt = await fs.readFile(promptPath, 'utf-8');
+  const systemPrompt = planPrompt.content;
   const llmClient = LLMClientFactory.createClient({
     apiKey,
     model,
@@ -1325,9 +1361,8 @@ async function runInteractiveLlmFill(): Promise<void> {
 
   const resolvedRepo = path.resolve(repoPath.trim() || '.');
   const defaultOutput = path.resolve(resolvedRepo, '.context');
-  const defaultPrompt = path.resolve(process.cwd(), 'prompts/update_scaffold_prompt.md');
 
-  const { outputDir, promptPath } = await inquirer.prompt<{ outputDir: string; promptPath: string }>([
+  const { outputDir, promptPath: promptPathInput } = await inquirer.prompt<{ outputDir: string; promptPath: string }>([
     {
       type: 'input',
       name: 'outputDir',
@@ -1338,9 +1373,11 @@ async function runInteractiveLlmFill(): Promise<void> {
       type: 'input',
       name: 'promptPath',
       message: t('prompts.fill.promptPath'),
-      default: defaultPrompt
+      default: ''
     }
   ]);
+
+  const promptPath = promptPathInput.trim() ? path.resolve(promptPathInput.trim()) : undefined;
 
   const { dryRun, processAll } = await inquirer.prompt<{ dryRun: boolean; processAll: boolean }>([
     {
