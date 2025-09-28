@@ -26,7 +26,7 @@ A lightweight CLI that scaffolds living documentation and AI-agent playbooks for
 Use `npx` to run the CLI without installing globally:
 
 ```bash
-npx @ai-coders/context init /path/to/repo
+npx @ai-coders/context
 ```
 
 Or add it to your dev dependencies:
@@ -38,6 +38,10 @@ npm install --save-dev @ai-coders/context
 ## 🚀 Quick Start
 
 ```bash
+# Launch the interactive wizard
+npx @ai-coders/context
+
+
 # Scaffold docs and agents into ./.context
 npx @ai-coders/context init ./my-repo
 
