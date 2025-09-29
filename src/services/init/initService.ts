@@ -7,7 +7,6 @@ import { DocumentationGenerator } from '../../generators/documentation/documenta
 import { AgentGenerator } from '../../generators/agents/agentGenerator';
 import type { CLIInterface } from '../../utils/cliUI';
 import type { TranslateFn } from '../../utils/i18n';
-import { shouldGenerateDocs, shouldGenerateAgents, parseDocSelection, parseAgentSelection } from '../../commands/shared/selection';
 import type { RepoStructure } from '../../types';
 
 export interface InitCommandFlags {
@@ -15,8 +14,6 @@ export interface InitCommandFlags {
   include?: string[];
   exclude?: string[];
   verbose?: boolean;
-  docs?: string[];
-  agents?: string[];
   docsOnly?: boolean;
   agentsOnly?: boolean;
 }
@@ -38,8 +35,6 @@ interface InitOptions {
   verbose: boolean;
   scaffoldDocs: boolean;
   scaffoldAgents: boolean;
-  selectedDocKeys?: string[];
-  selectedAgentTypes?: string[];
 }
 
 export class InitService {
@@ -61,16 +56,6 @@ export class InitService {
 
   async run(repoPath: string, type: string, rawOptions: InitCommandFlags): Promise<void> {
     const resolvedType = resolveScaffoldType(type, rawOptions, this.t);
-    const docSelection = parseDocSelection(rawOptions.docs);
-    const agentSelection = parseAgentSelection(rawOptions.agents);
-
-    if (docSelection.invalid.length > 0) {
-      this.ui.displayWarning(this.t('warnings.docs.unknown', { values: docSelection.invalid.join(', ') }));
-    }
-
-    if (agentSelection.invalid.length > 0) {
-      this.ui.displayWarning(this.t('warnings.agents.unknown', { values: agentSelection.invalid.join(', ') }));
-    }
 
     const options: InitOptions = {
       repoPath: path.resolve(repoPath),
@@ -78,10 +63,8 @@ export class InitService {
       include: rawOptions.include,
       exclude: rawOptions.exclude || [],
       verbose: Boolean(rawOptions.verbose),
-      scaffoldDocs: shouldGenerateDocs(resolvedType, docSelection),
-      scaffoldAgents: shouldGenerateAgents(resolvedType, agentSelection),
-      selectedDocKeys: docSelection.selected,
-      selectedAgentTypes: agentSelection.selected
+      scaffoldDocs: resolvedType === 'docs' || resolvedType === 'both',
+      scaffoldAgents: resolvedType === 'agents' || resolvedType === 'both'
     };
 
     if (!options.scaffoldDocs && !options.scaffoldAgents) {
@@ -124,7 +107,7 @@ export class InitService {
       docsGenerated = await this.documentationGenerator.generateDocumentation(
         repoStructure,
         options.outputDir,
-        { selectedDocs: options.selectedDocKeys },
+        undefined,
         options.verbose
       );
       this.ui.updateSpinner(this.t('spinner.docs.created', { count: docsGenerated }), 'success');
@@ -136,7 +119,7 @@ export class InitService {
       agentsGenerated = await this.agentGenerator.generateAgentPrompts(
         repoStructure,
         options.outputDir,
-        options.selectedAgentTypes,
+        undefined,
         options.verbose
       );
       this.ui.updateSpinner(this.t('spinner.agents.created', { count: agentsGenerated }), 'success');

@@ -8,7 +8,6 @@ import { PlanGenerator } from '../../generators/plans/planGenerator';
 import { GeneratorUtils } from '../../generators/shared';
 import { resolvePlanPrompt } from '../../utils/promptLoader';
 import { resolveLlmConfig } from '../shared/llmConfig';
-import type { SelectionParseResult } from '../../commands/shared/selection';
 import { FileMapper } from '../../utils/fileMapper';
 import { LLMClientFactory } from '../llmClientFactory';
 import type { UsageStats, RepoStructure, LLMConfig } from '../../types';
@@ -16,8 +15,6 @@ import type { UsageStats, RepoStructure, LLMConfig } from '../../types';
 interface PlanScaffoldOptions {
   title?: string;
   summary?: string;
-  agentSelection?: SelectionParseResult;
-  docSelection?: SelectionParseResult;
   force?: boolean;
   verbose?: boolean;
 }
@@ -96,16 +93,8 @@ export class PlanService {
       outputDir: resolvedOutput,
       title: options.title,
       summary: options.summary,
-      selectedAgentTypes: options.agentSelection
-        ? options.agentSelection.explicitNone
-          ? null
-          : options.agentSelection.selected
-        : undefined,
-      selectedDocKeys: options.docSelection
-        ? options.docSelection.explicitNone
-          ? null
-          : options.docSelection.selected
-        : undefined,
+      selectedAgentTypes: undefined,
+      selectedDocKeys: undefined,
       force: Boolean(options.force),
       verbose: Boolean(options.verbose)
     });

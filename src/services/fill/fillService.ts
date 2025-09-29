@@ -9,17 +9,12 @@ import { resolveScaffoldPrompt } from '../../utils/promptLoader';
 import { FileMapper } from '../../utils/fileMapper';
 import { LLMClientFactory } from '../llmClientFactory';
 import type { LLMConfig, RepoStructure, UsageStats } from '../../types';
-import { parseDocSelection, parseAgentSelection } from '../../commands/shared/selection';
-import { getDocFilesByKeys } from '../../generators/documentation/guideRegistry';
-import { getAgentFilesByTypes } from '../../commands/shared/agents';
 import type { BaseLLMClient } from '../baseLLMClient';
 import { resolveLlmConfig } from '../shared/llmConfig';
 
 export interface FillCommandFlags {
   output?: string;
   prompt?: string;
-  docs?: string[];
-  agents?: string[];
   include?: string[];
   exclude?: string[];
   verbose?: boolean;
@@ -43,10 +38,6 @@ interface ResolvedFillOptions {
   dryRun: boolean;
   processAll: boolean;
   limit?: number;
-  selectedDocKeys?: string[];
-  selectedAgentTypes?: string[];
-  selectedDocFiles?: Set<string>;
-  selectedAgentFiles?: Set<string>;
   provider: LLMConfig['provider'];
   model: string;
   apiKey: string;
@@ -89,17 +80,6 @@ export class FillService {
   }
 
   async run(repoPath: string, rawOptions: FillCommandFlags): Promise<void> {
-    const docSelection = parseDocSelection(rawOptions.docs);
-    const agentSelection = parseAgentSelection(rawOptions.agents);
-
-    if (docSelection.invalid.length > 0) {
-      this.ui.displayWarning(this.t('warnings.docs.unknown', { values: docSelection.invalid.join(', ') }));
-    }
-
-    if (agentSelection.invalid.length > 0) {
-      this.ui.displayWarning(this.t('warnings.agents.unknown', { values: agentSelection.invalid.join(', ') }));
-    }
-
     const resolvedRepo = path.resolve(repoPath);
     const outputDir = path.resolve(rawOptions.output || './.context');
     const docsDir = path.join(outputDir, 'docs');
@@ -125,13 +105,6 @@ export class FillService {
       missingPath => this.t('errors.fill.promptMissing', { path: missingPath })
     );
 
-    const docAllowlist = docSelection.explicitNone
-      ? new Set<string>()
-      : getDocFilesByKeys(docSelection.selected);
-    const agentAllowlist = agentSelection.explicitNone
-      ? new Set<string>()
-      : getAgentFilesByTypes(agentSelection.selected);
-
     const options: ResolvedFillOptions = {
       repoPath: resolvedRepo,
       outputDir,
@@ -143,10 +116,6 @@ export class FillService {
       dryRun: Boolean(rawOptions.dryRun),
       processAll: Boolean(rawOptions.all),
       limit: rawOptions.limit,
-      selectedDocKeys: docSelection.selected,
-      selectedAgentTypes: agentSelection.selected,
-      selectedDocFiles: docAllowlist,
-      selectedAgentFiles: agentAllowlist,
       provider: llmConfig.provider,
       model: llmConfig.model,
       apiKey: llmConfig.apiKey,
@@ -250,19 +219,7 @@ export class FillService {
       const isAgent = fullPath.includes(`${path.sep}agents${path.sep}`);
       const fileName = path.basename(fullPath);
 
-      if (isAgent) {
-        if (options.selectedAgentFiles && !options.selectedAgentFiles.has(fileName)) {
-          continue;
-        }
-      } else if (options.selectedDocFiles && !options.selectedDocFiles.has(fileName)) {
-        continue;
-      }
-
-      const explicitSelection = isAgent ? Boolean(options.selectedAgentFiles) : Boolean(options.selectedDocFiles);
-      const shouldInclude =
-        options.processAll ||
-        hasMarkers ||
-        (explicitSelection && (isAgent ? options.selectedAgentFiles!.has(fileName) : options.selectedDocFiles!.has(fileName)));
+      const shouldInclude = options.processAll || hasMarkers;
 
       if (!shouldInclude) {
         continue;

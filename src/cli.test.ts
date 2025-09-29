@@ -35,8 +35,6 @@ describe('CLI Commands', () => {
       expect(output).toContain('(default)');
       [
         '-o, --output <dir>',
-        '--docs <keys...>',
-        '--agents <keys...>',
         '--exclude <patterns...>',
         '--include <patterns...>',
         '-v, --verbose'
@@ -58,8 +56,6 @@ describe('CLI Commands', () => {
         '--dry-run',
         '--all',
         '--limit <number>',
-        '--docs <keys...>',
-        '--agents <keys...>',
         '--exclude <patterns...>',
         '--include <patterns...>',
         '-v, --verbose'
@@ -75,8 +71,6 @@ describe('CLI Commands', () => {
         '-o, --output <dir>',
         '--title <title>',
         '--summary <text>',
-        '--agents <types...>',
-        '--docs <keys...>',
         '-f, --force',
         '--fill',
         '-r, --repo <path>',

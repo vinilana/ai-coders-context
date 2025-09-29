@@ -12,11 +12,8 @@ import { checkForUpdates } from './utils/versionChecker';
 import { createTranslator, detectLocale, SUPPORTED_LOCALES, normalizeLocale } from './utils/i18n';
 import type { TranslateFn, Locale, TranslationKey } from './utils/i18n';
 import { LLMConfig } from './types';
-import { DOCUMENT_GUIDES } from './generators/documentation/guideRegistry';
-import { AGENT_TYPES } from './generators/agents/agentTypes';
 import { InitService } from './services/init/initService';
 import { FillService } from './services/fill/fillService';
-import { parseDocSelection, parseAgentSelection, determineScaffoldType } from './commands/shared/selection';
 import { PlanService } from './services/plan/planService';
 
 dotenv.config();
@@ -35,17 +32,7 @@ const program = new Command();
 const ui = new CLIInterface(t);
 const VERSION = '0.3.1';
 const PACKAGE_NAME = '@ai-coders/context';
-const DEFAULT_MODEL = 'x-ai/grok-4-fast';
-
-const DOC_CHOICES = DOCUMENT_GUIDES.map(guide => ({
-  name: `${guide.title} (${guide.key})`,
-  value: guide.key
-}));
-
-const AGENT_CHOICES = AGENT_TYPES.map(agent => ({
-  name: formatAgentLabel(agent),
-  value: agent
-}));
+const DEFAULT_MODEL = 'anthropic/claude-3.5-sonnet';
 
 const initService = new InitService({
   ui,
@@ -100,28 +87,6 @@ program
   .argument('<repo-path>', t('commands.init.arguments.repoPath'))
   .argument('[type]', t('commands.init.arguments.type'), 'both')
   .option('-o, --output <dir>', t('commands.init.options.output'), './.context')
-  .option('--docs <keys...>', t('commands.init.options.docs'))
-  .option('--agents <keys...>', t('commands.init.options.agents'))
-  .option('--exclude <patterns...>', t('commands.init.options.exclude'))
-  .option('--include <patterns...>', t('commands.init.options.include'))
-  .option('-v, --verbose', t('commands.init.options.verbose'))
-  .action(async (repoPath: string, type: string, options: any) => {
-    try {
-      await initService.run(repoPath, type, options);
-    } catch (error) {
-      ui.displayError(t('errors.init.scaffoldFailed'), error as Error);
-      process.exit(1);
-    }
-  });
-
-program
-  .command('scaffold')
-  .description(t('commands.scaffold.description'))
-  .argument('<repo-path>', t('commands.init.arguments.repoPath'))
-  .argument('[type]', t('commands.init.arguments.type'), 'both')
-  .option('-o, --output <dir>', t('commands.init.options.output'), './.context')
-  .option('--docs <keys...>', t('commands.init.options.docs'))
-  .option('--agents <keys...>', t('commands.init.options.agents'))
   .option('--exclude <patterns...>', t('commands.init.options.exclude'))
   .option('--include <patterns...>', t('commands.init.options.include'))
   .option('-v, --verbose', t('commands.init.options.verbose'))
@@ -147,8 +112,6 @@ program
   .option('--dry-run', t('commands.fill.options.dryRun'), false)
   .option('--all', t('commands.fill.options.all'), false)
   .option('--limit <number>', t('commands.fill.options.limit'), (value: string) => parseInt(value, 10))
-  .option('--docs <keys...>', t('commands.fill.options.docs'))
-  .option('--agents <keys...>', t('commands.fill.options.agents'))
   .option('--exclude <patterns...>', t('commands.fill.options.exclude'))
   .option('--include <patterns...>', t('commands.fill.options.include'))
   .option('-v, --verbose', t('commands.fill.options.verbose'))
@@ -168,8 +131,6 @@ program
   .option('-o, --output <dir>', t('commands.plan.options.output'), './.context')
   .option('--title <title>', t('commands.plan.options.title'))
   .option('--summary <text>', t('commands.plan.options.summary'))
-  .option('--agents <types...>', t('commands.plan.options.agents'))
-  .option('--docs <keys...>', t('commands.plan.options.docs'))
   .option('-f, --force', t('commands.plan.options.force'))
   .option('--fill', t('commands.plan.options.fill'))
   .option('-r, --repo <path>', t('commands.plan.options.repo'))
@@ -183,16 +144,6 @@ program
   .option('--exclude <patterns...>', t('commands.plan.options.exclude'))
   .option('-v, --verbose', t('commands.plan.options.verbose'))
   .action(async (planName: string, rawOptions: any) => {
-    const agentSelection = parseAgentSelection(rawOptions.agents);
-    if (agentSelection.invalid.length > 0) {
-      ui.displayWarning(t('warnings.agents.unknown', { values: agentSelection.invalid.join(', ') }));
-    }
-
-    const docSelection = parseDocSelection(rawOptions.docs);
-    if (docSelection.invalid.length > 0) {
-      ui.displayWarning(t('warnings.docs.unknown', { values: docSelection.invalid.join(', ') }));
-    }
-
     const outputDir = path.resolve(rawOptions.output || './.context');
 
     if (rawOptions.fill) {
@@ -200,8 +151,6 @@ program
         await planService.scaffoldPlanIfNeeded(planName, outputDir, {
           title: rawOptions.title,
           summary: rawOptions.summary,
-          agentSelection,
-          docSelection,
           force: Boolean(rawOptions.force),
           verbose: Boolean(rawOptions.verbose)
         });
@@ -224,8 +173,6 @@ program
         outputDir,
         title: rawOptions.title,
         summary: rawOptions.summary,
-        selectedAgentTypes: agentSelection.explicitNone ? null : agentSelection.selected,
-        selectedDocKeys: docSelection.explicitNone ? null : docSelection.selected,
         force: Boolean(rawOptions.force),
         verbose: Boolean(rawOptions.verbose)
       });
@@ -253,8 +200,6 @@ export async function runGenerate(repoPath: string, options: any): Promise<void>
     include: options?.include,
     exclude: options?.exclude,
     verbose: options?.verbose,
-    docs: options?.docs,
-    agents: options?.agents,
     docsOnly: options?.docsOnly,
     agentsOnly: options?.agentsOnly
   });
@@ -278,13 +223,6 @@ export async function runGuidelines(..._args: unknown[]): Promise<void> {
 
 export async function runLlmFill(repoPath: string, rawOptions: any): Promise<void> {
   await fillService.run(repoPath, rawOptions);
-}
-
-function formatAgentLabel(value: string): string {
-  return value
-    .split('-')
-    .map(segment => segment.charAt(0).toUpperCase() + segment.slice(1))
-    .join(' ');
 }
 
 async function selectLocale(showWelcome: boolean): Promise<void> {
@@ -381,60 +319,19 @@ async function runInteractiveScaffold(): Promise<void> {
     }
   ]);
 
-  const { includeDocs } = await inquirer.prompt<{ includeDocs: boolean }>([
+  const { scaffoldType } = await inquirer.prompt<{ scaffoldType: 'both' | 'docs' | 'agents' }>([
     {
-      type: 'confirm',
-      name: 'includeDocs',
-      message: t('prompts.scaffold.includeDocs'),
-      default: true
+      type: 'list',
+      name: 'scaffoldType',
+      message: t('prompts.scaffold.type'),
+      choices: [
+        { name: t('prompts.scaffold.typeBoth'), value: 'both' },
+        { name: t('prompts.scaffold.typeDocs'), value: 'docs' },
+        { name: t('prompts.scaffold.typeAgents'), value: 'agents' }
+      ],
+      default: 'both'
     }
   ]);
-
-  let selectedDocs: string[] | undefined;
-  if (includeDocs) {
-    const { docs } = await inquirer.prompt<{ docs: string[] }>([
-      {
-        type: 'checkbox',
-        name: 'docs',
-        message: t('prompts.scaffold.selectDocs'),
-        choices: DOC_CHOICES,
-        default: DOC_CHOICES.map(choice => choice.value)
-      }
-    ]);
-    selectedDocs = docs;
-  } else {
-    selectedDocs = [];
-  }
-
-  const { includeAgents } = await inquirer.prompt<{ includeAgents: boolean }>([
-    {
-      type: 'confirm',
-      name: 'includeAgents',
-      message: t('prompts.scaffold.includeAgents'),
-      default: true
-    }
-  ]);
-
-  let selectedAgents: string[] | undefined;
-  if (includeAgents) {
-    const { agents } = await inquirer.prompt<{ agents: string[] }>([
-      {
-        type: 'checkbox',
-        name: 'agents',
-        message: t('prompts.scaffold.selectAgents'),
-        choices: AGENT_CHOICES,
-        default: AGENT_CHOICES.map(choice => choice.value)
-      }
-    ]);
-    selectedAgents = agents;
-  } else {
-    selectedAgents = [];
-  }
-
-  if ((selectedDocs?.length ?? 0) === 0 && (selectedAgents?.length ?? 0) === 0) {
-    ui.displayWarning(t('warnings.interactive.nothingSelected'));
-    return;
-  }
 
   const { verbose } = await inquirer.prompt<{ verbose: boolean }>([
     {
@@ -445,12 +342,8 @@ async function runInteractiveScaffold(): Promise<void> {
     }
   ]);
 
-  const scaffoldType = determineScaffoldType(selectedDocs, selectedAgents);
-
   await runInit(resolvedRepo, scaffoldType, {
     output: outputDir,
-    docs: selectedDocs,
-    agents: selectedAgents,
     verbose
   });
 }
@@ -511,61 +404,6 @@ async function runInteractiveLlmFill(): Promise<void> {
   const limitValue = limit ? parseInt(limit, 10) : undefined;
   const parsedLimit = Number.isNaN(limitValue) ? undefined : limitValue;
 
-  const { includeDocs } = await inquirer.prompt<{ includeDocs: boolean }>([
-    {
-      type: 'confirm',
-      name: 'includeDocs',
-      message: t('prompts.fill.includeDocs'),
-      default: true
-    }
-  ]);
-
-  let selectedDocs: string[] | undefined;
-  if (includeDocs) {
-    const { docs } = await inquirer.prompt<{ docs: string[] }>([
-      {
-        type: 'checkbox',
-        name: 'docs',
-        message: t('prompts.fill.selectDocs'),
-        choices: DOC_CHOICES,
-        default: DOC_CHOICES.map(choice => choice.value)
-      }
-    ]);
-    selectedDocs = docs;
-  } else {
-    selectedDocs = [];
-  }
-
-  const { includeAgents } = await inquirer.prompt<{ includeAgents: boolean }>([
-    {
-      type: 'confirm',
-      name: 'includeAgents',
-      message: t('prompts.fill.includeAgents'),
-      default: true
-    }
-  ]);
-
-  let selectedAgents: string[] | undefined;
-  if (includeAgents) {
-    const { agents } = await inquirer.prompt<{ agents: string[] }>([
-      {
-        type: 'checkbox',
-        name: 'agents',
-        message: t('prompts.fill.selectAgents'),
-        choices: AGENT_CHOICES,
-        default: AGENT_CHOICES.map(choice => choice.value)
-      }
-    ]);
-    selectedAgents = agents;
-  } else {
-    selectedAgents = [];
-  }
-
-  if ((selectedDocs?.length ?? 0) === 0 && (selectedAgents?.length ?? 0) === 0) {
-    ui.displayWarning(t('warnings.interactive.nothingSelected'));
-    return;
-  }
-
   const { specifyModel } = await inquirer.prompt<{ specifyModel: boolean }>([
     {
       type: 'confirm',
@@ -624,8 +462,6 @@ async function runInteractiveLlmFill(): Promise<void> {
   await fillService.run(resolvedRepo, {
     output: outputDir,
     prompt: promptPath,
-    docs: selectedDocs,
-    agents: selectedAgents,
     dryRun,
     all: processAll,
     limit: parsedLimit,
@@ -679,55 +515,6 @@ async function runInteractivePlan(): Promise<void> {
       }
     ]);
 
-    const { includeAgents } = await inquirer.prompt<{ includeAgents: boolean }>([
-      {
-        type: 'confirm',
-        name: 'includeAgents',
-        message: t('prompts.plan.includeAgents'),
-        default: true
-      }
-    ]);
-
-    let selectedAgents: string[] = [];
-    if (includeAgents) {
-      const { agents } = await inquirer.prompt<{ agents: string[] }>([
-        {
-          type: 'checkbox',
-          name: 'agents',
-          message: t('prompts.plan.selectAgents'),
-          choices: AGENT_CHOICES,
-          default: AGENT_CHOICES.map(choice => choice.value)
-        }
-      ]);
-      selectedAgents = agents;
-    }
-
-    const { includeDocs } = await inquirer.prompt<{ includeDocs: boolean }>([
-      {
-        type: 'confirm',
-        name: 'includeDocs',
-        message: t('prompts.plan.includeDocs'),
-        default: true
-      }
-    ]);
-
-    let selectedDocs: string[] = [];
-    if (includeDocs) {
-      const { docs } = await inquirer.prompt<{ docs: string[] }>([
-        {
-          type: 'checkbox',
-          name: 'docs',
-          message: t('prompts.plan.selectDocs'),
-          choices: DOC_CHOICES,
-          default: DOC_CHOICES.map(choice => choice.value)
-        }
-      ]);
-      selectedDocs = docs;
-    }
-
-    const agentSelection = parseAgentSelection(selectedAgents);
-    const docSelection = parseDocSelection(selectedDocs);
-
     const { repoPath } = await inquirer.prompt<{ repoPath: string }>([
       {
         type: 'input',
@@ -749,9 +536,7 @@ async function runInteractivePlan(): Promise<void> {
     try {
       const resolvedOutput = path.resolve(outputDir.trim() || defaultOutput);
       await planService.scaffoldPlanIfNeeded(planName, resolvedOutput, {
-        summary: summary || undefined,
-        agentSelection,
-        docSelection
+        summary: summary || undefined
       });
 
       await planService.fillPlan(planName, {
@@ -775,52 +560,6 @@ async function runInteractivePlan(): Promise<void> {
     }
   ]);
 
-  const { includeAgents } = await inquirer.prompt<{ includeAgents: boolean }>([
-    {
-      type: 'confirm',
-      name: 'includeAgents',
-      message: t('prompts.plan.includeAgents'),
-      default: true
-    }
-  ]);
-
-  let selectedAgents: string[] | null = null;
-  if (includeAgents) {
-    const { agents } = await inquirer.prompt<{ agents: string[] }>([
-      {
-        type: 'checkbox',
-        name: 'agents',
-        message: t('prompts.plan.selectAgents'),
-        choices: AGENT_CHOICES,
-        default: AGENT_CHOICES.map(choice => choice.value)
-      }
-    ]);
-    selectedAgents = agents.length > 0 ? agents : null;
-  }
-
-  const { includeDocs } = await inquirer.prompt<{ includeDocs: boolean }>([
-    {
-      type: 'confirm',
-      name: 'includeDocs',
-      message: t('prompts.plan.includeDocs'),
-      default: true
-    }
-  ]);
-
-  let selectedDocs: string[] | null = null;
-  if (includeDocs) {
-    const { docs } = await inquirer.prompt<{ docs: string[] }>([
-      {
-        type: 'checkbox',
-        name: 'docs',
-        message: t('prompts.plan.selectDocs'),
-        choices: DOC_CHOICES,
-        default: DOC_CHOICES.map(choice => choice.value)
-      }
-    ]);
-    selectedDocs = docs.length > 0 ? docs : null;
-  }
-
   const generator = new PlanGenerator();
   ui.startSpinner(t('spinner.plan.creating'));
 
@@ -829,8 +568,6 @@ async function runInteractivePlan(): Promise<void> {
       planName,
       outputDir: path.resolve(outputDir.trim() || defaultOutput),
       summary: summary || undefined,
-      selectedAgentTypes: selectedAgents,
-      selectedDocKeys: selectedDocs,
       verbose: false
     });
 

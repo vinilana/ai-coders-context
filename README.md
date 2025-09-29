@@ -82,9 +82,9 @@ Need help filling in the scaffold? Use [`prompts/update_scaffold_prompt.md`](./p
 
 Share that prompt verbatim with your assistant to keep updates consistent across teams.
 
-### Available Doc Keys & Agent Types
+### Available Doc Guides & Agent Types
 
-Pass these values to `--docs` / `--agents` (or pick them interactively):
+The scaffold includes the following guides and playbooks out of the box:
 
 - Docs: `project-overview`, `architecture`, `development-workflow`, `testing-strategy`, `glossary`, `data-flow`, `security`, `tooling`
 - Agents: `code-reviewer`, `bug-fixer`, `feature-developer`, `refactoring-specialist`, `test-writer`, `documentation-writer`, `performance-optimizer`, `security-auditor`, `backend-specialist`, `frontend-specialist`, `architect-specialist`
@@ -103,8 +103,6 @@ Arguments:
 
 Options:
   -o, --output <dir>      Output directory (default: ./.context)
-      --docs <keys...>    Doc keys to scaffold (e.g., project-overview, security)
-      --agents <keys...>  Agent types to scaffold (e.g., code-reviewer, feature-developer)
   --exclude <patterns...> Glob patterns to skip during the scan
   --include <patterns...> Glob patterns to explicitly include
   -v, --verbose           Print detailed progress information
@@ -127,8 +125,6 @@ Options:
   -p, --provider <name>   Provider (openrouter only)
       --base-url <url>    Custom base URL for OpenRouter
       --prompt <file>     Instruction prompt to follow (optional; uses bundled instructions when omitted)
-      --docs <keys...>    Doc keys to update (default: all)
-      --agents <keys...>  Agent types to update (default: all)
       --dry-run           Preview changes without writing files
       --all               Process every Markdown file even if no TODO markers remain
       --limit <number>    Maximum number of files to update in one run
@@ -147,8 +143,6 @@ Options:
   -o, --output <dir>      Scaffold directory containing docs/ and agents/ (default: ./.context)
       --title <title>     Custom title for the plan document
       --summary <text>    Seed the plan with a short summary or goal statement
-      --agents <types...> Agent playbooks to highlight (default: all)
-      --docs <keys...>    Documentation guides to reference (default: all)
   -f, --force             Overwrite the plan if it already exists (scaffold mode)
       --fill              Use an LLM to fill or update the plan instead of scaffolding
   -r, --repo <path>       Repository root to summarize for additional context (fill mode)
