@@ -19,14 +19,8 @@ export function renderArchitectureNotes(context: DocumentationTemplateContext): 
     relatedAgents: ['architect-specialist', 'backend-specialist']
   });
 
-  const defaultSections = [
-    'System boundaries and integration points',
-    'Primary modules and their responsibilities',
-    'Data flow between major components',
-    'Dependencies worth highlighting'
-  ];
-
   const directorySnapshot = formatDirectoryStats(context.directoryStats);
+  const coreComponentsSection = directorySnapshot || '- *Add notes for each core component or module.*';
 
   return `${frontMatter}
 <!-- agent-update:start:architecture-notes -->
@@ -34,8 +28,28 @@ export function renderArchitectureNotes(context: DocumentationTemplateContext): 
 
 > TODO: Describe how the system is assembled and why the current design exists.
 
-## Decisions To Record
-${defaultSections.map(item => `- ${item}`).join('\n')}
+## System Architecture Overview
+- Summarize the top-level topology (monolith, modular service, microservices) and deployment model.
+- Highlight how requests traverse the system and where control pivots between layers.
+
+## Core System Components
+${coreComponentsSection}
+
+## Internal System Boundaries
+- Document seams between domains, bounded contexts, or service ownership.
+- Note data ownership, synchronization strategies, and shared contract enforcement.
+
+## System Integration Points
+- Map inbound interfaces (APIs, events, webhooks) and the modules that own them.
+- Capture orchestration touchpoints where this system calls or coordinates other internal services.
+
+## External Service Dependencies
+- List SaaS platforms, third-party APIs, or infrastructure services the system relies on.
+- Describe authentication methods, rate limits, and failure considerations for each dependency.
+
+## Key Decisions & Trade-offs
+- Summarize architectural decisions, experiments, or ADR outcomes that shape the current design.
+- Reference supporting documents and explain why selected approaches won over alternatives.
 
 ## Diagrams
 - Link architectural diagrams or add mermaid definitions here.
