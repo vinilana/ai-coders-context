@@ -32,7 +32,7 @@ export interface LLMConfig {
   apiKey: string;
   model: string;
   baseUrl?: string;
-  provider: 'openrouter' | 'openai' | 'anthropic' | 'grok' | 'gemini';
+  provider: 'openrouter';
 }
 
 export interface CLIOptions {

@@ -123,8 +123,9 @@ Usage: ai-context fill <repo-path>
 Options:
   -o, --output <dir>      Scaffold directory containing docs/ and agents/ (default: ./.context)
   -k, --api-key <key>     API key for the selected LLM provider
-  -m, --model <model>     LLM model to use (default: google/gemini-2.5-flash-preview-05-20)
-  -p, --provider <name>   Provider (openrouter, openai, anthropic, gemini, grok)
+  -m, --model <model>     LLM model to use (default: anthropic/claude-3.5-sonnet)
+  -p, --provider <name>   Provider (openrouter only)
+      --base-url <url>    Custom base URL for OpenRouter
       --prompt <file>     Instruction prompt to follow (optional; uses bundled instructions when omitted)
       --docs <keys...>    Doc keys to update (default: all)
       --agents <keys...>  Agent types to update (default: all)
@@ -152,9 +153,9 @@ Options:
       --fill              Use an LLM to fill or update the plan instead of scaffolding
   -r, --repo <path>       Repository root to summarize for additional context (fill mode)
   -k, --api-key <key>     API key for the selected LLM provider (fill mode)
-  -m, --model <model>     LLM model to use (default: x-ai/grok-4-fast:free)
-  -p, --provider <name>   Provider (openrouter, openai, anthropic, gemini, grok)
-      --base-url <url>    Custom base URL for provider APIs
+  -m, --model <model>     LLM model to use (default: anthropic/claude-3.5-sonnet)
+  -p, --provider <name>   Provider (openrouter only)
+      --base-url <url>    Custom base URL for OpenRouter
       --prompt <file>     Instruction prompt to follow (optional; uses bundled instructions when omitted)
       --dry-run           Preview changes without writing files
       --include <patterns...>  Glob patterns to include during repository analysis

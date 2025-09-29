@@ -35,7 +35,7 @@ const program = new Command();
 const ui = new CLIInterface(t);
 const VERSION = '0.3.1';
 const PACKAGE_NAME = '@ai-coders/context';
-const DEFAULT_MODEL = 'x-ai/grok-4-fast:free';
+const DEFAULT_MODEL = 'x-ai/grok-4-fast';
 
 const DOC_CHOICES = DOCUMENT_GUIDES.map(guide => ({
   name: `${guide.title} (${guide.key})`,
@@ -575,18 +575,9 @@ async function runInteractiveLlmFill(): Promise<void> {
     }
   ]);
 
-  let provider: string | undefined;
+  let provider: LLMConfig['provider'] | undefined;
   let model: string | undefined;
   if (specifyModel) {
-    const providerAnswer = await inquirer.prompt<{ provider: string }>([
-      {
-        type: 'list',
-        name: 'provider',
-        message: t('prompts.fill.provider'),
-        choices: ['openrouter', 'openai', 'anthropic', 'gemini', 'grok']
-      }
-    ]);
-    provider = providerAnswer.provider;
     const modelAnswer = await inquirer.prompt<{ model: string }>([
       {
         type: 'input',
@@ -596,6 +587,7 @@ async function runInteractiveLlmFill(): Promise<void> {
       }
     ]);
     model = modelAnswer.model.trim();
+    provider = 'openrouter';
   }
 
   const { provideApiKey } = await inquirer.prompt<{ provideApiKey: boolean }>([
@@ -638,7 +630,7 @@ async function runInteractiveLlmFill(): Promise<void> {
     all: processAll,
     limit: parsedLimit,
     model,
-    provider: provider as LLMConfig['provider'] | undefined,
+    provider,
     apiKey,
     verbose
   });

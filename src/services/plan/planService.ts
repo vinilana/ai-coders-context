@@ -29,7 +29,7 @@ export interface PlanFillFlags {
   include?: string[];
   exclude?: string[];
   dryRun?: boolean;
-  provider?: string;
+  provider?: LLMConfig['provider'];
   model?: string;
   apiKey?: string;
   baseUrl?: string;
@@ -136,7 +136,7 @@ export class PlanService {
 
     const llmConfig = await resolveLlmConfig({
       rawOptions: {
-        provider: rawOptions.provider as LLMConfig['provider'] | undefined,
+        provider: rawOptions.provider,
         model: rawOptions.model,
         apiKey: rawOptions.apiKey,
         baseUrl: rawOptions.baseUrl
