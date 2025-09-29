@@ -109,7 +109,6 @@ program
   .option('-p, --provider <provider>', t('commands.fill.options.provider'))
   .option('--base-url <url>', t('commands.fill.options.baseUrl'))
   .option('--prompt <file>', t('commands.fill.options.prompt'))
-  .option('--dry-run', t('commands.fill.options.dryRun'), false)
   .option('--limit <number>', t('commands.fill.options.limit'), (value: string) => parseInt(value, 10))
   .option('--exclude <patterns...>', t('commands.fill.options.exclude'))
   .option('--include <patterns...>', t('commands.fill.options.include'))
@@ -377,15 +376,6 @@ async function runInteractiveLlmFill(): Promise<void> {
 
   const promptPath = promptPathInput.trim() ? path.resolve(promptPathInput.trim()) : undefined;
 
-  const { dryRun } = await inquirer.prompt<{ dryRun: boolean }>([
-    {
-      type: 'confirm',
-      name: 'dryRun',
-      message: t('prompts.fill.dryRun'),
-      default: true
-    }
-  ]);
-
   const { limit } = await inquirer.prompt<{ limit: string }>([
     {
       type: 'input',
@@ -455,7 +445,6 @@ async function runInteractiveLlmFill(): Promise<void> {
   await fillService.run(resolvedRepo, {
     output: outputDir,
     prompt: promptPath,
-    dryRun,
     limit: parsedLimit,
     model,
     provider,

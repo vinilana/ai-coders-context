@@ -45,7 +45,7 @@ npx @ai-coders/context init ./my-repo docs
 npx @ai-coders/context init ./my-repo agents --output ./knowledge-base
 
 # Fill docs and agents with the repo context (preview the first 3 updates)
-npx @ai-coders/context fill ./my-repo --output ./.context --dry-run --limit 3
+npx @ai-coders/context fill ./my-repo --output ./.context --limit 3
 
 # Draft a collaboration plan seeded with agent and doc touchpoints
 npx @ai-coders/context plan release-readiness --output ./.context
@@ -130,12 +130,11 @@ Options:
   -p, --provider <name>   Provider (openrouter only)
       --base-url <url>    Custom base URL for OpenRouter
       --prompt <file>     Instruction prompt to follow (optional; uses bundled instructions when omitted)
-      --dry-run           Preview changes without writing files
       --limit <number>    Maximum number of files to update in one run
   -h, --help              Display help for command
 ```
 
-Under the hood, the command loads the prompt above, iterates over every Markdown file in `.context/docs` and `.context/agents`, and asks the LLM to produce the fully updated content. Combine it with `--dry-run` to review responses before committing.
+Under the hood, the command loads the prompt above, iterates over every Markdown file in `.context/docs` and `.context/agents`, and asks the LLM to produce the fully updated content.
 
 ### `plan`
 Create a collaboration plan that links documentation guides and agent playbooks, or fill an existing plan with LLM assistance.

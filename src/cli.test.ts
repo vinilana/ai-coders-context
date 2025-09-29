@@ -52,7 +52,6 @@ describe('CLI Commands', () => {
         '-p, --provider <provider>',
         '--base-url <url>',
         '--prompt <file>',
-        '--dry-run',
         '--limit <number>',
         '--exclude <patterns...>',
         '--include <patterns...>',

@@ -23,7 +23,7 @@ When editing docs or adding new ones, preserve existing markers and introduce ne
 
 ### LLM-assisted Updates
 - Use `ai-context fill <repo>` to apply the shared prompt (`prompts/update_scaffold_prompt.md`) across the scaffold.
-- Pair `--dry-run` with a small `--limit` while validating new instructions.
+- Use a small `--limit` while validating new instructions.
 - Always review the generated Markdown before committing; adjust the prompt if the model misinterprets success criteria.
 
 ## Commit & Pull Request Guidelines

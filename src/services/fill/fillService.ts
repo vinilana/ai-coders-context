@@ -18,7 +18,6 @@ export interface FillCommandFlags {
   include?: string[];
   exclude?: string[];
   verbose?: boolean;
-  dryRun?: boolean;
   limit?: number;
   model?: string;
   provider?: LLMConfig['provider'];
@@ -34,7 +33,6 @@ interface ResolvedFillOptions {
   include?: string[];
   exclude?: string[];
   verbose: boolean;
-  dryRun: boolean;
   limit?: number;
   provider: LLMConfig['provider'];
   model: string;
@@ -110,7 +108,6 @@ export class FillService {
       include: rawOptions.include,
       exclude: rawOptions.exclude,
       verbose: Boolean(rawOptions.verbose),
-      dryRun: Boolean(rawOptions.dryRun),
       limit: rawOptions.limit,
       provider: llmConfig.provider,
       model: llmConfig.model,
@@ -160,7 +157,7 @@ export class FillService {
     }
 
     this.ui.displayStep(3, 3, this.t('steps.fill.summary'));
-    this.printLlmSummary(llmClient.getUsageStats(), results, options.dryRun);
+    this.printLlmSummary(llmClient.getUsageStats(), results);
     this.ui.displaySuccess(this.t('success.fill.completed'));
   }
 
@@ -179,14 +176,6 @@ export class FillService {
       if (!updatedContent || !updatedContent.trim()) {
         this.ui.updateSpinner(this.t('spinner.fill.noContent', { path: target.relativePath }), 'warn');
         return { file: target.relativePath, status: 'skipped', message: this.t('messages.fill.emptyResponse') };
-      }
-
-      if (options.dryRun) {
-        this.ui.updateSpinner(this.t('spinner.fill.dryRunPreview', { path: target.relativePath }), 'info');
-        console.log(chalk.gray(`\n${this.t('messages.fill.previewStart')}`));
-        console.log(updatedContent.trim());
-        console.log(chalk.gray(`${this.t('messages.fill.previewEnd')}\n`));
-        return { file: target.relativePath, status: 'skipped', message: 'dry-run' };
       }
 
       await fs.writeFile(target.fullPath, this.ensureTrailingNewline(updatedContent));
@@ -305,8 +294,7 @@ export class FillService {
 
   private printLlmSummary(
     usage: UsageStats,
-    results: Array<{ file: string; status: 'updated' | 'skipped' | 'failed'; message?: string }>,
-    dryRun: boolean
+    results: Array<{ file: string; status: 'updated' | 'skipped' | 'failed'; message?: string }>
   ): void {
     const updated = results.filter(result => result.status === 'updated').length;
     const skipped = results.filter(result => result.status === 'skipped').length;
@@ -315,7 +303,7 @@ export class FillService {
     console.log('\n' + chalk.bold('📄 LLM Fill Summary'));
     console.log(chalk.gray('─'.repeat(50)));
     console.log(`${chalk.blue('Updated files:')} ${chalk.white(updated.toString())}`);
-    console.log(`${chalk.blue('Skipped files:')} ${chalk.white(skipped.toString())}${dryRun ? chalk.gray(' (dry run)') : ''}`);
+    console.log(`${chalk.blue('Skipped files:')} ${chalk.white(skipped.toString())}`);
     console.log(`${chalk.blue('Failures:')} ${failed.length}`);
 
     if (usage.totalCalls > 0) {
