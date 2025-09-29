@@ -109,9 +109,6 @@ Options:
   -h, --help              Display help for command
 ```
 
-### `scaffold`
-Alias for `init`. Use whichever verb fits your workflow.
-
 ### `fill`
 Use an LLM to refresh scaffolded docs and agent playbooks automatically.
 

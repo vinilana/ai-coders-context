@@ -15,7 +15,6 @@ describe('CLI Commands', () => {
       expect(output).toContain('Scaffold documentation and agent playbooks');
       expect(output).toContain('Commands:');
       expect(output).toContain('init');
-      expect(output).toContain('scaffold');
       expect(output).toContain('fill');
       expect(output).toContain('plan');
     });
