@@ -7,4 +7,8 @@ export { renderGlossary } from './glossaryTemplate';
 export { renderDataFlow } from './dataFlowTemplate';
 export { renderSecurity } from './securityTemplate';
 export { renderToolingGuide } from './toolingTemplate';
+export { renderApiReference } from './apiReferenceTemplate';
+export { renderTroubleshooting } from './troubleshootingTemplate';
+export { renderMigration } from './migrationTemplate';
+export { renderOnboarding } from './onboardingTemplate';
 export type { DocumentationTemplateContext, GuideMeta, DirectoryStat } from './types';
