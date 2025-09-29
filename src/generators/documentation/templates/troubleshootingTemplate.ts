@@ -146,15 +146,15 @@ fi
 **Agent Resolution:**
 \`\`\`bash
 # Agent automatically kills process and restarts
-PORT=${PORT:-3000}
-PID=$(lsof -ti:$PORT)
-if [ -n "$PID" ]; then
-  echo "Killing process $PID on port $PORT"
-  kill -9 $PID
+PORT=\${PORT:-3000}
+PID=$(lsof -ti:\$PORT)
+if [ -n "\$PID" ]; then
+  echo "Killing process \$PID on port \$PORT"
+  kill -9 \$PID
   sleep 2
 fi
 npm start
-# Agent verifies: curl -f http://localhost:$PORT/health
+# Agent verifies: curl -f http://localhost:\$PORT/health
 \`\`\`
 
 #### Error Pattern: "Cannot find module"
@@ -176,9 +176,9 @@ npm start
 \`\`\`bash
 # Agent checks .env.example for required vars
 REQUIRED_VARS=$(grep -v "^#" .env.example | cut -d= -f1)
-for VAR in $REQUIRED_VARS; do
-  if [ -z "${!VAR}" ]; then
-    echo "ERROR: Missing required environment variable: $VAR"
+for VAR in \$REQUIRED_VARS; do
+  if [ -z "\${!VAR}" ]; then
+    echo "ERROR: Missing required environment variable: \$VAR"
     echo "Agent cannot auto-resolve. Escalating to human."
     exit 1
   fi
@@ -186,341 +186,102 @@ done
 \`\`\`
 **Agent Action:** ESCALATE (requires human to set values)
 
-2. **Missing environment variables**
-   \`\`\`bash
-   # Verify environment variables
-   printenv | grep APP_
-
-   # Check .env file exists and is properly formatted
-   cat .env
-
-   # Copy from example if missing
-   cp .env.example .env
-   \`\`\`
-
-3. **Dependency installation failed**
-   \`\`\`bash
-   # Clear cache and reinstall
-   rm -rf node_modules package-lock.json
-   npm install
-
-   # Or with yarn
-   rm -rf node_modules yarn.lock
-   yarn install
-   \`\`\`
-
-4. **Database connection issues**
-   - Verify database is running: \`docker ps\` or check service status
-   - Check connection string in environment variables
-   - Verify database credentials and permissions
-   - Test network connectivity to database host
-
 ---
 
 ### Performance Issues
 
-#### Symptom
-Application responds slowly or times out.
+**Agent Auto-Resolution: CONDITIONAL (depends on cause)**
 
-#### Diagnostic Steps
-1. **Check server resources**
-   \`\`\`bash
-   # CPU and memory usage
-   top
+#### Error Pattern: High CPU Usage
+**Agent Detection:** CPU >80% sustained for >5 minutes
 
-   # Disk I/O
-   iostat -x 1
+**Agent Diagnostic:**
+\`\`\`bash
+# Agent identifies high CPU process
+top -bn1 | head -20
+ps aux --sort=-%cpu | head -10
 
-   # Network throughput
-   iftop
-   \`\`\`
+# Agent checks if it's the application
+APP_PID=$(ps aux | grep "node.*index.js" | grep -v grep | awk '{print \$2}')
+APP_CPU=$(ps aux | grep \$APP_PID | awk '{print \$3}')
 
-2. **Analyze application logs**
-   - Look for slow query warnings
-   - Check for excessive error logs
-   - Identify long-running requests
-
-3. **Profile the application**
-   \`\`\`bash
-   # Node.js profiling
-   node --prof app.js
-   node --prof-process isolate-*.log
-
-   # Or use built-in profiling tools
-   npm run profile  # if configured
-   \`\`\`
-
-#### Common Solutions
-- **Database queries:** Add indexes, optimize N+1 queries, implement query caching
-- **Memory leaks:** Use heap snapshots to identify retained objects
-- **External API calls:** Implement timeouts, circuit breakers, and caching
-- **Large payloads:** Add pagination, compression, or streaming
-
----
-
-### Authentication Failures
-
-#### Symptom
-Users cannot log in or authentication tokens are rejected.
-
-#### Common Causes
-1. **Expired tokens**
-   - Check token expiration time
-   - Implement token refresh flow
-   - Verify system clock synchronization
-
-2. **Invalid credentials**
-   - Verify password hashing algorithm matches
-   - Check for case sensitivity issues
-   - Confirm user exists in database
-
-3. **CORS issues**
-   \`\`\`bash
-   # Check browser console for CORS errors
-   # Verify allowed origins in CORS configuration
-   \`\`\`
-
-4. **JWT verification failures**
-   - Verify JWT secret matches across services
-   - Check token signature algorithm
-   - Validate token structure (header.payload.signature)
+if (( \$(echo "\$APP_CPU > 80" | bc -l) )); then
+  echo "Application consuming high CPU: \${APP_CPU}%"
+  echo "Agent Action: Restart application"
+  pm2 restart app || npm run restart
+else
+  echo "External process consuming CPU - Agent escalating to human"
+fi
+\`\`\`
 
 ---
 
 ### Database Issues
 
-#### Connection Failures
+**Agent Auto-Resolution: CONDITIONAL**
+
+#### Error Pattern: "ECONNREFUSED" (Database)
+**Agent Detection:** Log contains "ECONNREFUSED" with database port (5432, 3306, 27017)
+
+**Agent Diagnostic:**
 \`\`\`bash
-# Test database connectivity
-telnet <db-host> <db-port>
+# Check if database is running
+nc -z localhost 5432 && echo "DB reachable" || echo "DB not reachable"
 
-# Check database service status
-sudo systemctl status postgresql  # or mysql, mongodb, etc.
-
-# Verify connection string format
-# PostgreSQL: postgresql://user:pass@host:5432/dbname
-# MySQL: mysql://user:pass@host:3306/dbname
-# MongoDB: mongodb://user:pass@host:27017/dbname
-\`\`\`
-
-#### Migration Failures
-\`\`\`bash
-# Check migration status
-npm run migrate:status
-
-# Rollback last migration
-npm run migrate:rollback
-
-# Re-run migrations
-npm run migrate:up
-
-# Reset database (DANGER: destroys data)
-npm run db:reset
-\`\`\`
-
-#### Query Performance
-- Enable query logging to identify slow queries
-- Use EXPLAIN ANALYZE to understand query execution
-- Add appropriate indexes
-- Consider query result caching
-
----
-
-### Build & Deployment Issues
-
-#### Build Failures
-\`\`\`bash
-# Clear build cache
-rm -rf dist/ build/ .next/  # depending on framework
-
-# Reinstall dependencies with exact versions
-npm ci
-
-# Check for TypeScript errors
-npm run type-check
-
-# Run build with verbose logging
-npm run build -- --verbose
-\`\`\`
-
-#### Deployment Failures
-- Verify environment variables are set correctly
-- Check deployment logs for specific errors
-- Ensure database migrations ran successfully
-- Verify health checks pass after deployment
-- Check for version conflicts in dependencies
-
----
-
-### API & Integration Issues
-
-#### External API Failures
-1. **Check API status**
-   - Visit service status page
-   - Test endpoints directly with curl
-   - Verify API keys and credentials
-
-2. **Network connectivity**
-   \`\`\`bash
-   # Test DNS resolution
-   nslookup api.external-service.com
-
-   # Test connectivity
-   curl -v https://api.external-service.com
-
-   # Check firewall rules
-   # Add project-specific network checks
-   \`\`\`
-
-3. **Rate limiting**
-   - Check for 429 status codes
-   - Review rate limit headers
-   - Implement exponential backoff
-
-#### Webhook Failures
-- Verify webhook URL is accessible from external networks
-- Check webhook signature validation
-- Review webhook delivery logs
-- Test with webhook testing tools (webhook.site, ngrok)
-
----
-
-### Memory Issues
-
-#### Memory Leaks
-\`\`\`bash
-# Node.js heap snapshot
-node --inspect app.js
-# Then use Chrome DevTools to capture heap snapshots
-
-# Monitor memory usage over time
-watch -n 5 'ps aux | grep node'
-\`\`\`
-
-#### Out of Memory Errors
-- Increase Node.js heap size: \`node --max-old-space-size=4096 app.js\`
-- Review memory-intensive operations (large file processing, caching)
-- Implement streaming for large data sets
-- Use pagination instead of loading all records
-
----
-
-## Log Interpretation
-
-### Log Locations
-- **Application logs:** \`logs/app.log\` or \`/var/log/app/\`
-- **Web server logs:** \`/var/log/nginx/\` or \`/var/log/apache2/\`
-- **System logs:** \`/var/log/syslog\` or \`journalctl\`
-- **Container logs:** \`docker logs <container-id>\`
-
-### Log Levels
-- **ERROR:** Immediate attention required
-- **WARN:** Potential issues that should be investigated
-- **INFO:** Normal operational events
-- **DEBUG:** Detailed information for debugging (disable in production)
-
-### Useful Log Queries
-\`\`\`bash
-# Find errors in last hour
-grep ERROR logs/app.log | tail -100
-
-# Count error types
-grep ERROR logs/app.log | cut -d':' -f2 | sort | uniq -c | sort -rn
-
-# Follow logs in real-time
-tail -f logs/app.log
-
-# Search for specific request ID
-grep "req_abc123" logs/*.log
-
-# Filter by timestamp
-awk '/2024-01-15 10:00/,/2024-01-15 11:00/' logs/app.log
+# If not reachable, attempt to start
+if ! nc -z localhost 5432; then
+  echo "Agent attempting to start database..."
+  docker-compose up -d db || sudo systemctl start postgresql
+  sleep 5
+  nc -z localhost 5432 && echo "✓ Database started" || echo "✗ Failed to start - escalating"
+fi
 \`\`\`
 
 ---
 
-## Debugging Tools
+## Escalation Criteria
 
-### Local Development
-- **Node.js Debugger:** \`node --inspect\` + Chrome DevTools
-- **VS Code Debugger:** Configure launch.json for breakpoints
-- **React DevTools:** Browser extension for React debugging
-- **Redux DevTools:** State inspection for Redux apps
+**Agent must escalate immediately when:**
+- Unknown error pattern (confidence <50%)
+- Data corruption risk (database migration failures, validation errors)
+- Security issue detected (exposed credentials, unauthorized access)
+- Multiple resolution attempts failed (tried 2+ fixes, issue persists)
+- Human approval required (destructive operations, production changes)
 
-### Production Debugging
-- **APM Tools:** DataDog, New Relic, Dynatrace
-- **Log Aggregation:** ELK Stack, Splunk, CloudWatch
-- **Distributed Tracing:** Jaeger, Zipkin, X-Ray
-- **Error Tracking:** Sentry, Rollbar, Bugsnag
+**Escalation format:**
+\`\`\`bash
+# Agent creates structured escalation
+cat > escalation-\$(date +%Y%m%d-%H%M%S).txt <<EOF
+ESCALATION REQUIRED
 
----
+Issue: [Brief description]
+Confidence: [low/medium]
+Risk Level: [low/medium/high]
 
-## Known Issues & Workarounds
+Symptoms:
+- [List observed symptoms]
 
-### Issue: [Describe Known Issue]
-**Symptom:** What users experience
-**Cause:** Root cause if known
-**Workaround:** Temporary solution
-**Status:** Link to tracking issue or PR
-**ETA:** Expected resolution timeframe
+Diagnostics Run:
+- [Commands executed]
+- [Output summary]
 
----
+Resolution Attempts:
+- [What agent tried]
+- [Results]
 
-## Escalation Paths
+Recommendation:
+- [Suggested next steps for human]
 
-### When to Escalate
-- Issue impacts multiple users or critical functionality
-- Security vulnerability discovered
-- Data integrity concerns
-- Infrastructure/service outage
-- Unable to resolve after following troubleshooting steps
-
-### Contact Information
-- **Level 1 - Development Team:** TODO: Add team contact (Slack, email)
-- **Level 2 - Senior Engineers/Tech Leads:** TODO: Add contact
-- **Level 3 - DevOps/Infrastructure:** TODO: Add contact
-- **Emergency/Security:** TODO: Add 24/7 on-call contact
-
-### Escalation Template
-When escalating, provide:
-1. Clear description of the issue
-2. Steps to reproduce
-3. Impact assessment (users affected, severity)
-4. Troubleshooting steps already attempted
-5. Relevant logs and error messages
-6. Timeline and urgency
+Diagnostic Files:
+- diagnostics-*.txt
+- logs/error.log (last 100 lines attached below)
 
 ---
+\$(tail -100 logs/error.log)
+EOF
 
-## Preventive Measures
-
-### Monitoring & Alerts
-- Set up alerts for error rate thresholds
-- Monitor key performance indicators (response time, throughput)
-- Configure health checks for critical services
-- Set up uptime monitoring for external APIs
-
-### Regular Maintenance
-- Review and rotate logs regularly
-- Update dependencies for security patches
-- Monitor disk space and clean up old files
-- Review and optimize slow database queries
-- Conduct regular security audits
-
-### Testing
-- Maintain comprehensive test suite
-- Run integration tests before deployment
-- Conduct load testing for performance-critical features
-- Test disaster recovery procedures
-
----
-
-## Support Resources
-- **Internal Documentation:** [Link to internal wiki/docs]
-- **Team Chat:** TODO: Add Slack/Teams channel
-- **Issue Tracker:** TODO: Add GitHub/Jira link
-- **Runbooks:** TODO: Link to operational runbooks
-- **Post-mortems:** TODO: Link to incident reports
+echo "Escalation created. Agent awaiting human intervention."
+\`\`\`
 
 <!-- agent-readonly:guidance -->
 ## AI Update Checklist
