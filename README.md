@@ -118,7 +118,7 @@ Usage: ai-context fill <repo-path>
 Options:
   -o, --output <dir>      Scaffold directory containing docs/ and agents/ (default: ./.context)
   -k, --api-key <key>     API key for the selected LLM provider
-  -m, --model <model>     LLM model to use (default: anthropic/claude-3.5-sonnet)
+  -m, --model <model>     LLM model to use (default: x-ai/grok-4-fast)
   -p, --provider <name>   Provider (openrouter only)
       --base-url <url>    Custom base URL for OpenRouter
       --prompt <file>     Instruction prompt to follow (optional; uses bundled instructions when omitted)
@@ -144,7 +144,7 @@ Options:
       --fill              Use an LLM to fill or update the plan instead of scaffolding
   -r, --repo <path>       Repository root to summarize for additional context (fill mode)
   -k, --api-key <key>     API key for the selected LLM provider (fill mode)
-  -m, --model <model>     LLM model to use (default: anthropic/claude-3.5-sonnet)
+  -m, --model <model>     LLM model to use (default: x-ai/grok-4-fast)
   -p, --provider <name>   Provider (openrouter only)
       --base-url <url>    Custom base URL for OpenRouter
       --prompt <file>     Instruction prompt to follow (optional; uses bundled instructions when omitted)

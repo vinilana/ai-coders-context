@@ -32,7 +32,7 @@ const program = new Command();
 const ui = new CLIInterface(t);
 const VERSION = '0.3.1';
 const PACKAGE_NAME = '@ai-coders/context';
-const DEFAULT_MODEL = 'anthropic/claude-3.5-sonnet';
+const DEFAULT_MODEL = 'x-ai/grok-4-fast';
 
 const initService = new InitService({
   ui,

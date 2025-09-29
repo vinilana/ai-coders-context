@@ -26,10 +26,8 @@ export class LLMClientFactory {
   static getDefaultModels(): { [key in LLMConfig['provider']]: string[] } {
     return {
       openrouter: [
-        'anthropic/claude-3.5-sonnet',
-        'anthropic/claude-3-opus',
-        'google/gemini-2.0-flash-exp',
-        'meta-llama/llama-3.1-70b-instruct'
+        'x-ai/grok-4-fast',
+
       ]
     };
   }
