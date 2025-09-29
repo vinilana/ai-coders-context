@@ -31,3 +31,7 @@ Stick to Conventional Commits (`feat(scaffolding): ...`, `fix(cli): ...`, `chore
 
 ## Environment & Release Tips
 No API keys are required for scaffolding; remove stale tokens from local `.env` files. Ensure `dist/` reflects the latest build before publishing and double-check that `package.json`'s version matches the intended release tag. If you modify the scaffold templates, refresh `docs/README.md` and `agents/README.md` in your commit so downstream teams receive the latest references.
+## AI Context References
+- Documentation index: `.context/docs/README.md`
+- Agent playbooks: `.context/agents/README.md`
+
