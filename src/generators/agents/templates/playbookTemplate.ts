@@ -33,8 +33,8 @@ ${formatList(bestPractices)}
 ## Key Project Resources
 - Documentation index: [docs/README.md](../docs/README.md)
 - Agent handbook: [agents/README.md](./README.md)
-- Agent knowledge base: [AGENTS.md](../AGENTS.md)
-- Contributor guide: [CONTRIBUTING.md](../CONTRIBUTING.md)
+- Agent knowledge base: [AGENTS.md](../../AGENTS.md)
+- Contributor guide: [CONTRIBUTING.md](../../CONTRIBUTING.md)
 
 ## Repository Starting Points
 ${directoryList || '- Add directory highlights relevant to this agent.'}

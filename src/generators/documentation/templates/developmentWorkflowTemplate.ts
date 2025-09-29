@@ -34,7 +34,7 @@ Outline the day-to-day engineering process for this repository.
 
 ## Code Review Expectations
 - Summarize review checklists and required approvals.
-- Reference [AGENTS.md](../AGENTS.md) for agent collaboration tips.
+- Reference [AGENTS.md](../../AGENTS.md) for agent collaboration tips.
 
 ## Onboarding Tasks
 - Point newcomers to first issues or starter tickets.

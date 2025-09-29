@@ -30,7 +30,7 @@ ${planList}
 ## Related Resources
 - [Agent Handbook](../agents/README.md)
 - [Documentation Index](../docs/README.md)
-- [Agent Knowledge Base](../AGENTS.md)
-- [Contributor Guidelines](../CONTRIBUTING.md)
+- [Agent Knowledge Base](../../AGENTS.md)
+- [Contributor Guidelines](../../CONTRIBUTING.md)
 `;
 }

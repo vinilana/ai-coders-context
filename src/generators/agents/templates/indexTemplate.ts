@@ -23,8 +23,8 @@ ${agentEntries}
 
 ## Related Resources
 - [Documentation Index](../docs/README.md)
-- [Agent Knowledge Base](../AGENTS.md)
-- [Contributor Guidelines](../CONTRIBUTING.md)
+- [Agent Knowledge Base](../../AGENTS.md)
+- [Contributor Guidelines](../../CONTRIBUTING.md)
 `;
 }
 
