@@ -9,7 +9,6 @@ export abstract class BaseLLMClient {
       totalPromptTokens: 0,
       totalCompletionTokens: 0,
       totalTokens: 0,
-      estimatedCost: 0,
       model
     };
   }
@@ -84,23 +83,16 @@ Generate a comprehensive agent prompt that would help an AI assistant work effec
       totalPromptTokens: 0,
       totalCompletionTokens: 0,
       totalTokens: 0,
-      estimatedCost: 0,
       model
     };
   }
 
-  protected trackUsage(usage: any, calculateCostFn: (promptTokens: number, completionTokens: number) => number): void {
+  protected trackUsage(usage: any): void {
     if (usage) {
       this.usageStats.totalCalls++;
       this.usageStats.totalPromptTokens += usage.prompt_tokens || usage.input_tokens || 0;
       this.usageStats.totalCompletionTokens += usage.completion_tokens || usage.output_tokens || 0;
       this.usageStats.totalTokens += usage.total_tokens || (usage.prompt_tokens + usage.completion_tokens) || 0;
-      
-      const requestCost = calculateCostFn(
-        usage.prompt_tokens || usage.input_tokens || 0,
-        usage.completion_tokens || usage.output_tokens || 0
-      );
-      this.usageStats.estimatedCost += requestCost;
     }
   }
 }

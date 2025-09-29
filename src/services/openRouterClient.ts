@@ -1,6 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
 import { OpenRouterConfig } from '../types';
-import { calculateCost } from '../utils/pricing';
 import { BaseLLMClient } from './baseLLMClient';
 
 export class OpenRouterClient extends BaseLLMClient {
@@ -32,14 +31,14 @@ export class OpenRouterClient extends BaseLLMClient {
       messages.push({ role: 'user', content: prompt });
 
       const response = await this.client.post('/chat/completions', {
-        model: this.config.model || 'google/gemini-2.5-pro',
+        model: this.config.model || 'x-ai/grok-4-fast',
         messages,
         max_tokens: 4000,
         temperature: 0.7
       });
 
       // Track usage statistics
-      this.trackUsage(response.data.usage, this.calculateOpenRouterCost.bind(this));
+      this.trackUsage(response.data.usage);
 
       return response.data.choices[0]?.message?.content || '';
     } catch (error) {
@@ -50,7 +49,4 @@ export class OpenRouterClient extends BaseLLMClient {
     }
   }
 
-  private calculateOpenRouterCost(promptTokens: number, completionTokens: number): number {
-    return calculateCost(this.config.model || 'google/gemini-2.5-pro', promptTokens, completionTokens);
-  }
 }

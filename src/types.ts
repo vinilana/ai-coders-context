@@ -68,6 +68,5 @@ export interface UsageStats {
   totalPromptTokens: number;
   totalCompletionTokens: number;
   totalTokens: number;
-  estimatedCost: number;
   model: string;
 }

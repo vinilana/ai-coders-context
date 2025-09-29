@@ -406,7 +406,6 @@ export class PlanService {
       console.log(`${chalk.blue('LLM calls:')} ${usage.totalCalls}`);
       console.log(`${chalk.blue('Prompt tokens:')} ${usage.totalPromptTokens}`);
       console.log(`${chalk.blue('Completion tokens:')} ${usage.totalCompletionTokens}`);
-      console.log(`${chalk.blue('Estimated cost:')} ${usage.estimatedCost.toFixed(4)}`);
       console.log(`${chalk.blue('Model:')} ${usage.model}`);
     }
 
