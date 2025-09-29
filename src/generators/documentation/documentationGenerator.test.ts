@@ -66,6 +66,7 @@ describe('DocumentationGenerator', () => {
   beforeEach(async () => {
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ai-context-docs-'));
     outputDir = path.join(tempDir, '.context');
+    await fs.ensureDir(path.join(tempDir, 'repo'));
   });
 
   afterEach(async () => {
@@ -111,5 +112,32 @@ describe('DocumentationGenerator', () => {
     const docsDir = path.join(outputDir, 'docs');
     const files = (await fs.readdir(docsDir)).sort();
     expect(files).toEqual(['README.md', 'glossary.md', 'project-overview.md']);
+  });
+
+  it('creates AGENTS.md when missing using the default template', async () => {
+    const repoStructure = createRepoStructure(path.join(tempDir, 'repo'));
+
+    await generator.generateDocumentation(repoStructure, outputDir);
+
+    const agentsPath = path.join(repoStructure.rootPath, 'AGENTS.md');
+    const content = await fs.readFile(agentsPath, 'utf8');
+
+    expect(content).toContain('# AGENTS.md');
+    expect(content).toContain('## Dev environment tips');
+    expect(content).toContain('`.context/agents/README.md`');
+  });
+
+  it('adds AI context references to AGENTS.md when present', async () => {
+    const repoPath = path.join(tempDir, 'repo');
+    const agentsPath = path.join(repoPath, 'AGENTS.md');
+    await fs.outputFile(agentsPath, '# Agent Guide\n\nExisting content.\n');
+    const repoStructure = createRepoStructure(repoPath);
+
+    await generator.generateDocumentation(repoStructure, outputDir);
+
+    const updatedAgents = await fs.readFile(agentsPath, 'utf8');
+    expect(updatedAgents).toContain('## AI Context References');
+    expect(updatedAgents).toContain('`.context/docs/README.md`');
+    expect(updatedAgents).toContain('`.context/agents/README.md`');
   });
 });
