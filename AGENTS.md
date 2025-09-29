@@ -12,11 +12,12 @@ The project relies on strict TypeScript; keep new files inside `src` and leave c
 ## Testing Guidelines
 Place Jest specs alongside the files they cover with the `*.test.ts` suffix. Validate CLI behaviours against the compiled binary (`dist/index.js`) to mirror how end-users invoke the tool. Run `npm run build && npm run test` before sending a PR, and include `npm run test -- --coverage` when you touch critical flows or generators.
 
-## Documentation Markers & AI Slots
+## Documentation Markers & AI Tags
 Scaffolded guides now include:
 - YAML front matter describing the AI task (`id`, `ai_update_goal`, `required_inputs`, `success_criteria`).
-- Task wrappers such as `<!-- ai-task:project-overview -->` that bound sections an agent may rewrite.
-- Directory placeholders like `<!-- ai-slot:directory-src -->` signalling content that still needs human-provided context.
+- Update wrappers such as `<!-- agent-update:start:project-overview -->` ... `<!-- agent-update:end -->` that bound sections an agent may rewrite.
+- Placeholders like `<!-- agent-fill:directory-src -->` signalling content that still needs human-provided context.
+- Guard rails such as `<!-- agent-readonly:guidance -->` marking sections that should remain instructional unless a maintainer says otherwise.
 
 When editing docs or adding new ones, preserve existing markers and introduce new ones where agents should focus future updates. Reference these markers from agent playbooks when you create specialised workflows.
 

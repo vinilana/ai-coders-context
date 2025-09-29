@@ -38,7 +38,7 @@ describe('PlanGenerator', () => {
 
     const content = await fs.readFile(planPath, 'utf8');
     expect(content).toContain('id: plan-new-initiative');
-    expect(content).toContain('<!-- ai-task:plan-new-initiative -->');
+    expect(content).toContain('<!-- agent-update:start:plan-new-initiative -->');
     expect(content).toContain('# New Initiative Plan');
     expect(content).toContain('## Working Phases');
     expect(content).toContain('**Commit Checkpoint**');

@@ -74,7 +74,7 @@ describe('DocumentationGenerator', () => {
     }
   });
 
-  it('generates all guides with ai-task markers by default', async () => {
+  it('generates all guides with agent-update markers by default', async () => {
     const repoStructure = createRepoStructure(path.join(tempDir, 'repo'));
 
     const created = await generator.generateDocumentation(repoStructure, outputDir);
@@ -88,11 +88,11 @@ describe('DocumentationGenerator', () => {
 
     const indexContent = await fs.readFile(path.join(docsDir, 'README.md'), 'utf8');
     expect(indexContent).toContain('id: docs-index');
-    expect(indexContent).toContain('<!-- ai-task:docs-index -->');
+    expect(indexContent).toContain('<!-- agent-update:start:docs-index -->');
 
     const overviewContent = await fs.readFile(path.join(docsDir, 'project-overview.md'), 'utf8');
     expect(overviewContent).toContain('ai_update_goal');
-    expect(overviewContent).toContain('<!-- ai-task:project-overview -->');
+    expect(overviewContent).toContain('<!-- agent-update:start:project-overview -->');
     expect(overviewContent).toContain('Root path:');
   });
 

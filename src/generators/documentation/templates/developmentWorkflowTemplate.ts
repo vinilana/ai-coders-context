@@ -18,7 +18,7 @@ export function renderDevelopmentWorkflow(): string {
   });
 
   return `${frontMatter}
-<!-- ai-task:development-workflow -->
+<!-- agent-update:start:development-workflow -->
 # Development Workflow
 
 Outline the day-to-day engineering process for this repository.
@@ -40,6 +40,7 @@ Outline the day-to-day engineering process for this repository.
 - Point newcomers to first issues or starter tickets.
 - Link to internal runbooks or dashboards.
 
+<!-- agent-readonly:guidance -->
 ## AI Update Checklist
 1. Confirm branching/release steps with CI configuration and recent tags.
 2. Verify local commands against \`package.json\`; ensure flags and scripts still exist.
@@ -47,11 +48,12 @@ Outline the day-to-day engineering process for this repository.
 4. Refresh onboarding links (boards, dashboards) to their latest URLs.
 5. Highlight any manual steps that should become automation follow-ups.
 
+<!-- agent-readonly:sources -->
 ## Acceptable Sources
 - CONTRIBUTING guidelines and \`AGENTS.md\`.
 - Build pipelines, branch protection rules, or release scripts.
 - Issue tracker boards used for onboarding or triage.
 
-<!-- /ai-task -->
+<!-- agent-update:end -->
 `;
 }

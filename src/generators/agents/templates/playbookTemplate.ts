@@ -12,12 +12,14 @@ export function renderAgentPlaybook(
   const responsibilities = AGENT_RESPONSIBILITIES[agentType] || ['Clarify this agent\'s responsibilities.'];
   const bestPractices = AGENT_BEST_PRACTICES[agentType] || ['Document preferred workflows.'];
   const directoryList = formatDirectoryList(topLevelDirectories);
+  const markerId = `agent-${agentType}`;
 
   const touchpointList = touchpoints
     .map(tp => `- [${tp.title}](${tp.path}) — ${tp.marker}`)
     .join('\n');
 
-  return `# ${title} Agent Playbook
+  return `<!-- agent-update:start:${markerId} -->
+# ${title} Agent Playbook
 
 ## Mission
 Describe how the ${title.toLowerCase()} agent supports the team and when to engage it.
@@ -39,10 +41,11 @@ ${directoryList || '- Add directory highlights relevant to this agent.'}
 ## Documentation Touchpoints
 ${touchpointList}
 
+<!-- agent-readonly:guidance -->
 ## Collaboration Checklist
 1. Confirm assumptions with issue reporters or maintainers.
 2. Review open pull requests affecting this area.
-3. Update the relevant doc section listed above and remove any resolved \`ai-slot\` placeholders.
+3. Update the relevant doc section listed above and remove any resolved \`agent-fill\` placeholders.
 4. Capture learnings back in [docs/README.md](../docs/README.md) or the appropriate task marker.
 
 ## Hand-off Notes
@@ -52,6 +55,7 @@ Summarize outcomes, remaining risks, and suggested follow-up actions after the a
 - Reference commits, issues, or ADRs used to justify updates.
 - Command output or logs that informed recommendations.
 - Follow-up items for maintainers or future agent runs.
+<!-- agent-update:end -->
 `;
 }
 

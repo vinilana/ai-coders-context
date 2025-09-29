@@ -20,7 +20,7 @@ export class AgentGenerator {
     {
       title: 'Documentation Index',
       path: '../docs/README.md',
-      marker: 'ai-task:docs-index'
+      marker: 'agent-update:docs-index'
     },
     ...DOCUMENT_GUIDES.map(guide => ({
       title: guide.title,

@@ -44,7 +44,7 @@ describe('runInit integration', () => {
     expect(await fs.pathExists(agentsDir)).toBe(true);
 
     const docsIndex = await fs.readFile(path.join(docsDir, 'README.md'), 'utf8');
-    expect(docsIndex).toContain('<!-- ai-task:docs-index -->');
+    expect(docsIndex).toContain('<!-- agent-update:start:docs-index -->');
     expect(docsIndex).toContain('Repository Snapshot');
 
     const agentIndex = await fs.readFile(path.join(agentsDir, 'README.md'), 'utf8');

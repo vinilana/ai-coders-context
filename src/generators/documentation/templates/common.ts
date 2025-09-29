@@ -29,14 +29,14 @@ export function formatDirectoryList(
       }
 
       const slotId = slugify(dir);
-      return `- <!-- ai-slot:directory-${slotId} -->\`${dir}/\` — TODO: Describe the purpose of this directory.<!-- /ai-slot -->`;
+      return `- <!-- agent-fill:directory-${slotId} -->\`${dir}/\` — TODO: Describe the purpose of this directory.<!-- /agent-fill -->`;
     })
     .join('\n');
 }
 
 export function buildDocumentMapTable(guides: DocumentationTemplateContext['guides']): string {
   const rows = guides.map(meta => `| ${meta.title} | \`${meta.file}\` | ${meta.marker} | ${meta.primaryInputs} |`);
-  return ['| Guide | File | Task Marker | Primary Inputs |', '| --- | --- | --- | --- |', ...rows].join('\n');
+  return ['| Guide | File | AI Marker | Primary Inputs |', '| --- | --- | --- | --- |', ...rows].join('\n');
 }
 
 export function formatDirectoryStats(stats: DirectoryStat[]): string {

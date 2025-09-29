@@ -215,7 +215,7 @@ export class FillService {
 
     for (const fullPath of candidates) {
       const content = await fs.readFile(fullPath, 'utf-8');
-      const hasMarkers = /<!--\s*ai-task:/.test(content) || /<!--\s*ai-slot:/.test(content) || /TODO/.test(content);
+      const hasMarkers = /<!--\s*agent-update:/.test(content) || /<!--\s*agent-fill:/.test(content) || /TODO/.test(content);
       const isAgent = fullPath.includes(`${path.sep}agents${path.sep}`);
       const fileName = path.basename(fullPath);
 
@@ -289,8 +289,8 @@ export class FillService {
 
   private buildUserPrompt(relativePath: string, currentContent: string, contextSummary: string, isAgent: boolean): string {
     const guidance: string[] = [
-      '- Preserve YAML front matter and existing `ai-task` sections.',
-      '- Replace TODOs and resolve `ai-slot` placeholders with concrete information.',
+      '- Preserve YAML front matter and existing `agent-update` sections.',
+      '- Replace TODOs and resolve `agent-fill` placeholders with concrete information.',
       '- Ensure success criteria in the front matter are satisfied.',
       '- Return only the full updated Markdown for this file.'
     ];

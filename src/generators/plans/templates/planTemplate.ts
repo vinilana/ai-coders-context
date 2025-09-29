@@ -17,7 +17,7 @@ export function renderPlanTemplate(context: PlanTemplateContext): string {
     ? docs
         .map(doc => `| ${doc.title} | [${doc.file}](../docs/${doc.file}) | ${doc.marker} | ${doc.primaryInputs} |`)
         .join('\n')
-    : '| Documentation Index | [README.md](../docs/README.md) | ai-task:docs-index | Current docs directory listing |';
+    : '| Documentation Index | [README.md](../docs/README.md) | agent-update:docs-index | Current docs directory listing |';
 
   return `---
 id: plan-${slug}
@@ -34,7 +34,7 @@ related_agents:
 ${relatedAgents}
 ---
 
-<!-- ai-task:plan-${slug} -->
+<!-- agent-update:start:plan-${slug} -->
 # ${title} Plan
 
 > ${summary?.trim() || 'TODO: Summarize the desired outcome and the problem this plan addresses.'}
@@ -82,6 +82,7 @@ ${docsTableRows}
 **Commit Checkpoint**
 - Record the validation evidence and create a commit signalling the handoff completion (for example, \`git commit -m "chore(plan): complete phase 3 validation"\`).
 
+<!-- agent-readonly:guidance -->
 ## Agent Playbook Checklist
 1. Pick the agent that matches your task.
 2. Enrich the template with project-specific context or links.
@@ -92,6 +93,6 @@ ${docsTableRows}
 - TODO: List artifacts to collect (logs, PR links, test runs, design notes).
 - TODO: Record follow-up actions or owners.
 
-<!-- /ai-task:plan-${slug} -->
+<!-- agent-update:end -->
 `;
 }
