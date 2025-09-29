@@ -53,7 +53,6 @@ describe('CLI Commands', () => {
         '--base-url <url>',
         '--prompt <file>',
         '--dry-run',
-        '--all',
         '--limit <number>',
         '--exclude <patterns...>',
         '--include <patterns...>',

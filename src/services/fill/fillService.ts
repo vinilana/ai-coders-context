@@ -19,7 +19,6 @@ export interface FillCommandFlags {
   exclude?: string[];
   verbose?: boolean;
   dryRun?: boolean;
-  all?: boolean;
   limit?: number;
   model?: string;
   provider?: LLMConfig['provider'];
@@ -36,7 +35,6 @@ interface ResolvedFillOptions {
   exclude?: string[];
   verbose: boolean;
   dryRun: boolean;
-  processAll: boolean;
   limit?: number;
   provider: LLMConfig['provider'];
   model: string;
@@ -50,7 +48,6 @@ interface TargetFile {
   relativePath: string;
   isAgent: boolean;
   content: string;
-  hasMarkers: boolean;
 }
 
 interface FillServiceDependencies {
@@ -114,7 +111,6 @@ export class FillService {
       exclude: rawOptions.exclude,
       verbose: Boolean(rawOptions.verbose),
       dryRun: Boolean(rawOptions.dryRun),
-      processAll: Boolean(rawOptions.all),
       limit: rawOptions.limit,
       provider: llmConfig.provider,
       model: llmConfig.model,
@@ -215,18 +211,9 @@ export class FillService {
 
     for (const fullPath of candidates) {
       const content = await fs.readFile(fullPath, 'utf-8');
-      const hasMarkers = /<!--\s*agent-update:/.test(content) || /<!--\s*agent-fill:/.test(content) || /TODO/.test(content);
       const isAgent = fullPath.includes(`${path.sep}agents${path.sep}`);
-      const fileName = path.basename(fullPath);
-
-      const shouldInclude = options.processAll || hasMarkers;
-
-      if (!shouldInclude) {
-        continue;
-      }
-
       const relativePath = path.relative(options.outputDir, fullPath);
-      targets.push({ fullPath, relativePath, isAgent, content, hasMarkers });
+      targets.push({ fullPath, relativePath, isAgent, content });
 
       if (options.limit && targets.length >= options.limit) {
         break;

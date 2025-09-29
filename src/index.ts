@@ -110,7 +110,6 @@ program
   .option('--base-url <url>', t('commands.fill.options.baseUrl'))
   .option('--prompt <file>', t('commands.fill.options.prompt'))
   .option('--dry-run', t('commands.fill.options.dryRun'), false)
-  .option('--all', t('commands.fill.options.all'), false)
   .option('--limit <number>', t('commands.fill.options.limit'), (value: string) => parseInt(value, 10))
   .option('--exclude <patterns...>', t('commands.fill.options.exclude'))
   .option('--include <patterns...>', t('commands.fill.options.include'))
@@ -378,18 +377,12 @@ async function runInteractiveLlmFill(): Promise<void> {
 
   const promptPath = promptPathInput.trim() ? path.resolve(promptPathInput.trim()) : undefined;
 
-  const { dryRun, processAll } = await inquirer.prompt<{ dryRun: boolean; processAll: boolean }>([
+  const { dryRun } = await inquirer.prompt<{ dryRun: boolean }>([
     {
       type: 'confirm',
       name: 'dryRun',
       message: t('prompts.fill.dryRun'),
       default: true
-    },
-    {
-      type: 'confirm',
-      name: 'processAll',
-      message: t('prompts.fill.processAll'),
-      default: false
     }
   ]);
 
@@ -463,7 +456,6 @@ async function runInteractiveLlmFill(): Promise<void> {
     output: outputDir,
     prompt: promptPath,
     dryRun,
-    all: processAll,
     limit: parsedLimit,
     model,
     provider,

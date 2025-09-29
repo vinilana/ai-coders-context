@@ -131,12 +131,11 @@ Options:
       --base-url <url>    Custom base URL for OpenRouter
       --prompt <file>     Instruction prompt to follow (optional; uses bundled instructions when omitted)
       --dry-run           Preview changes without writing files
-      --all               Process every Markdown file even if no TODO markers remain
       --limit <number>    Maximum number of files to update in one run
   -h, --help              Display help for command
 ```
 
-Under the hood, the command loads the prompt above, scans for `agent-update` or `agent-fill` markers, and asks the LLM to produce the fully updated Markdown. Combine it with `--dry-run` to review responses before committing.
+Under the hood, the command loads the prompt above, iterates over every Markdown file in `.context/docs` and `.context/agents`, and asks the LLM to produce the fully updated content. Combine it with `--dry-run` to review responses before committing.
 
 ### `plan`
 Create a collaboration plan that links documentation guides and agent playbooks, or fill an existing plan with LLM assistance.
