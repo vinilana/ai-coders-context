@@ -1,12 +1,13 @@
 import * as path from 'path';
 import * as fs from 'fs-extra';
+import inquirer from 'inquirer';
 import chalk from 'chalk';
 
 import { FileMapper } from '../../utils/fileMapper';
 import { DocumentationGenerator } from '../../generators/documentation/documentationGenerator';
 import { AgentGenerator } from '../../generators/agents/agentGenerator';
 import type { CLIInterface } from '../../utils/cliUI';
-import type { TranslateFn } from '../../utils/i18n';
+import type { TranslateFn, TranslationKey } from '../../utils/i18n';
 import type { RepoStructure } from '../../types';
 
 export interface InitCommandFlags {
@@ -73,6 +74,7 @@ export class InitService {
     }
 
     await this.ensurePaths(options);
+    await this.confirmOverwriteIfNeeded(options);
 
     this.ui.displayWelcome(this.version);
     this.ui.displayProjectInfo(options.repoPath, options.outputDir, resolvedType);
@@ -95,6 +97,53 @@ export class InitService {
 
     this.ui.displayGenerationSummary(docsGenerated, agentsGenerated);
     this.ui.displaySuccess(this.t('success.scaffold.ready', { path: chalk.cyan(options.outputDir) }));
+  }
+
+  private async confirmOverwriteIfNeeded(options: InitOptions): Promise<void> {
+    const prompts: Array<{ key: 'docs' | 'agents'; path: string }> = [];
+
+    if (options.scaffoldDocs) {
+      const docsPath = path.join(options.outputDir, 'docs');
+      if (await this.directoryHasContent(docsPath)) {
+        prompts.push({ key: 'docs', path: docsPath });
+      }
+    }
+
+    if (options.scaffoldAgents) {
+      const agentsPath = path.join(options.outputDir, 'agents');
+      if (await this.directoryHasContent(agentsPath)) {
+        prompts.push({ key: 'agents', path: agentsPath });
+      }
+    }
+
+    for (const prompt of prompts) {
+      const questionKey: TranslationKey = prompt.key === 'docs'
+        ? 'prompts.init.confirmOverwriteDocs'
+        : 'prompts.init.confirmOverwriteAgents';
+
+      const answer = await inquirer.prompt<{ overwrite: boolean }>([
+        {
+          type: 'confirm',
+          name: 'overwrite',
+          default: false,
+          message: this.t(questionKey, { path: prompt.path })
+        }
+      ]);
+
+      if (!answer.overwrite) {
+        throw new Error(this.t('errors.init.overwriteDeclined'));
+      }
+    }
+  }
+
+  private async directoryHasContent(dirPath: string): Promise<boolean> {
+    const exists = await fs.pathExists(dirPath);
+    if (!exists) {
+      return false;
+    }
+
+    const entries = await fs.readdir(dirPath);
+    return entries.length > 0;
   }
 
   private async generateScaffolds(options: InitOptions, repoStructure: RepoStructure): Promise<{ docsGenerated: number; agentsGenerated: number }> {
