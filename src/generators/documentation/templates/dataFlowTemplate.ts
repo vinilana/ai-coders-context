@@ -1,26 +1,8 @@
-import { createFrontMatter } from './frontMatter';
 import { DocumentationTemplateContext } from './types';
 import { formatInlineDirectoryList } from './common';
 
 export function renderDataFlow(context: DocumentationTemplateContext): string {
-  const frontMatter = createFrontMatter({
-    id: 'data-flow',
-    goal: 'Describe how information moves through the system and where it integrates with external services.',
-    requiredInputs: [
-      'Architecture diagrams or sequence flows',
-      'Integration specs (APIs, queues, webhooks, third-party services)',
-      'Notes on batch jobs, schedulers, or ETL processes'
-    ],
-    successCriteria: [
-      'Highlights inbound, internal, and outbound flows',
-      'Documents transformation points and trust boundaries',
-      'Identifies failure modes and retry/backoff behaviour'
-    ],
-    relatedAgents: ['architect-specialist', 'backend-specialist']
-  });
-
-  return `${frontMatter}
-<!-- agent-update:start:data-flow -->
+  return `<!-- agent-update:start:data-flow -->
 # Data Flow & Integrations
 
 Explain how data enters, moves through, and exits the system, including interactions with external services.

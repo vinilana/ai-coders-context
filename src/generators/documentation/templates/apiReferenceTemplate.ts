@@ -1,24 +1,5 @@
-import { createFrontMatter } from './frontMatter';
-
 export function renderApiReference(): string {
-  const frontMatter = createFrontMatter({
-    id: 'api-reference',
-    goal: 'Enable AI agents to programmatically interact with APIs, test endpoints, and validate responses.',
-    requiredInputs: [
-      'API route files (routes/, controllers/, app.js)',
-      'OpenAPI/Swagger spec if available',
-      'Authentication middleware implementations'
-    ],
-    successCriteria: [
-      'Agent can construct valid API requests from documentation',
-      'Agent can authenticate and handle token refresh',
-      'Agent can interpret error responses and retry appropriately'
-    ],
-    relatedAgents: ['backend-specialist', 'documentation-writer', 'test-writer']
-  });
-
-  return `${frontMatter}
-<!-- agent-update:start:api-reference -->
+  return `<!-- agent-update:start:api-reference -->
 # API Reference
 
 **Purpose:** Enable AI agents to programmatically interact with all API endpoints.
@@ -50,20 +31,20 @@ API_BASE=$API_BASE_STAGING  # Change as needed
 ### Step 1: Obtain Token
 \`\`\`bash
 # Agent executes login
-TOKEN_RESPONSE=$(curl -s -X POST "${API_BASE}/auth/login" \\
+TOKEN_RESPONSE=$(curl -s -X POST "\${API_BASE}/auth/login" \\
   -H "Content-Type: application/json" \\
   -d '{
     "email": "agent@example.com",
-    "password": "'${AGENT_PASSWORD}'"
+    "password": "'\${AGENT_PASSWORD}'"
   }')
 
 # Agent extracts token
-TOKEN=$(echo $TOKEN_RESPONSE | jq -r '.token')
-EXPIRES_IN=$(echo $TOKEN_RESPONSE | jq -r '.expiresIn')
+TOKEN=$(echo \$TOKEN_RESPONSE | jq -r '.token')
+EXPIRES_IN=$(echo \$TOKEN_RESPONSE | jq -r '.expiresIn')
 
 # Agent stores token with expiration
-echo "$TOKEN" > .api-token
-echo $(($(date +%s) + $EXPIRES_IN)) > .api-token-expires
+echo "\$TOKEN" > .api-token
+echo \$((\$(date +%s) + \$EXPIRES_IN)) > .api-token-expires
 
 # Expected response structure
 # {
@@ -77,8 +58,8 @@ echo $(($(date +%s) + $EXPIRES_IN)) > .api-token-expires
 ### Step 2: Use Token in Requests
 \`\`\`bash
 # Agent includes token in all authenticated requests
-curl -X GET "${API_BASE}/resources" \\
-  -H "Authorization: Bearer $TOKEN" \\
+curl -X GET "\${API_BASE}/resources" \\
+  -H "Authorization: Bearer \$TOKEN" \\
   -H "Content-Type: application/json"
 \`\`\`
 
@@ -144,20 +125,20 @@ function make_api_request() {
   RESET=$(echo "$RESPONSE" | grep -i "x-ratelimit-reset" | cut -d: -f2 | tr -d ' \\r')
 
   # Agent checks if approaching limit
-  if [ "$REMAINING" -lt "10" ]; then
+  if [ "\$REMAINING" -lt "10" ]; then
     NOW=$(date +%s)
-    WAIT=$((RESET - NOW))
-    echo "Rate limit low ($REMAINING remaining), waiting ${WAIT}s until reset..."
-    sleep $WAIT
+    WAIT=\$((RESET - NOW))
+    echo "Rate limit low (\$REMAINING remaining), waiting \${WAIT}s until reset..."
+    sleep \$WAIT
   fi
 
   # Agent handles 429 (rate limited)
-  HTTP_CODE=$(echo "$RESPONSE" | grep "HTTP/" | awk '{print $2}')
-  if [ "$HTTP_CODE" == "429" ]; then
-    RETRY_AFTER=$(echo "$RESPONSE" | grep -i "retry-after" | cut -d: -f2 | tr -d ' \\r')
-    echo "Rate limited, retrying after ${RETRY_AFTER}s..."
-    sleep "$RETRY_AFTER"
-    make_api_request "$url" "$method" "$data"  # Retry
+  HTTP_CODE=$(echo "\$RESPONSE" | grep "HTTP/" | awk '{print \$2}')
+  if [ "\$HTTP_CODE" == "429" ]; then
+    RETRY_AFTER=$(echo "\$RESPONSE" | grep -i "retry-after" | cut -d: -f2 | tr -d ' \\r')
+    echo "Rate limited, retrying after \${RETRY_AFTER}s..."
+    sleep "\$RETRY_AFTER"
+    make_api_request "\$url" "\$method" "\$data"  # Retry
   fi
 
   echo "$RESPONSE"

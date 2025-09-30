@@ -1,30 +1,14 @@
-import { createFrontMatter } from './frontMatter';
 import { DocumentationTemplateContext } from './types';
 import { formatDirectoryList } from './common';
 
 export function renderProjectOverview(context: DocumentationTemplateContext): string {
-  const frontMatter = createFrontMatter({
-    id: 'project-overview',
-    goal: 'Explain why the project exists, who it serves, and how to get productive quickly.',
-    requiredInputs: [
-      'Latest product or roadmap brief',
-      'Repository metadata (README highlights, package manifests)',
-      'List of stakeholders or domain experts for verification'
-    ],
-    successCriteria: [
-      'Quick Facts mirror current tooling, stack, and entry points',
-      'Directory map explains where primary capabilities live',
-      'Next steps point to authoritative specs or dashboards'
-    ],
-    relatedAgents: ['documentation-writer', 'architect-specialist']
-  });
 
   const directoryList = formatDirectoryList(context, true);
   const languageSummary = context.primaryLanguages.length > 0
     ? context.primaryLanguages.map(lang => `- ${lang.extension} (${lang.count} files)`).join('\n')
     : '- Language mix pending analysis.';
 
-  return `${frontMatter}
+  return `
 <!-- agent-update:start:project-overview -->
 # Project Overview
 

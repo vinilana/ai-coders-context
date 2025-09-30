@@ -1,23 +1,7 @@
-import { createFrontMatter } from './frontMatter';
 
 export function renderToolingGuide(): string {
-  const frontMatter = createFrontMatter({
-    id: 'tooling-guide',
-    goal: 'Help contributors set up local environments, automation, and productivity tooling quickly.',
-    requiredInputs: [
-      'Project-specific CLI commands or scripts',
-      'Preferred IDE/editor configurations',
-      'Automation hooks (pre-commit, CI helpers, generators)'
-    ],
-    successCriteria: [
-      'Includes copy/paste-ready commands for installation and diagnostics',
-      'Highlights required extensions or plugins',
-      'Links to automation or productivity aids maintained by the team'
-    ],
-    relatedAgents: ['feature-developer', 'documentation-writer']
-  });
 
-  return `${frontMatter}
+  return `
 <!-- agent-update:start:tooling -->
 # Tooling & Productivity Guide
 

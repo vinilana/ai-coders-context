@@ -1,23 +1,7 @@
-import { createFrontMatter } from './frontMatter';
 import { buildDocumentMapTable, formatDirectoryList } from './common';
 import { DocumentationTemplateContext } from './types';
 
 export function renderIndex(context: DocumentationTemplateContext): string {
-  const frontMatter = createFrontMatter({
-    id: 'docs-index',
-    goal: 'Keep the documentation map accurate so contributors and agents land on the right guide quickly.',
-    requiredInputs: [
-      'Current docs and agents directory listings',
-      'Recent additions or removals across documentation assets',
-      'Latest roadmap or release summary (if available)'
-    ],
-    successCriteria: [
-      'Each linked guide exists and reflects its stated purpose',
-      'Repository snapshot matches the real top-level structure',
-      'Update checklist is confirmed before closing the task'
-    ],
-    relatedAgents: ['documentation-writer', 'architect-specialist']
-  });
 
   const directoryList = formatDirectoryList(context, false);
   const documentMap = buildDocumentMapTable(context.guides);
@@ -25,7 +9,7 @@ export function renderIndex(context: DocumentationTemplateContext): string {
     .map(guide => `- [${guide.title}](./${guide.file})`)
     .join('\n') || '- *No guides selected.*';
 
-  return `${frontMatter}
+  return `
 <!-- agent-update:start:docs-index -->
 # Documentation Index
 

@@ -88,12 +88,12 @@ describe('DocumentationGenerator', () => {
     expect(files).toEqual(expectedFiles);
 
     const indexContent = await fs.readFile(path.join(docsDir, 'README.md'), 'utf8');
-    expect(indexContent).toContain('id: docs-index');
     expect(indexContent).toContain('<!-- agent-update:start:docs-index -->');
+    expect(indexContent).toContain('# Documentation Index');
 
     const overviewContent = await fs.readFile(path.join(docsDir, 'project-overview.md'), 'utf8');
-    expect(overviewContent).toContain('ai_update_goal');
     expect(overviewContent).toContain('<!-- agent-update:start:project-overview -->');
+    expect(overviewContent).toContain('# Project Overview');
     expect(overviewContent).toContain('Root path:');
   });
 

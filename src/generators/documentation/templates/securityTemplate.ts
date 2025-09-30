@@ -1,23 +1,7 @@
-import { createFrontMatter } from './frontMatter';
 
 export function renderSecurity(): string {
-  const frontMatter = createFrontMatter({
-    id: 'security',
-    goal: 'Document authentication, authorization, data protection, and compliance expectations.',
-    requiredInputs: [
-      'AuthN/AuthZ implementation details',
-      'Secrets storage and rotation policies',
-      'Compliance frameworks or audit requirements'
-    ],
-    successCriteria: [
-      'Explains how users and services authenticate',
-      'Lists sensitive data classifications and storage locations',
-      'Provides clear escalation paths for security incidents'
-    ],
-    relatedAgents: ['security-auditor', 'code-reviewer']
-  });
 
-  return `${frontMatter}
+  return `
 <!-- agent-update:start:security -->
 # Security & Compliance Notes
 

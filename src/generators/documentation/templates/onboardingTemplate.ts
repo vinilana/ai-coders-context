@@ -1,23 +1,7 @@
-import { createFrontMatter } from './frontMatter';
 
 export function renderOnboarding(): string {
-  const frontMatter = createFrontMatter({
-    id: 'onboarding-guide',
-    goal: 'Provide a comprehensive checklist for new team members to get productive quickly.',
-    requiredInputs: [
-      'Development environment setup instructions',
-      'Required access and permissions',
-      'Team communication channels and processes'
-    ],
-    successCriteria: [
-      'New developers can set up environment independently',
-      'All required access and tools are documented',
-      'Learning resources and first tasks are clearly identified'
-    ],
-    relatedAgents: ['documentation-writer', 'architect-specialist']
-  });
 
-  return `${frontMatter}
+  return `
 <!-- agent-update:start:onboarding-guide -->
 # Onboarding Guide
 

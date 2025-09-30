@@ -1,24 +1,8 @@
-import { createFrontMatter } from './frontMatter';
 import { DocumentationTemplateContext } from './types';
 
 export function renderGlossary(_context: DocumentationTemplateContext): string {
-  const frontMatter = createFrontMatter({
-    id: 'glossary',
-    goal: 'Capture shared language, acronyms, domain entities, and user personas so newcomers and agents understand the problem space.',
-    requiredInputs: [
-      'Business or product briefs that define the problem domain',
-      'Onboarding notes or internal wiki entries with terminology',
-      'Examples from issues/PRs where domain language appears'
-    ],
-    successCriteria: [
-      'Each term includes a concise definition plus why it matters to the codebase',
-      'Acronyms are expanded on first mention and linked to their origin',
-      'Personas or actors include their goals and interactions with the system'
-    ],
-    relatedAgents: ['documentation-writer', 'feature-developer']
-  });
 
-  return `${frontMatter}
+  return `
 <!-- agent-update:start:glossary -->
 # Glossary & Domain Concepts
 

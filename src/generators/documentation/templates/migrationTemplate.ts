@@ -1,23 +1,7 @@
-import { createFrontMatter } from './frontMatter';
 
 export function renderMigration(): string {
-  const frontMatter = createFrontMatter({
-    id: 'migration-guide',
-    goal: 'Document version upgrades, breaking changes, and migration procedures.',
-    requiredInputs: [
-      'Version history and changelog',
-      'Breaking changes documentation',
-      'Migration scripts and database changes'
-    ],
-    successCriteria: [
-      'Each version upgrade path is clearly documented',
-      'Breaking changes include migration examples',
-      'Rollback procedures are tested and documented'
-    ],
-    relatedAgents: ['documentation-writer', 'backend-specialist', 'database-specialist']
-  });
 
-  return `${frontMatter}
+  return `
 <!-- agent-update:start:migration-guide -->
 # Migration Guide
 

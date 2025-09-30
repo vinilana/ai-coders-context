@@ -1,24 +1,5 @@
-import { createFrontMatter } from './frontMatter';
-
 export function renderDevelopmentWorkflow(): string {
-  const frontMatter = createFrontMatter({
-    id: 'development-workflow',
-    goal: 'Document how the team builds, reviews, and ships code every day.',
-    requiredInputs: [
-      'Branching and release policies',
-      'Package scripts and CI workflows',
-      'Code review expectations agreed upon by the team'
-    ],
-    successCriteria: [
-      'Branching guidance mirrors the default git strategy or CI configuration',
-      'Local development commands are copy/paste ready',
-      'Onboarding links point to living sources (boards, runbooks)'
-    ],
-    relatedAgents: ['documentation-writer', 'code-reviewer']
-  });
-
-  return `${frontMatter}
-<!-- agent-update:start:development-workflow -->
+  return `<!-- agent-update:start:development-workflow -->
 # Development Workflow
 
 Outline the day-to-day engineering process for this repository.

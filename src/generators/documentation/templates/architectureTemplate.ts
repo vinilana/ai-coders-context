@@ -1,29 +1,11 @@
-import { createFrontMatter } from './frontMatter';
 import { DocumentationTemplateContext } from './types';
 import { formatDirectoryStats } from './common';
 
 export function renderArchitectureNotes(context: DocumentationTemplateContext): string {
-  const frontMatter = createFrontMatter({
-    id: 'architecture-notes',
-    goal: 'Describe how the system is assembled, key trade-offs, and active constraints.',
-    requiredInputs: [
-      'Recent architectural decisions or ADRs',
-      'Observed service/module boundaries in the codebase',
-      'Dependency graphs or build tooling insights'
-    ],
-    successCriteria: [
-      'Decision list covers the most influential trade-offs',
-      'Risks capture active constraints or technical debt',
-      'Links to diagrams or monitors are up to date'
-    ],
-    relatedAgents: ['architect-specialist', 'backend-specialist']
-  });
-
   const directorySnapshot = formatDirectoryStats(context.directoryStats);
   const coreComponentsSection = directorySnapshot || '- *Add notes for each core component or module.*';
 
-  return `${frontMatter}
-<!-- agent-update:start:architecture-notes -->
+  return `<!-- agent-update:start:architecture-notes -->
 # Architecture Notes
 
 > TODO: Describe how the system is assembled and why the current design exists.

@@ -1,23 +1,7 @@
-import { createFrontMatter } from './frontMatter';
 
 export function renderTestingStrategy(): string {
-  const frontMatter = createFrontMatter({
-    id: 'testing-strategy',
-    goal: 'Explain how the project maintains quality, from unit coverage to release gates.',
-    requiredInputs: [
-      'Testing framework configuration (jest.config.js, etc.)',
-      'CI requirements for merges/releases',
-      'Known flaky suites or troubleshooting notes'
-    ],
-    successCriteria: [
-      'Test types list frameworks and ownership at a glance',
-      'Commands match package scripts and CI usage',
-      'Quality gates describe pass/fail expectations with numbers when possible'
-    ],
-    relatedAgents: ['test-writer', 'code-reviewer']
-  });
 
-  return `${frontMatter}
+  return `
 <!-- agent-update:start:testing-strategy -->
 # Testing Strategy
 

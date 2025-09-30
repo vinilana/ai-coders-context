@@ -1,23 +1,7 @@
-import { createFrontMatter } from './frontMatter';
 
 export function renderTroubleshooting(): string {
-  const frontMatter = createFrontMatter({
-    id: 'troubleshooting-guide',
-    goal: 'Enable AI agents to diagnose and resolve issues autonomously using decision trees and automated diagnostics.',
-    requiredInputs: [
-      'Log file locations and parsing patterns',
-      'Diagnostic scripts (scripts/debug/, scripts/health-check/)',
-      'Known error patterns and their resolutions'
-    ],
-    successCriteria: [
-      'Agent can execute diagnostic scripts and interpret output',
-      'Agent can identify root cause from error patterns',
-      'Agent knows when to escalate vs. auto-resolve'
-    ],
-    relatedAgents: ['bug-fixer', 'devops-specialist', 'backend-specialist']
-  });
 
-  return `${frontMatter}
+  return `
 <!-- agent-update:start:troubleshooting-guide -->
 # Troubleshooting Guide
 
