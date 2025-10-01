@@ -7,18 +7,18 @@ You are an AI assistant responsible for refreshing the documentation (\`docs/\`)
 1. Run \`git status -sb\` to understand pending changes.
 2. Review the latest merged commits or PRs related to documentation, architecture, workflow, or testing.
 3. Inspect \`package.json\`, CI configuration, and any release or roadmap notes stored in the repository.
-4. Check \`docs/README.md\` for the current document map and update task markers (\`ai-task:*\`).
-5. Identify unresolved placeholders marked as \`<!-- ai-slot:* -->\`.
+4. Check \`docs/README.md\` for the current document map and update AI markers (\`agent-update:*\`).
+5. Identify unresolved placeholders marked as \`<!-- agent-fill:* -->\`.
 
 ## Update Procedure
 1. **Select a Guide**
    - Navigate to \`docs/<guide>.md\`.
    - Read the YAML front matter (\`ai_update_goal\`, \`required_inputs\`, \`success_criteria\`) and ensure you collect the listed inputs before editing.
 
-2. **Edit Within Task Wrappers**
-   - Update content strictly inside the matching \`<!-- ai-task:... -->\` block.
+2. **Edit Within Update Wrappers**
+   - Update content strictly inside the matching \`<!-- agent-update:start:... -->\` block and keep the closing \`<!-- agent-update:end -->\` tag.
    - Remove or replace any \`TODO\` text with accurate, current information.
-   - When you complete a placeholder slot (\`<!-- ai-slot:... -->\`), remove the wrapper and provide the finalized description.
+   - When you complete a placeholder slot (\`<!-- agent-fill:... -->\`), remove the wrapper and provide the finalized description.
 
 3. **Cross-Link Updates**
    - Verify that links between docs remain valid.
@@ -26,7 +26,7 @@ You are an AI assistant responsible for refreshing the documentation (\`docs/\`)
 
 4. **Agent Playbook Alignment**
    - For each change in \`docs/\`, adjust the related \`agents/*.md\` playbooks.
-   - Ensure the "Documentation Touchpoints" list references the correct \`ai-task\` markers.
+   - Ensure the "Documentation Touchpoints" list references the correct \`agent-update\` markers.
    - Update collaboration checklists and evidence sections to reflect the latest workflows.
 
 5. **Evidence & Traceability**
@@ -35,7 +35,7 @@ You are an AI assistant responsible for refreshing the documentation (\`docs/\`)
 
 ## Acceptance Criteria
 - Every guide’s \`success_criteria\` field is satisfied.
-- No unresolved \`TODO\` or \`ai-slot\` blocks remain unless they require explicit human input; in such cases, add a comment explaining the dependency.
+- No unresolved \`TODO\` or \`agent-fill\` blocks remain unless they require explicit human input; in such cases, add a comment explaining the dependency.
 - Agent playbooks list accurate responsibilities, best practices, and pointer links to the refreshed docs.
 - Changes are self-contained, well-formatted Markdown, and reference any new external resources introduced.
 
@@ -55,8 +55,8 @@ You are an AI assistant responsible for refining collaboration plans that live i
 ## Preparation Checklist
 1. Review the plan’s YAML front matter to understand the stated \`ai_update_goal\`, \`required_inputs\`, and \`success_criteria\`.
 2. Inspect the provided documentation excerpts (from \`docs/\`) and agent playbooks to ensure the plan reflects their current guidance.
-3. Confirm that the “Agent Lineup” and “Documentation Touchpoints” tables link to real files and reference the correct \`ai-task\` markers.
-4. Note any TODOs, \`ai-slot\` placeholders, or missing evidence sections that must be resolved.
+3. Confirm that the “Agent Lineup” and “Documentation Touchpoints” tables link to real files and reference the correct \`agent-update\` markers.
+4. Note any TODOs, \`agent-fill\` placeholders, or missing evidence sections that must be resolved.
 
 ## Update Procedure
 1. **Task Snapshot**
@@ -69,7 +69,7 @@ You are an AI assistant responsible for refining collaboration plans that live i
 
 3. **Documentation Touchpoints**
    - Map each plan stage to the docs excerpts provided, highlighting which sections need to be updated during execution.
-   - Keep the table sorted and ensure the listed \`ai-task\` markers exist.
+   - Keep the table sorted and ensure the listed \`agent-update\` markers exist.
 
 4. **Working Phases**
    - Break the work into sequential phases that each include a numbered list of steps, accountable owners, deliverables, and evidence expectations.
@@ -81,7 +81,7 @@ You are an AI assistant responsible for refining collaboration plans that live i
    - Record any follow-up actions or decisions that require human confirmation.
 
 ## Acceptance Criteria
-- Every TODO or placeholder inside the plan’s \`ai-task\` block is resolved or accompanied by a clear escalation note.
+- Every TODO or placeholder inside the plan’s \`agent-update\` block is resolved or accompanied by a clear escalation note.
 - Tables reference existing files and stay in sync with the docs/agent indices.
 - Phases provide actionable guidance, include numbered steps, and end with an explicit Git commit checkpoint.
 - The plan remains fully self-contained and ready for contributors to execute.

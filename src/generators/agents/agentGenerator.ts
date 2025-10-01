@@ -3,6 +3,7 @@ import { RepoStructure } from '../../types';
 import { GeneratorUtils } from '../shared';
 import { AGENT_TYPES, AgentType } from './agentTypes';
 import { renderAgentPlaybook, renderAgentIndex } from './templates';
+import { DOCUMENT_GUIDES } from '../documentation/guideRegistry';
 
 interface AgentContext {
   topLevelDirectories: string[];
@@ -19,48 +20,13 @@ export class AgentGenerator {
     {
       title: 'Documentation Index',
       path: '../docs/README.md',
-      marker: 'ai-task:docs-index'
+      marker: 'agent-update:docs-index'
     },
-    {
-      title: 'Project Overview',
-      path: '../docs/project-overview.md',
-      marker: 'ai-task:project-overview'
-    },
-    {
-      title: 'Architecture Notes',
-      path: '../docs/architecture.md',
-      marker: 'ai-task:architecture-notes'
-    },
-    {
-      title: 'Development Workflow',
-      path: '../docs/development-workflow.md',
-      marker: 'ai-task:development-workflow'
-    },
-    {
-      title: 'Testing Strategy',
-      path: '../docs/testing-strategy.md',
-      marker: 'ai-task:testing-strategy'
-    },
-    {
-      title: 'Glossary & Domain Concepts',
-      path: '../docs/glossary.md',
-      marker: 'ai-task:glossary'
-    },
-    {
-      title: 'Data Flow & Integrations',
-      path: '../docs/data-flow.md',
-      marker: 'ai-task:data-flow'
-    },
-    {
-      title: 'Security & Compliance Notes',
-      path: '../docs/security.md',
-      marker: 'ai-task:security'
-    },
-    {
-      title: 'Tooling & Productivity Guide',
-      path: '../docs/tooling.md',
-      marker: 'ai-task:tooling'
-    }
+    ...DOCUMENT_GUIDES.map(guide => ({
+      title: guide.title,
+      path: `../docs/${guide.file}`,
+      marker: guide.marker
+    }))
   ];
 
   constructor(..._legacyArgs: unknown[]) {}
@@ -119,11 +85,4 @@ export class AgentGenerator {
     };
   }
 
-  private formatDirectoryList(topLevelDirectories: string[]): string {
-    if (topLevelDirectories.length === 0) {
-      return '';
-    }
-
-    return topLevelDirectories.map(dir => `- \`${dir}/\` — Note why this directory matters for the agent.`).join('\n');
-  }
 }

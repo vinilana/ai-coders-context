@@ -15,7 +15,6 @@ describe('CLI Commands', () => {
       expect(output).toContain('Scaffold documentation and agent playbooks');
       expect(output).toContain('Commands:');
       expect(output).toContain('init');
-      expect(output).toContain('scaffold');
       expect(output).toContain('fill');
       expect(output).toContain('plan');
     });
@@ -35,8 +34,6 @@ describe('CLI Commands', () => {
       expect(output).toContain('(default)');
       [
         '-o, --output <dir>',
-        '--docs <keys...>',
-        '--agents <keys...>',
         '--exclude <patterns...>',
         '--include <patterns...>',
         '-v, --verbose'
@@ -55,11 +52,7 @@ describe('CLI Commands', () => {
         '-p, --provider <provider>',
         '--base-url <url>',
         '--prompt <file>',
-        '--dry-run',
-        '--all',
         '--limit <number>',
-        '--docs <keys...>',
-        '--agents <keys...>',
         '--exclude <patterns...>',
         '--include <patterns...>',
         '-v, --verbose'
@@ -75,8 +68,6 @@ describe('CLI Commands', () => {
         '-o, --output <dir>',
         '--title <title>',
         '--summary <text>',
-        '--agents <types...>',
-        '--docs <keys...>',
         '-f, --force',
         '--fill',
         '-r, --repo <path>',

@@ -42,7 +42,24 @@ function createRepoStructure(rootPath: string): RepoStructure {
       }
     ],
     totalFiles: 1,
-    totalSize: 128
+    totalSize: 128,
+    topLevelDirectoryStats: [
+      {
+        name: 'src',
+        fileCount: 1,
+        totalSize: 128
+      },
+      {
+        name: 'docs',
+        fileCount: 0,
+        totalSize: 0
+      },
+      {
+        name: 'agents',
+        fileCount: 0,
+        totalSize: 0
+      }
+    ]
   };
 }
 
@@ -81,7 +98,8 @@ describe('AgentGenerator', () => {
     const playbookContent = await fs.readFile(path.join(agentsDir, 'code-reviewer.md'), 'utf8');
     expect(playbookContent).toContain('# Code Reviewer Agent Playbook');
     expect(playbookContent).toContain('Documentation Touchpoints');
-    expect(playbookContent).toContain('ai-task:project-overview');
+    expect(playbookContent).toContain('<!-- agent-update:start:agent-code-reviewer -->');
+    expect(playbookContent).toContain('agent-update:project-overview');
 
     const indexContent = await fs.readFile(path.join(agentsDir, 'README.md'), 'utf8');
     expect(indexContent).toContain('[Code Reviewer](./code-reviewer.md)');

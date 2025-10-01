@@ -69,6 +69,27 @@ export const AGENT_RESPONSIBILITIES: Record<AgentType, string[]> = {
     'Evaluate and recommend technology choices',
     'Plan system scalability and maintainability',
     'Create architectural documentation and diagrams'
+  ],
+  'devops-specialist': [
+    'Design and maintain CI/CD pipelines',
+    'Implement infrastructure as code',
+    'Configure monitoring and alerting systems',
+    'Manage container orchestration and deployments',
+    'Optimize cloud resources and cost efficiency'
+  ],
+  'database-specialist': [
+    'Design and optimize database schemas',
+    'Create and manage database migrations',
+    'Optimize query performance and indexing',
+    'Ensure data integrity and consistency',
+    'Implement backup and recovery strategies'
+  ],
+  'mobile-specialist': [
+    'Develop native and cross-platform mobile applications',
+    'Optimize mobile app performance and battery usage',
+    'Implement mobile-specific UI/UX patterns',
+    'Handle app store deployment and updates',
+    'Integrate push notifications and offline capabilities'
   ]
 };
 
@@ -133,5 +154,26 @@ export const AGENT_BEST_PRACTICES: Record<AgentType, string[]> = {
     'Document architectural decisions and rationale',
     'Promote code reusability and modularity',
     'Stay updated on industry trends and technologies'
+  ],
+  'devops-specialist': [
+    'Automate everything that can be automated',
+    'Implement infrastructure as code for reproducibility',
+    'Monitor system health proactively',
+    'Design for failure and implement proper fallbacks',
+    'Keep security and compliance in every deployment'
+  ],
+  'database-specialist': [
+    'Always benchmark queries before and after optimization',
+    'Plan migrations with rollback strategies',
+    'Use appropriate indexing strategies for workloads',
+    'Maintain data consistency across transactions',
+    'Document schema changes and their business impact'
+  ],
+  'mobile-specialist': [
+    'Test on real devices, not just simulators',
+    'Optimize for battery life and data usage',
+    'Follow platform-specific design guidelines',
+    'Implement proper offline-first strategies',
+    'Plan for app store review requirements early'
   ]
 };

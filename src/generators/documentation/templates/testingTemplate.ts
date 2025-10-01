@@ -1,24 +1,8 @@
-import { createFrontMatter } from './frontMatter';
 
 export function renderTestingStrategy(): string {
-  const frontMatter = createFrontMatter({
-    id: 'testing-strategy',
-    goal: 'Explain how the project maintains quality, from unit coverage to release gates.',
-    requiredInputs: [
-      'Testing framework configuration (jest.config.js, etc.)',
-      'CI requirements for merges/releases',
-      'Known flaky suites or troubleshooting notes'
-    ],
-    successCriteria: [
-      'Test types list frameworks and ownership at a glance',
-      'Commands match package scripts and CI usage',
-      'Quality gates describe pass/fail expectations with numbers when possible'
-    ],
-    relatedAgents: ['test-writer', 'code-reviewer']
-  });
 
-  return `${frontMatter}
-<!-- ai-task:testing-strategy -->
+  return `
+<!-- agent-update:start:testing-strategy -->
 # Testing Strategy
 
 Document how quality is maintained across the codebase.
@@ -40,6 +24,7 @@ Document how quality is maintained across the codebase.
 ## Troubleshooting
 - Document flaky suites, long-running tests, or environment quirks.
 
+<!-- agent-readonly:guidance -->
 ## AI Update Checklist
 1. Review test scripts and CI workflows to confirm command accuracy.
 2. Update Quality Gates with current thresholds (coverage %, lint rules, required checks).
@@ -47,11 +32,12 @@ Document how quality is maintained across the codebase.
 4. Record known flaky areas and link to open issues for visibility.
 5. Confirm troubleshooting steps remain valid with current tooling.
 
+<!-- agent-readonly:sources -->
 ## Acceptable Sources
 - \`package.json\` scripts and testing configuration files.
 - CI job definitions (GitHub Actions, CircleCI, etc.).
 - Issue tracker items labelled “testing” or “flaky” with maintainer confirmation.
 
-<!-- /ai-task -->
+<!-- agent-update:end -->
 `;
 }

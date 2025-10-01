@@ -7,18 +7,18 @@ You are an AI assistant responsible for refreshing the documentation (`docs/`) a
 1. Run `git status -sb` to understand pending changes.
 2. Review the latest merged commits or PRs related to documentation, architecture, workflow, or testing.
 3. Inspect `package.json`, CI configuration, and any release or roadmap notes stored in the repository.
-4. Check `docs/README.md` for the current document map and update task markers (`ai-task:*`).
-5. Identify unresolved placeholders marked as `<!-- ai-slot:* -->`.
+4. Check `docs/README.md` for the current document map and update AI markers (`agent-update:*`).
+5. Identify unresolved placeholders marked as `<!-- agent-fill:* -->`.
 
 ## Update Procedure
 1. **Select a Guide**
    - Navigate to `docs/<guide>.md`.
    - Read the YAML front matter (`ai_update_goal`, `required_inputs`, `success_criteria`) and ensure you collect the listed inputs before editing.
 
-2. **Edit Within Task Wrappers**
-   - Update content strictly inside the matching `<!-- ai-task:... -->` block.
+2. **Edit Within Update Wrappers**
+   - Update content strictly inside the matching `<!-- agent-update:start:... -->` block and keep the closing `<!-- agent-update:end -->` tag.
    - Remove or replace any `TODO` text with accurate, current information.
-   - When you complete a placeholder slot (`<!-- ai-slot:... -->`), remove the wrapper and provide the finalized description.
+   - When you complete a placeholder slot (`<!-- agent-fill:... -->`), remove the wrapper and provide the finalized description.
 
 3. **Cross-Link Updates**
    - Verify that links between docs remain valid.
@@ -26,7 +26,7 @@ You are an AI assistant responsible for refreshing the documentation (`docs/`) a
 
 4. **Agent Playbook Alignment**
    - For each change in `docs/`, adjust the related `agents/*.md` playbooks.
-   - Ensure the "Documentation Touchpoints" list references the correct `ai-task` markers.
+   - Ensure the "Documentation Touchpoints" list references the correct `agent-update` markers.
    - Update collaboration checklists and evidence sections to reflect the latest workflows.
 
 5. **Evidence & Traceability**
@@ -35,7 +35,7 @@ You are an AI assistant responsible for refreshing the documentation (`docs/`) a
 
 ## Acceptance Criteria
 - Every guide’s `success_criteria` field is satisfied.
-- No unresolved `TODO` or `ai-slot` blocks remain unless they require explicit human input; in such cases, add a comment explaining the dependency.
+- No unresolved `TODO` or `agent-fill` blocks remain unless they require explicit human input; in such cases, add a comment explaining the dependency.
 - Agent playbooks list accurate responsibilities, best practices, and pointer links to the refreshed docs.
 - Changes are self-contained, well-formatted Markdown, and reference any new external resources introduced.
 
@@ -45,4 +45,3 @@ You are an AI assistant responsible for refreshing the documentation (`docs/`) a
   - Guides touched
   - Key decisions or facts added
   - Evidence links and any pending follow-ups
-

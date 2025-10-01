@@ -19,7 +19,7 @@ A lightweight CLI that scaffolds living documentation and AI-agent playbooks for
 - 🤖 `agents/` folder containing playbooks for common engineering agents and a handy index
 - 🔁 Repeatable scaffolding that you can re-run as the project evolves
 - 🧭 Repository-aware templates that highlight top-level directories for quick orientation
-- 🧠 AI-ready front matter and `ai-task` markers so assistants know exactly what to refresh
+- 🧠 AI-ready front matter and `agent-update` markers so assistants know exactly what to refresh
 
 ## 📦 Installation
 
@@ -52,7 +52,7 @@ npx @ai-coders/context init ./my-repo docs
 npx @ai-coders/context init ./my-repo agents --output ./knowledge-base
 
 # Fill docs and agents with the repo context (preview the first 3 updates)
-npx @ai-coders/context fill ./my-repo --output ./.context --dry-run --limit 3
+npx @ai-coders/context fill ./my-repo --output ./.context --limit 3
 
 # Draft a collaboration plan seeded with agent and doc touchpoints
 npx @ai-coders/context plan release-readiness --output ./.context
@@ -83,18 +83,26 @@ Customize the Markdown files to reflect your project’s specifics and commit th
 
 Need help filling in the scaffold? Use [`prompts/update_scaffold_prompt.md`](./prompts/update_scaffold_prompt.md) as the canonical instruction set for any LLM or CLI agent. It walks through:
 
-- Gathering repository context and locating `ai-task`/`ai-slot` markers.
+- Gathering repository context and locating `agent-update`/`agent-fill` markers.
 - Updating documentation sections while satisfying the YAML front matter criteria.
 - Aligning agent playbooks with the refreshed docs and recording evidence for maintainers.
 
 Share that prompt verbatim with your assistant to keep updates consistent across teams.
 
-### Available Doc Keys & Agent Types
+### Available Doc Guides & Agent Types
 
-Pass these values to `--docs` / `--agents` (or pick them interactively):
+The scaffold includes the following guides and playbooks out of the box:
 
 - Docs: `project-overview`, `architecture`, `development-workflow`, `testing-strategy`, `glossary`, `data-flow`, `security`, `tooling`
 - Agents: `code-reviewer`, `bug-fixer`, `feature-developer`, `refactoring-specialist`, `test-writer`, `documentation-writer`, `performance-optimizer`, `security-auditor`, `backend-specialist`, `frontend-specialist`, `architect-specialist`
+
+### AI Marker Reference
+
+- `<!-- agent-update:start:section-id --> … <!-- agent-update:end -->` wrap the sections that AI assistants should rewrite with up-to-date project knowledge.
+- `<!-- agent-fill:slot-id --> … <!-- /agent-fill -->` highlight inline placeholders that must be replaced with concrete details before removing the wrapper.
+- `<!-- agent-readonly:context -->` flags guidance that should remain as-is; treat the adjacent content as instructions rather than editable prose.
+
+When contributing, focus edits inside `agent-update` regions or `agent-fill` placeholders and leave `agent-readonly` guidance untouched unless you have explicit maintainer approval.
 
 ## 🛠 Commands
 
@@ -110,16 +118,11 @@ Arguments:
 
 Options:
   -o, --output <dir>      Output directory (default: ./.context)
-      --docs <keys...>    Doc keys to scaffold (e.g., project-overview, security)
-      --agents <keys...>  Agent types to scaffold (e.g., code-reviewer, feature-developer)
   --exclude <patterns...> Glob patterns to skip during the scan
   --include <patterns...> Glob patterns to explicitly include
   -v, --verbose           Print detailed progress information
   -h, --help              Display help for command
 ```
-
-### `scaffold`
-Alias for `init`. Use whichever verb fits your workflow.
 
 ### `fill`
 Use an LLM to refresh scaffolded docs and agent playbooks automatically.
@@ -130,18 +133,15 @@ Usage: ai-context fill <repo-path>
 Options:
   -o, --output <dir>      Scaffold directory containing docs/ and agents/ (default: ./.context)
   -k, --api-key <key>     API key for the selected LLM provider
-  -m, --model <model>     LLM model to use (default: google/gemini-2.5-flash-preview-05-20)
-  -p, --provider <name>   Provider (openrouter, openai, anthropic, gemini, grok)
+  -m, --model <model>     LLM model to use (default: x-ai/grok-4-fast)
+  -p, --provider <name>   Provider (openrouter only)
+      --base-url <url>    Custom base URL for OpenRouter
       --prompt <file>     Instruction prompt to follow (optional; uses bundled instructions when omitted)
-      --docs <keys...>    Doc keys to update (default: all)
-      --agents <keys...>  Agent types to update (default: all)
-      --dry-run           Preview changes without writing files
-      --all               Process every Markdown file even if no TODO markers remain
       --limit <number>    Maximum number of files to update in one run
   -h, --help              Display help for command
 ```
 
-Under the hood, the command loads the prompt above, scans for `ai-task` or `ai-slot` markers, and asks the LLM to produce the fully updated Markdown. Combine it with `--dry-run` to review responses before committing.
+Under the hood, the command loads the prompt above, iterates over every Markdown file in `.context/docs` and `.context/agents`, and asks the LLM to produce the fully updated content.
 
 ### `plan`
 Create a collaboration plan that links documentation guides and agent playbooks, or fill an existing plan with LLM assistance.
@@ -153,15 +153,13 @@ Options:
   -o, --output <dir>      Scaffold directory containing docs/ and agents/ (default: ./.context)
       --title <title>     Custom title for the plan document
       --summary <text>    Seed the plan with a short summary or goal statement
-      --agents <types...> Agent playbooks to highlight (default: all)
-      --docs <keys...>    Documentation guides to reference (default: all)
   -f, --force             Overwrite the plan if it already exists (scaffold mode)
       --fill              Use an LLM to fill or update the plan instead of scaffolding
   -r, --repo <path>       Repository root to summarize for additional context (fill mode)
   -k, --api-key <key>     API key for the selected LLM provider (fill mode)
-  -m, --model <model>     LLM model to use (default: x-ai/grok-4-fast:free)
-  -p, --provider <name>   Provider (openrouter, openai, anthropic, gemini, grok)
-      --base-url <url>    Custom base URL for provider APIs
+  -m, --model <model>     LLM model to use (default: x-ai/grok-4-fast)
+  -p, --provider <name>   Provider (openrouter only)
+      --base-url <url>    Custom base URL for OpenRouter
       --prompt <file>     Instruction prompt to follow (optional; uses bundled instructions when omitted)
       --dry-run           Preview changes without writing files
       --include <patterns...>  Glob patterns to include during repository analysis

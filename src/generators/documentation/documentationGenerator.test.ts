@@ -42,7 +42,19 @@ function createRepoStructure(rootPath: string): RepoStructure {
       }
     ],
     totalFiles: 2,
-    totalSize: 384
+    totalSize: 384,
+    topLevelDirectoryStats: [
+      {
+        name: 'src',
+        fileCount: 1,
+        totalSize: 128
+      },
+      {
+        name: 'tests',
+        fileCount: 0,
+        totalSize: 0
+      }
+    ]
   };
 }
 
@@ -54,6 +66,7 @@ describe('DocumentationGenerator', () => {
   beforeEach(async () => {
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ai-context-docs-'));
     outputDir = path.join(tempDir, '.context');
+    await fs.ensureDir(path.join(tempDir, 'repo'));
   });
 
   afterEach(async () => {
@@ -62,7 +75,7 @@ describe('DocumentationGenerator', () => {
     }
   });
 
-  it('generates all guides with ai-task markers by default', async () => {
+  it('generates all guides with agent-update markers by default', async () => {
     const repoStructure = createRepoStructure(path.join(tempDir, 'repo'));
 
     const created = await generator.generateDocumentation(repoStructure, outputDir);
@@ -75,12 +88,12 @@ describe('DocumentationGenerator', () => {
     expect(files).toEqual(expectedFiles);
 
     const indexContent = await fs.readFile(path.join(docsDir, 'README.md'), 'utf8');
-    expect(indexContent).toContain('id: docs-index');
-    expect(indexContent).toContain('<!-- ai-task:docs-index -->');
+    expect(indexContent).toContain('<!-- agent-update:start:docs-index -->');
+    expect(indexContent).toContain('# Documentation Index');
 
     const overviewContent = await fs.readFile(path.join(docsDir, 'project-overview.md'), 'utf8');
-    expect(overviewContent).toContain('ai_update_goal');
-    expect(overviewContent).toContain('<!-- ai-task:project-overview -->');
+    expect(overviewContent).toContain('<!-- agent-update:start:project-overview -->');
+    expect(overviewContent).toContain('# Project Overview');
     expect(overviewContent).toContain('Root path:');
   });
 
@@ -99,5 +112,32 @@ describe('DocumentationGenerator', () => {
     const docsDir = path.join(outputDir, 'docs');
     const files = (await fs.readdir(docsDir)).sort();
     expect(files).toEqual(['README.md', 'glossary.md', 'project-overview.md']);
+  });
+
+  it('creates AGENTS.md when missing using the default template', async () => {
+    const repoStructure = createRepoStructure(path.join(tempDir, 'repo'));
+
+    await generator.generateDocumentation(repoStructure, outputDir);
+
+    const agentsPath = path.join(repoStructure.rootPath, 'AGENTS.md');
+    const content = await fs.readFile(agentsPath, 'utf8');
+
+    expect(content).toContain('# AGENTS.md');
+    expect(content).toContain('## Dev environment tips');
+    expect(content).toContain('`.context/agents/README.md`');
+  });
+
+  it('adds AI context references to AGENTS.md when present', async () => {
+    const repoPath = path.join(tempDir, 'repo');
+    const agentsPath = path.join(repoPath, 'AGENTS.md');
+    await fs.outputFile(agentsPath, '# Agent Guide\n\nExisting content.\n');
+    const repoStructure = createRepoStructure(repoPath);
+
+    await generator.generateDocumentation(repoStructure, outputDir);
+
+    const updatedAgents = await fs.readFile(agentsPath, 'utf8');
+    expect(updatedAgents).toContain('## AI Context References');
+    expect(updatedAgents).toContain('`.context/docs/README.md`');
+    expect(updatedAgents).toContain('`.context/agents/README.md`');
   });
 });

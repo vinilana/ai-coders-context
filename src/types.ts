@@ -7,12 +7,19 @@ export interface FileInfo {
   type: 'file' | 'directory';
 }
 
+export interface TopLevelDirectoryStats {
+  name: string;
+  fileCount: number;
+  totalSize: number;
+}
+
 export interface RepoStructure {
   rootPath: string;
   files: FileInfo[];
   directories: FileInfo[];
   totalFiles: number;
   totalSize: number;
+  topLevelDirectoryStats: TopLevelDirectoryStats[];
 }
 
 export interface OpenRouterConfig {
@@ -25,7 +32,7 @@ export interface LLMConfig {
   apiKey: string;
   model: string;
   baseUrl?: string;
-  provider: 'openrouter' | 'openai' | 'anthropic' | 'grok' | 'gemini';
+  provider: 'openrouter';
 }
 
 export interface CLIOptions {
@@ -61,6 +68,5 @@ export interface UsageStats {
   totalPromptTokens: number;
   totalCompletionTokens: number;
   totalTokens: number;
-  estimatedCost: number;
   model: string;
 }
