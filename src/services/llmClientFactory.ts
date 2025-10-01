@@ -13,28 +13,11 @@ export class LLMClientFactory {
     return new OpenRouterClient(openRouterConfig);
   }
 
-  static detectProviderFromModel(model: string): LLMConfig['provider'] {
-    void model;
-    return 'openrouter';
+  static getDefaultModel(): string {
+    return 'x-ai/grok-4-fast';
   }
 
-  static getProviderFromApiKey(apiKey: string): LLMConfig['provider'] {
-    void apiKey;
-    return 'openrouter';
-  }
-
-  static getDefaultModels(): { [key in LLMConfig['provider']]: string[] } {
-    return {
-      openrouter: [
-        'x-ai/grok-4-fast',
-
-      ]
-    };
-  }
-
-  static getEnvironmentVariables(): { [key in LLMConfig['provider']]: string[] } {
-    return {
-      openrouter: ['OPENROUTER_API_KEY']
-    };
+  static getEnvironmentVariables(): string[] {
+    return ['OPENROUTER_API_KEY'];
   }
 }

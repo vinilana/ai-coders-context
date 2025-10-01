@@ -27,61 +27,13 @@ export async function resolveLlmConfig({
   t,
   factory = LLMClientFactory
 }: ResolveLlmConfigOptions): Promise<ResolvedLlmConfig> {
-  const providerEnvMap = factory.getEnvironmentVariables();
-  const defaultModels = factory.getDefaultModels();
+  const envVars = factory.getEnvironmentVariables();
+  const provider: LLMConfig['provider'] = 'openrouter';
 
-  let provider = rawOptions.provider;
-  let model = rawOptions.model;
+  // Get API key from options or environment
   let apiKey = rawOptions.apiKey;
-
   if (!apiKey) {
-    if (provider) {
-      for (const envVar of providerEnvMap[provider]) {
-        const value = process.env[envVar];
-        if (value) {
-          apiKey = value;
-          break;
-        }
-      }
-    } else {
-      outer: for (const [prov, envVars] of Object.entries(providerEnvMap)) {
-        for (const envVar of envVars) {
-          const value = process.env[envVar];
-          if (value) {
-            apiKey = value;
-            provider = prov as LLMConfig['provider'];
-            break outer;
-          }
-        }
-      }
-    }
-  }
-
-  if (!provider) {
-    if (model) {
-      provider = factory.detectProviderFromModel(model);
-    } else if (apiKey) {
-      provider = factory.getProviderFromApiKey(apiKey);
-    }
-  }
-
-  if (!model) {
-    if (provider === 'openrouter' && process.env.OPENROUTER_MODEL) {
-      model = process.env.OPENROUTER_MODEL;
-    } else if (provider && defaultModels[provider]?.length) {
-      model = defaultModels[provider][0];
-    } else {
-      model = fallbackModel;
-      provider = factory.detectProviderFromModel(model);
-    }
-  }
-
-  if (!provider) {
-    provider = factory.detectProviderFromModel(model || fallbackModel);
-  }
-
-  if (!apiKey) {
-    for (const envVar of providerEnvMap[provider]) {
+    for (const envVar of envVars) {
       const value = process.env[envVar];
       if (value) {
         apiKey = value;
@@ -90,8 +42,14 @@ export async function resolveLlmConfig({
     }
   }
 
+  // Get model from options, environment, or defaults
+  let model = rawOptions.model;
+  if (!model) {
+    model = process.env.OPENROUTER_MODEL || factory.getDefaultModel() || fallbackModel;
+  }
+
+  // Validate API key exists
   if (!apiKey) {
-    const envVars = providerEnvMap[provider];
     throw new Error(
       t('errors.fill.apiKeyMissing', {
         provider: provider.toUpperCase(),
@@ -102,7 +60,7 @@ export async function resolveLlmConfig({
 
   return {
     provider,
-    model: model || fallbackModel,
+    model,
     apiKey,
     baseUrl: rawOptions.baseUrl
   };
