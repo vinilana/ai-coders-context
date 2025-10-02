@@ -2,7 +2,6 @@
 export function renderOnboarding(): string {
 
   return `
-<!-- agent-update:start:onboarding-guide -->
 # Onboarding Guide
 
 Welcome to the team! This guide will help you get set up and productive quickly.
@@ -406,24 +405,21 @@ We're always improving! Please provide feedback on:
 - Ask in #engineering if something is unclear
 - Your feedback helps future team members!
 
-<!-- agent-readonly:guidance -->
-## AI Update Checklist
-1. Verify all tool versions and installation instructions are current
-2. Update access request contacts with current team members
-3. Ensure all documentation links are valid
-4. Add new accounts or tools that team members need
-5. Update team communication channels and meeting schedules
-6. Refresh learning resources with current recommendations
-7. Verify suggested first issues are still appropriate
+## Update Checklist
+1. Verify all tool versions and installation instructions are current.
+2. Update access request contacts with current team members.
+3. Ensure all documentation links are valid.
+4. Add new accounts or tools that team members need.
+5. Update team communication channels and meeting schedules.
+6. Refresh learning resources with current recommendations.
+7. Verify suggested first issues are still appropriate.
 
-<!-- agent-readonly:sources -->
-## Acceptable Sources
-- Development environment setup scripts and documentation
-- Team wiki or handbook
-- IT/DevOps onboarding documentation
-- Feedback from recent new hires
-- Repository README and CONTRIBUTING files
+## Recommended Sources
+- Development environment setup scripts and documentation.
+- Team wiki or handbook.
+- IT/DevOps onboarding documentation.
+- Feedback from recent new hires.
+- Repository README and CONTRIBUTING files.
 
-<!-- agent-update:end -->
 `;
 }

@@ -12,14 +12,14 @@ The project relies on strict TypeScript; keep new files inside `src` and leave c
 ## Testing Guidelines
 Place Jest specs alongside the files they cover with the `*.test.ts` suffix. Validate CLI behaviours against the compiled binary (`dist/index.js`) to mirror how end-users invoke the tool. Run `npm run build && npm run test` before sending a PR, and include `npm run test -- --coverage` when you touch critical flows or generators.
 
-## Documentation Markers & AI Tags
+## Documentation Conventions
 Scaffolded guides now include:
 - YAML front matter describing the AI task (`id`, `ai_update_goal`, `required_inputs`, `success_criteria`).
-- Update wrappers such as `<!-- agent-update:start:project-overview -->` ... `<!-- agent-update:end -->` that bound sections an agent may rewrite.
-- Placeholders like `<!-- agent-fill:directory-src -->` signalling content that still needs human-provided context.
-- Guard rails such as `<!-- agent-readonly:guidance -->` marking sections that should remain instructional unless a maintainer says otherwise.
+- Inline `TODO:` prompts to highlight areas that still need project-specific details.
+- Update Checklists that outline what to verify before considering a section complete.
+- Recommended Sources lists to keep future refreshes grounded in reliable references.
 
-When editing docs or adding new ones, preserve existing markers and introduce new ones where agents should focus future updates. Reference these markers from agent playbooks when you create specialised workflows.
+When editing docs or adding new ones, resolve the TODO prompts, keep the checklists accurate, and surface new resources that will help future contributors and agents stay aligned.
 
 ### LLM-assisted Updates
 - Use `ai-context fill <repo>` to apply the shared prompt (`prompts/update_scaffold_prompt.md`) across the scaffold.
@@ -34,4 +34,3 @@ No API keys are required for scaffolding; remove stale tokens from local `.env` 
 ## AI Context References
 - Documentation index: `.context/docs/README.md`
 - Agent playbooks: `.context/agents/README.md`
-

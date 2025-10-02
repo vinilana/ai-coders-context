@@ -1,6 +1,5 @@
 export function renderApiReference(): string {
-  return `<!-- agent-update:start:api-reference -->
-# API Reference
+  return `# API Reference
 
 **Purpose:** Enable AI agents to programmatically interact with all API endpoints.
 
@@ -463,24 +462,21 @@ Document webhook registration process if applicable.
 - Link to Postman collection for easy testing
 - Link to OpenAPI/Swagger specification if available
 
-<!-- agent-readonly:guidance -->
-## AI Update Checklist
-1. Review route definitions and controller implementations for new or changed endpoints
-2. Verify authentication flows match current implementation
-3. Update rate limiting policies if thresholds changed
-4. Document new error codes and response formats
-5. Ensure all examples use realistic data and current API structure
-6. Validate that webhook event types are current
-7. Update SDK links and availability
+## Update Checklist
+1. Review route definitions and controller implementations for new or changed endpoints.
+2. Verify authentication flows match current implementation.
+3. Update rate limiting policies if thresholds changed.
+4. Document new error codes and response formats.
+5. Ensure all examples use realistic data and current API structure.
+6. Validate that webhook event types are current.
+7. Update SDK links and availability.
 
-<!-- agent-readonly:sources -->
-## Acceptable Sources
-- API route files and controller implementations
-- Authentication middleware and JWT/OAuth configurations
-- OpenAPI/Swagger specifications
-- Integration tests that demonstrate API usage
-- Postman collections or API testing suites
+## Recommended Sources
+- API route files and controller implementations.
+- Authentication middleware and JWT/OAuth configurations.
+- OpenAPI/Swagger specifications.
+- Integration tests that demonstrate API usage.
+- Postman collections or API testing suites.
 
-<!-- agent-update:end -->
 `;
 }

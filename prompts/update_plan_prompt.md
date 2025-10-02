@@ -6,8 +6,8 @@ You are an AI assistant responsible for refining collaboration plans that live i
 ## Preparation Checklist
 1. Review the plan’s YAML front matter to understand the stated `ai_update_goal`, `required_inputs`, and `success_criteria`.
 2. Inspect the provided documentation excerpts (from `docs/`) and agent playbooks to ensure the plan reflects their current guidance.
-3. Confirm that the “Agent Lineup” and “Documentation Touchpoints” tables link to real files and reference the correct `agent-update` markers.
-4. Note any TODOs, `agent-fill` placeholders, or missing evidence sections that must be resolved.
+3. Confirm that the “Agent Lineup” and “Documentation Touchpoints” tables link to real files and describe why each resource matters.
+4. Note any TODO prompts or missing evidence sections that must be resolved.
 
 ## Update Procedure
 1. **Task Snapshot**
@@ -20,7 +20,7 @@ You are an AI assistant responsible for refining collaboration plans that live i
 
 3. **Documentation Touchpoints**
    - Map each plan stage to the docs excerpts provided, highlighting which sections need to be updated during execution.
-   - Keep the table sorted and ensure the listed `agent-update` markers exist.
+   - Keep the table sorted and ensure each entry explains the guide’s focus or primary inputs.
 
 4. **Working Stages**
    - Break the work into clear stages with owners, deliverables, and evidence checkpoints.
@@ -31,7 +31,7 @@ You are an AI assistant responsible for refining collaboration plans that live i
    - Record any follow-up actions or decisions that require human confirmation.
 
 ## Acceptance Criteria
-- Every TODO or placeholder inside the plan’s `agent-update` block is resolved or accompanied by a clear escalation note.
+- Every TODO prompt inside the plan is resolved or accompanied by a clear escalation note.
 - Tables reference existing files and stay in sync with the docs/agent indices.
 - Stages provide actionable guidance, owners, and success signals.
 - The plan remains fully self-contained and ready for contributors to execute.

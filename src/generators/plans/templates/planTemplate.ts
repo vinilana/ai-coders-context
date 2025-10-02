@@ -15,9 +15,9 @@ export function renderPlanTemplate(context: PlanTemplateContext): string {
 
   const docsTableRows = docs.length
     ? docs
-        .map(doc => `| ${doc.title} | [${doc.file}](../docs/${doc.file}) | ${doc.marker} | ${doc.primaryInputs} |`)
+        .map(doc => `| ${doc.title} | [${doc.file}](../docs/${doc.file}) | ${doc.primaryInputs} |`)
         .join('\n')
-    : '| Documentation Index | [README.md](../docs/README.md) | agent-update:docs-index | Current docs directory listing |';
+    : '| Documentation Index | [README.md](../docs/README.md) | Key navigation and repository context |';
 
   return `---
 id: plan-${slug}
@@ -34,7 +34,6 @@ related_agents:
 ${relatedAgents}
 ---
 
-<!-- agent-update:start:plan-${slug} -->
 # ${title} Plan
 
 > ${summary?.trim() || 'TODO: Summarize the desired outcome and the problem this plan addresses.'}
@@ -53,8 +52,8 @@ ${relatedAgents}
 ${agentTableRows}
 
 ## Documentation Touchpoints
-| Guide | File | Task Marker | Primary Inputs |
-| --- | --- | --- | --- |
+| Guide | File | Primary Inputs |
+| --- | --- | --- |
 ${docsTableRows}
 
 ## Risk Assessment
@@ -152,7 +151,6 @@ When to initiate rollback:
 3. Schedule post-mortem to analyze failure
 4. Update plan with lessons learned before retry
 
-<!-- agent-readonly:guidance -->
 ## Agent Playbook Checklist
 1. Pick the agent that matches your task.
 2. Enrich the template with project-specific context or links.
@@ -162,7 +160,5 @@ When to initiate rollback:
 ## Evidence & Follow-up
 - TODO: List artifacts to collect (logs, PR links, test runs, design notes).
 - TODO: Record follow-up actions or owners.
-
-<!-- agent-update:end -->
 `;
 }

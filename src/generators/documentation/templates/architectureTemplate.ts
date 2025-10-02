@@ -5,8 +5,7 @@ export function renderArchitectureNotes(context: DocumentationTemplateContext): 
   const directorySnapshot = formatDirectoryStats(context.directoryStats);
   const coreComponentsSection = directorySnapshot || '- *Add notes for each core component or module.*';
 
-  return `<!-- agent-update:start:architecture-notes -->
-# Architecture Notes
+  return `# Architecture Notes
 
 > TODO: Describe how the system is assembled and why the current design exists.
 
@@ -42,16 +41,14 @@ ${coreComponentsSection}
 ## Top Directories Snapshot
 ${directorySnapshot}
 
-<!-- agent-readonly:guidance -->
-## AI Update Checklist
+## Update Checklist
 1. Review ADRs, design docs, or major PRs for architectural changes.
 2. Verify that each documented decision still holds; mark superseded choices clearly.
 3. Capture upstream/downstream impacts (APIs, events, data flows).
 4. Update Risks & Constraints with active incident learnings or TODO debt.
 5. Link any new diagrams or dashboards referenced in recent work.
 
-<!-- agent-readonly:sources -->
-## Acceptable Sources
+## Recommended Sources
 - ADR folders, \`/docs/architecture\` notes, or RFC threads.
 - Dependency visualisations from build tooling or scripts.
 - Issue tracker discussions vetted by maintainers.
@@ -59,7 +56,5 @@ ${directorySnapshot}
 ## Related Resources
 - [Project Overview](./project-overview.md)
 - Update [agents/README.md](../agents/README.md) when architecture changes.
-
-<!-- agent-update:end -->
 `;
 }

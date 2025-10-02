@@ -19,7 +19,7 @@ A lightweight CLI that scaffolds living documentation and AI-agent playbooks for
 - 🤖 `agents/` folder containing playbooks for common engineering agents and a handy index
 - 🔁 Repeatable scaffolding that you can re-run as the project evolves
 - 🧭 Repository-aware templates that highlight top-level directories for quick orientation
-- 🧠 AI-ready front matter and `agent-update` markers so assistants know exactly what to refresh
+- 🧠 AI-ready front matter and clear update checklists so assistants know exactly what to refresh
 
 ## 📦 Installation
 
@@ -83,7 +83,7 @@ Customize the Markdown files to reflect your project’s specifics and commit th
 
 Need help filling in the scaffold? Use [`prompts/update_scaffold_prompt.md`](./prompts/update_scaffold_prompt.md) as the canonical instruction set for any LLM or CLI agent. It walks through:
 
-- Gathering repository context and locating `agent-update`/`agent-fill` markers.
+- Gathering repository context and reviewing TODO prompts inside the scaffold.
 - Updating documentation sections while satisfying the YAML front matter criteria.
 - Aligning agent playbooks with the refreshed docs and recording evidence for maintainers.
 
@@ -96,13 +96,13 @@ The scaffold includes the following guides and playbooks out of the box:
 - Docs: `project-overview`, `architecture`, `development-workflow`, `testing-strategy`, `glossary`, `data-flow`, `security`, `tooling`
 - Agents: `code-reviewer`, `bug-fixer`, `feature-developer`, `refactoring-specialist`, `test-writer`, `documentation-writer`, `performance-optimizer`, `security-auditor`, `backend-specialist`, `frontend-specialist`, `architect-specialist`
 
-### AI Marker Reference
+### Scaffold Conventions
 
-- `<!-- agent-update:start:section-id --> … <!-- agent-update:end -->` wrap the sections that AI assistants should rewrite with up-to-date project knowledge.
-- `<!-- agent-fill:slot-id --> … <!-- /agent-fill -->` highlight inline placeholders that must be replaced with concrete details before removing the wrapper.
-- `<!-- agent-readonly:context -->` flags guidance that should remain as-is; treat the adjacent content as instructions rather than editable prose.
+- Every guide starts with YAML front matter capturing the task goal, required inputs, and success criteria.
+- Inline `TODO:` prompts highlight spots that still need project-specific context.
+- Each document ends with an Update Checklist and Recommended Sources to keep future refreshes on track.
 
-When contributing, focus edits inside `agent-update` regions or `agent-fill` placeholders and leave `agent-readonly` guidance untouched unless you have explicit maintainer approval.
+When contributing, resolve the TODO prompts, keep the checklists current, and expand examples with project details as you learn more.
 
 ## 🛠 Commands
 

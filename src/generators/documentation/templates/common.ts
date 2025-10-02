@@ -28,15 +28,14 @@ export function formatDirectoryList(
         return `- \`${dir}/\``;
       }
 
-      const slotId = slugify(dir);
-      return `- <!-- agent-fill:directory-${slotId} -->\`${dir}/\` — TODO: Describe the purpose of this directory.<!-- /agent-fill -->`;
+      return `- \`${dir}/\` — TODO: Describe the purpose of this directory.`;
     })
     .join('\n');
 }
 
 export function buildDocumentMapTable(guides: DocumentationTemplateContext['guides']): string {
-  const rows = guides.map(meta => `| ${meta.title} | \`${meta.file}\` | ${meta.marker} | ${meta.primaryInputs} |`);
-  return ['| Guide | File | AI Marker | Primary Inputs |', '| --- | --- | --- | --- |', ...rows].join('\n');
+  const rows = guides.map(meta => `| ${meta.title} | \`${meta.file}\` | ${meta.primaryInputs} |`);
+  return ['| Guide | File | Primary Inputs |', '| --- | --- | --- |', ...rows].join('\n');
 }
 
 export function formatDirectoryStats(stats: DirectoryStat[]): string {
@@ -55,11 +54,4 @@ export function formatInlineDirectoryList(directories: string[]): string {
   }
 
   return directories.map(dir => `\`${dir}\``).join(', ');
-}
-
-export function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
 }

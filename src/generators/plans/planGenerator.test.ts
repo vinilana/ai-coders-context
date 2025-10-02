@@ -38,10 +38,10 @@ describe('PlanGenerator', () => {
 
     const content = await fs.readFile(planPath, 'utf8');
     expect(content).toContain('id: plan-new-initiative');
-    expect(content).toContain('<!-- agent-update:start:plan-new-initiative -->');
     expect(content).toContain('# New Initiative Plan');
     expect(content).toContain('## Working Phases');
     expect(content).toContain('**Commit Checkpoint**');
+    expect(content).toContain('| Guide | File | Primary Inputs |');
 
     const indexContent = await fs.readFile(path.join(outputDir, 'plans', 'README.md'), 'utf8');
     expect(indexContent).toContain('1. [New Initiative](./new-initiative.md)');

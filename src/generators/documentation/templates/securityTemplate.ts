@@ -2,7 +2,6 @@
 export function renderSecurity(): string {
 
   return `
-<!-- agent-update:start:security -->
 # Security & Compliance Notes
 
 Capture the policies and guardrails that keep this project secure and compliant.
@@ -19,19 +18,16 @@ Capture the policies and guardrails that keep this project secure and compliant.
 ## Incident Response
 - On-call contacts, escalation steps, and tooling for detection, triage, and post-incident analysis.
 
-<!-- agent-readonly:guidance -->
-## AI Update Checklist
+## Update Checklist
 1. Confirm security libraries and infrastructure match current deployments.
 2. Update secrets management details when storage or naming changes.
 3. Reflect new compliance obligations or audit findings.
 4. Ensure incident response procedures include current contacts and tooling.
 
-<!-- agent-readonly:sources -->
-## Acceptable Sources
+## Recommended Sources
 - Security architecture docs, runbooks, policy handbooks.
 - IAM/authorization configuration (code or infrastructure).
 - Compliance updates from security or legal teams.
 
-<!-- agent-update:end -->
 `;
 }
