@@ -25,6 +25,8 @@ ${agentEntries}
 - [Documentation Index](../docs/README.md)
 - [Agent Knowledge Base](../../AGENTS.md)
 - [Contributor Guidelines](../../CONTRIBUTING.md)
+- JSON context: [`../context.json`](../context.json)
+- Feature snapshots: [`../features/`](../features/)
 `;
 }
 

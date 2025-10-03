@@ -23,6 +23,10 @@ ${directoryList || '*Top-level directories will appear here once the repository 
 ## Document Map
 ${documentMap}
 
+## JSON Context Pack
+- \`../context.json\` — Repository-wide summary for AI agents and documentation runs.
+- \`../features/\` — Feature-level JSON context files for targeted tasks.
+
 ## Update Checklist
 1. Gather context with \`git status -sb\` plus the latest commits touching \`docs/\` or \`agents/\`.
 2. Compare the current directory tree against the table above; add or retire rows accordingly.

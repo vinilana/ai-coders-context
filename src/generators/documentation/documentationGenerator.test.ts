@@ -90,11 +90,27 @@ describe('DocumentationGenerator', () => {
     const indexContent = await fs.readFile(path.join(docsDir, 'README.md'), 'utf8');
     expect(indexContent).toContain('# Documentation Index');
     expect(indexContent).toContain('## Update Checklist');
+    expect(indexContent).toContain('JSON Context Pack');
 
     const overviewContent = await fs.readFile(path.join(docsDir, 'project-overview.md'), 'utf8');
     expect(overviewContent).toContain('# Project Overview');
     expect(overviewContent).toContain('Root path:');
     expect(overviewContent).toContain('## Update Checklist');
+
+    const repoContextPath = path.join(outputDir, 'context.json');
+    expect(await fs.pathExists(repoContextPath)).toBe(true);
+    const repositoryContext = JSON.parse(await fs.readFile(repoContextPath, 'utf8'));
+    expect(repositoryContext.documentation.index).toBe('./docs/README.md');
+    expect(repositoryContext.agents.index).toBe('./agents/README.md');
+    expect(repositoryContext.features.length).toBeGreaterThan(0);
+
+    const featuresDir = path.join(outputDir, 'features');
+    const featureFiles = await fs.readdir(featuresDir);
+    expect(featureFiles).toEqual(expect.arrayContaining(['src.json', 'tests.json']));
+
+    const srcFeature = JSON.parse(await fs.readFile(path.join(featuresDir, 'src.json'), 'utf8'));
+    expect(srcFeature.references.documentation.some((ref: { path: string }) => ref.path === '../docs/README.md')).toBe(true);
+    expect(srcFeature.references.agents.some((ref: { path: string }) => ref.path === '../agents/README.md')).toBe(true);
   });
 
   it('respects explicit guide selection', async () => {

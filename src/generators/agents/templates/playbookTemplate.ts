@@ -33,6 +33,8 @@ ${formatList(bestPractices)}
 - Agent handbook: [agents/README.md](./README.md)
 - Agent knowledge base: [AGENTS.md](../../AGENTS.md)
 - Contributor guide: [CONTRIBUTING.md](../../CONTRIBUTING.md)
+- Repository context JSON: [../context.json](../context.json)
+- Feature snapshots: [../features/](../features/)
 
 ## Repository Starting Points
 ${directoryList || '- Add directory highlights relevant to this agent.'}

@@ -16,6 +16,7 @@ import {
   renderToolingGuide
 } from './templates';
 import { getGuidesByKeys } from './guideRegistry';
+import { JsonContextGenerator } from './jsonContextGenerator';
 
 interface DocSection {
   fileName: string;
@@ -26,8 +27,16 @@ interface DocumentationGenerationConfig {
   selectedDocs?: string[];
 }
 
+interface DocumentationGeneratorOptions {
+  jsonContextGenerator?: JsonContextGenerator;
+}
+
 export class DocumentationGenerator {
-  constructor(..._legacyArgs: unknown[]) {}
+  private readonly jsonContextGenerator: JsonContextGenerator;
+
+  constructor(options: DocumentationGeneratorOptions = {}) {
+    this.jsonContextGenerator = options.jsonContextGenerator ?? new JsonContextGenerator();
+  }
 
   async generateDocumentation(
     repoStructure: RepoStructure,
@@ -51,6 +60,12 @@ export class DocumentationGenerator {
     }
 
     await this.updateAgentGuideReferences(repoStructure, verbose);
+
+    await this.jsonContextGenerator.generate({
+      documentationContext: context,
+      outputDir,
+      verbose
+    });
 
     return created;
   }
