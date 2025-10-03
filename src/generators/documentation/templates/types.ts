@@ -4,7 +4,6 @@ export interface GuideMeta {
   key: string;
   title: string;
   file: string;
-  marker: string;
   primaryInputs: string;
 }
 

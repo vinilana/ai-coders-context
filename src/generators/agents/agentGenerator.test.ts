@@ -98,12 +98,15 @@ describe('AgentGenerator', () => {
     const playbookContent = await fs.readFile(path.join(agentsDir, 'code-reviewer.md'), 'utf8');
     expect(playbookContent).toContain('# Code Reviewer Agent Playbook');
     expect(playbookContent).toContain('Documentation Touchpoints');
-    expect(playbookContent).toContain('<!-- agent-update:start:agent-code-reviewer -->');
-    expect(playbookContent).toContain('agent-update:project-overview');
+    expect(playbookContent).toContain('Documentation index and navigation overview');
+    expect(playbookContent).toContain('Roadmap, README, stakeholder notes');
+    expect(playbookContent).toContain('Repository context JSON');
+    expect(playbookContent).toContain('../context.json');
 
     const indexContent = await fs.readFile(path.join(agentsDir, 'README.md'), 'utf8');
     expect(indexContent).toContain('[Code Reviewer](./code-reviewer.md)');
     expect(indexContent).toContain('[Test Writer](./test-writer.md)');
+    expect(indexContent).toContain('../context.json');
   });
 
   it('falls back to all agent types when selection is invalid', async () => {

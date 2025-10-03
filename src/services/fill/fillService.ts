@@ -265,8 +265,8 @@ export class FillService {
 
   private buildUserPrompt(relativePath: string, currentContent: string, contextSummary: string, isAgent: boolean): string {
     const guidance: string[] = [
-      '- Preserve YAML front matter and existing `agent-update` sections.',
-      '- Replace TODOs and resolve `agent-fill` placeholders with concrete information.',
+      '- Preserve YAML front matter and existing structural headings.',
+      '- Replace every TODO prompt with concrete information.',
       '- Ensure success criteria in the front matter are satisfied.',
       '- Return only the full updated Markdown for this file.'
     ];

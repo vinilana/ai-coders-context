@@ -3,7 +3,7 @@ import { AgentType } from '../agentTypes';
 export interface DocTouchpoint {
   title: string;
   path: string;
-  marker: string;
+  description: string;
 }
 
 export interface AgentTemplateContext {

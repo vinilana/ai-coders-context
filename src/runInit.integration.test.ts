@@ -44,8 +44,8 @@ describe('runInit integration', () => {
     expect(await fs.pathExists(agentsDir)).toBe(true);
 
     const docsIndex = await fs.readFile(path.join(docsDir, 'README.md'), 'utf8');
-    expect(docsIndex).toContain('<!-- agent-update:start:docs-index -->');
     expect(docsIndex).toContain('Repository Snapshot');
+    expect(docsIndex).toContain('Update Checklist');
 
     const agentIndex = await fs.readFile(path.join(agentsDir, 'README.md'), 'utf8');
     expect(agentIndex).toContain('# Agent Handbook');

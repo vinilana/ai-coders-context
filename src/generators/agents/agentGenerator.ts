@@ -12,7 +12,7 @@ interface AgentContext {
 interface DocTouchpoint {
   title: string;
   path: string;
-  marker: string;
+  description: string;
 }
 
 export class AgentGenerator {
@@ -20,12 +20,12 @@ export class AgentGenerator {
     {
       title: 'Documentation Index',
       path: '../docs/README.md',
-      marker: 'agent-update:docs-index'
+      description: 'Documentation index and navigation overview'
     },
     ...DOCUMENT_GUIDES.map(guide => ({
       title: guide.title,
       path: `../docs/${guide.file}`,
-      marker: guide.marker
+      description: guide.primaryInputs
     }))
   ];
 
