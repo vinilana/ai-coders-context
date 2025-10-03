@@ -10,6 +10,7 @@ export interface GuideMeta {
 export interface DirectoryStat {
   name: string;
   fileCount: number;
+  totalSize: number;
 }
 
 export interface DocumentationTemplateContext {

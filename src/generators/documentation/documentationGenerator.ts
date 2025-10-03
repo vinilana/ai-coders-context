@@ -80,11 +80,15 @@ export class DocumentationGenerator {
       : this.deriveTopLevelDirectories(repoStructure);
 
     const directoryStats = topLevelStats.length
-      ? topLevelStats.map(stat => ({ name: stat.name, fileCount: stat.fileCount }))
-      : topLevelDirectories.map(name => ({
-          name,
-          fileCount: repoStructure.files.filter(file => file.relativePath.startsWith(`${name}/`)).length
-        }));
+      ? topLevelStats.map(stat => ({ name: stat.name, fileCount: stat.fileCount, totalSize: stat.totalSize }))
+      : topLevelDirectories.map(name => {
+          const dirFiles = repoStructure.files.filter(file => file.relativePath.startsWith(`${name}/`));
+          return {
+            name,
+            fileCount: dirFiles.length,
+            totalSize: dirFiles.reduce((sum, file) => sum + file.size, 0)
+          };
+        });
     const primaryLanguages = GeneratorUtils.getTopFileExtensions(repoStructure, 5)
       .filter(([ext]) => !!ext)
       .map(([extension, count]) => ({ extension, count }));
