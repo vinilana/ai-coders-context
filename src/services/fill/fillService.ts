@@ -41,10 +41,15 @@ interface ResolvedFillOptions {
   systemPrompt: string;
 }
 
+type TargetCategory = 'doc' | 'agent' | 'test-plan';
+
+type TargetFormat = 'markdown' | 'json';
+
 interface TargetFile {
   fullPath: string;
   relativePath: string;
-  isAgent: boolean;
+  category: TargetCategory;
+  format: TargetFormat;
   content: string;
 }
 
@@ -170,7 +175,7 @@ export class FillService {
     this.ui.startSpinner(this.t('spinner.fill.processing', { path: target.relativePath }));
 
     try {
-      const userPrompt = this.buildUserPrompt(target.relativePath, target.content, contextSummary, target.isAgent);
+      const userPrompt = this.buildUserPrompt(target, contextSummary);
       const updatedContent = await llmClient.generateText(userPrompt, options.systemPrompt);
 
       if (!updatedContent || !updatedContent.trim()) {
@@ -192,24 +197,45 @@ export class FillService {
   }
 
   private async collectTargets(options: ResolvedFillOptions): Promise<TargetFile[]> {
-    const docFiles = await glob('**/*.md', { cwd: options.docsDir, absolute: true });
-    const agentFiles = await glob('**/*.md', { cwd: options.agentsDir, absolute: true });
-    const candidates = [...docFiles, ...agentFiles];
-
     const targets: TargetFile[] = [];
 
-    for (const fullPath of candidates) {
-      const content = await fs.readFile(fullPath, 'utf-8');
-      const isAgent = fullPath.includes(`${path.sep}agents${path.sep}`);
-      const relativePath = path.relative(options.outputDir, fullPath);
-      targets.push({ fullPath, relativePath, isAgent, content });
+    const docFiles = await glob('**/*.md', { cwd: options.docsDir, absolute: true, nodir: true });
+    const agentFiles = await glob('**/*.{json,md}', {
+      cwd: options.agentsDir,
+      absolute: true,
+      nodir: true
+    });
 
+    const pushTarget = async (fullPath: string, category: TargetCategory) => {
+      const content = await fs.readFile(fullPath, 'utf-8');
+      const relativePath = path.relative(options.outputDir, fullPath);
+      const format: TargetFormat = path.extname(fullPath).toLowerCase() === '.json' ? 'json' : 'markdown';
+
+      targets.push({ fullPath, relativePath, category, format, content });
+    };
+
+    for (const fullPath of docFiles) {
+      await pushTarget(fullPath, 'doc');
       if (options.limit && targets.length >= options.limit) {
-        break;
+        return targets;
       }
     }
 
-    return targets;
+    for (const fullPath of agentFiles) {
+      await pushTarget(fullPath, 'agent');
+      if (options.limit && targets.length >= options.limit) {
+        return targets;
+      }
+    }
+
+    const testPlanPath = path.join(options.outputDir, 'test-plan.json');
+    if (!options.limit || targets.length < options.limit) {
+      if (await fs.pathExists(testPlanPath)) {
+        await pushTarget(testPlanPath, 'test-plan');
+      }
+    }
+
+    return options.limit ? targets.slice(0, options.limit) : targets;
   }
 
   private displayPromptSource(promptPath: string | undefined, source: 'custom' | 'package' | 'builtin'): void {
@@ -263,22 +289,33 @@ export class FillService {
     ].join('\n');
   }
 
-  private buildUserPrompt(relativePath: string, currentContent: string, contextSummary: string, isAgent: boolean): string {
-    const guidance: string[] = [
-      '- Preserve YAML front matter and existing structural headings.',
-      '- Replace every TODO prompt with concrete information.',
-      '- Ensure success criteria in the front matter are satisfied.',
-      '- Return only the full updated Markdown for this file.'
-    ];
+  private buildUserPrompt(target: TargetFile, contextSummary: string): string {
+    const guidance: string[] = [];
 
-    if (isAgent) {
-      guidance.push('- Keep agent responsibilities, best practices, and documentation touchpoints aligned with the latest docs.');
+    if (target.format === 'markdown') {
+      guidance.push('- Preserve YAML front matter and existing structural headings.');
+      guidance.push('- Replace every TODO prompt with concrete information.');
+      guidance.push('- Ensure success criteria in the front matter are satisfied.');
+      guidance.push('- Return only the full updated Markdown for this file.');
     } else {
+      guidance.push('- Return only the full updated JSON for this file.');
+      guidance.push('- Keep the existing schema and key ordering intact while resolving TODO placeholders.');
+    }
+
+    if (target.category === 'agent') {
+      guidance.push('- Keep agent responsibilities, best practices, and references aligned with the latest documentation.');
+      if (target.format === 'json') {
+        guidance.push('- Preserve arrays such as responsibilities, checklists, and success metrics; update values rather than removing keys.');
+      }
+    } else if (target.category === 'doc') {
       guidance.push('- Maintain accurate cross-links between docs and referenced resources.');
+    } else if (target.category === 'test-plan') {
+      guidance.push('- Maintain the frontend and backend scenario collections, keeping scenarioId values stable.');
+      guidance.push('- Update Given/When/Then fields with concrete expectations while preserving JSON structure.');
     }
 
     return [
-      `Target file: ${relativePath}`,
+      `Target file: ${target.relativePath}`,
       'Repository summary:',
       contextSummary,
       '',
@@ -287,7 +324,7 @@ export class FillService {
       '',
       'Current content:',
       '<file>',
-      currentContent,
+      target.content,
       '</file>'
     ].join('\n');
   }

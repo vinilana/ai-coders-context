@@ -52,7 +52,7 @@ describe('runInit integration', () => {
     expect(agentIndex).toContain('[Documentation Writer]');
 
     const generatedAgents = await fs.readdir(agentsDir);
-    expect(generatedAgents).toContain('code-reviewer.md');
+    expect(generatedAgents).toContain('code-reviewer.json');
   });
 
   it('supports docs-only scaffolding without creating agent assets', async () => {

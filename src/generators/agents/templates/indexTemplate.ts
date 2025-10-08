@@ -5,7 +5,7 @@ export function renderAgentIndex(agentTypes: readonly AgentType[]): string {
   const agentEntries = agentTypes.map(type => {
     const title = formatTitle(type);
     const primaryResponsibility = AGENT_RESPONSIBILITIES[type]?.[0] || 'Document responsibilities here.';
-    return `- [${title}](./${type}.md) — ${primaryResponsibility}`;
+    return `- [${title}](./${type}.json) — ${primaryResponsibility}`;
   }).join('\n');
 
   return `# Agent Handbook
@@ -17,8 +17,8 @@ ${agentEntries}
 
 ## How To Use These Playbooks
 1. Pick the agent that matches your task.
-2. Enrich the template with project-specific context or links.
-3. Share the final prompt with your AI assistant.
+2. Enrich the JSON template with project-specific context or links.
+3. Share the structured prompt with your AI assistant.
 4. Capture learnings in the relevant documentation file so future runs improve.
 
 ## Related Resources
@@ -26,7 +26,7 @@ ${agentEntries}
 - [Agent Knowledge Base](../../AGENTS.md)
 - [Contributor Guidelines](../../CONTRIBUTING.md)
 - JSON context: [\`../context.json\`](../context.json)
-- Feature snapshots: [\`../features/\`](../features/)
+- TDD plan: [\`../test-plan.json\`](../test-plan.json)
 `;
 }
 

@@ -25,7 +25,7 @@ ${documentMap}
 
 ## JSON Context Pack
 - \`../context.json\` — Repository-wide summary for AI agents and documentation runs.
-- \`../features/\` — Feature-level JSON context files for targeted tasks.
+- \`../test-plan.json\` — TDD scenario plan covering frontend and backend expectations.
 
 ## Update Checklist
 1. Gather context with \`git status -sb\` plus the latest commits touching \`docs/\` or \`agents/\`.

@@ -93,19 +93,22 @@ describe('AgentGenerator', () => {
 
     const agentsDir = path.join(outputDir, 'agents');
     const files = (await fs.readdir(agentsDir)).sort();
-    expect(files).toEqual(['README.md', 'code-reviewer.md', 'test-writer.md']);
+    expect(files).toEqual(['README.md', 'code-reviewer.json', 'test-writer.json']);
 
-    const playbookContent = await fs.readFile(path.join(agentsDir, 'code-reviewer.md'), 'utf8');
-    expect(playbookContent).toContain('# Code Reviewer Agent Playbook');
-    expect(playbookContent).toContain('Documentation Touchpoints');
-    expect(playbookContent).toContain('Documentation index and navigation overview');
-    expect(playbookContent).toContain('Roadmap, README, stakeholder notes');
-    expect(playbookContent).toContain('Repository context JSON');
-    expect(playbookContent).toContain('../context.json');
+    const playbook = JSON.parse(
+      await fs.readFile(path.join(agentsDir, 'code-reviewer.json'), 'utf8')
+    );
+    expect(playbook.id).toBe('code-reviewer');
+    expect(playbook.name).toBe('Code Reviewer Agent Playbook');
+    expect(playbook.mission).toContain('TODO');
+    expect(playbook.resources.some((resource: { path: string }) => resource.path === '../context.json')).toBe(true);
+    expect(playbook.resources.some((resource: { path: string }) => resource.path === '../test-plan.json')).toBe(true);
+    expect(playbook.touchpoints.length).toBeGreaterThan(0);
+    expect(playbook.generatedAt).toBeDefined();
 
     const indexContent = await fs.readFile(path.join(agentsDir, 'README.md'), 'utf8');
-    expect(indexContent).toContain('[Code Reviewer](./code-reviewer.md)');
-    expect(indexContent).toContain('[Test Writer](./test-writer.md)');
+    expect(indexContent).toContain('[Code Reviewer](./code-reviewer.json)');
+    expect(indexContent).toContain('[Test Writer](./test-writer.json)');
     expect(indexContent).toContain('../context.json');
   });
 
@@ -123,7 +126,7 @@ describe('AgentGenerator', () => {
     const agentsDir = path.join(outputDir, 'agents');
     const files = await fs.readdir(agentsDir);
     AGENT_TYPES.forEach(agent => {
-      expect(files).toContain(`${agent}.md`);
+      expect(files).toContain(`${agent}.json`);
     });
   });
 });

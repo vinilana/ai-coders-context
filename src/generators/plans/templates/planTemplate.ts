@@ -9,9 +9,9 @@ export function renderPlanTemplate(context: PlanTemplateContext): string {
 
   const agentTableRows = agents.length
     ? agents
-        .map(agent => `| ${agent.title} | TODO: Describe why this agent is involved. | [${agent.title}](../agents/${agent.type}.md) | ${agent.responsibility} |`)
+        .map(agent => `| ${agent.title} | TODO: Describe why this agent is involved. | [${agent.title}](../agents/${agent.type}.json) | ${agent.responsibility} |`)
         .join('\n')
-    : '| Documentation Writer | TODO: Describe why this agent is involved. | [Documentation Writer](../agents/documentation-writer.md) | Create clear, comprehensive documentation |';
+    : '| Documentation Writer | TODO: Describe why this agent is involved. | [Documentation Writer](../agents/documentation-writer.json) | Create clear, comprehensive documentation |';
 
   const docsTableRows = docs.length
     ? docs
@@ -26,6 +26,7 @@ required_inputs:
   - "Task summary or issue link describing the goal"
   - "Relevant documentation sections from docs/README.md"
   - "Matching agent playbooks from agents/README.md"
+  - "Structured prompts in ../agents/*.json for the agents involved"
 success_criteria:
   - "Stages list clear owners, deliverables, and success signals"
   - "Plan references documentation and agent resources that exist today"
@@ -153,8 +154,8 @@ When to initiate rollback:
 
 ## Agent Playbook Checklist
 1. Pick the agent that matches your task.
-2. Enrich the template with project-specific context or links.
-3. Share the final prompt with your AI assistant.
+2. Enrich the JSON template with project-specific context or links.
+3. Share the structured prompt with your AI assistant.
 4. Capture learnings in the relevant documentation file so future runs improve.
 
 ## Evidence & Follow-up

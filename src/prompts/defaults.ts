@@ -25,11 +25,16 @@ You are an AI assistant responsible for refreshing the documentation (\`docs/\`)
    - If you add new guides or sections, update \`docs/README.md\` and the document map table.
 
 4. **Agent Playbook Alignment**
-   - For each change in \`docs/\`, adjust the related \`agents/*.md\` playbooks.
-   - Ensure the "Documentation Touchpoints" list references the relevant guides and accurately describes why they matter.
-   - Update collaboration checklists and evidence sections to reflect the latest workflows.
+ - For each change in \`docs/\`, adjust the related \`agents/*.json\` playbooks.
+  - Ensure the "Documentation Touchpoints" list references the relevant guides and accurately describes why they matter.
+  - Update collaboration checklists and evidence sections to reflect the latest workflows.
 
-5. **Evidence & Traceability**
+5. **Test Plan Refresh**
+   - Update \`test-plan.json\` with the latest frontend and backend scenarios that reflect documentation changes.
+   - Keep scenario IDs stable while replacing \`TODO\` placeholders with concrete Given/When/Then expectations and related files.
+   - Align recommended sources and checklists with any new guidance added across docs and agents.
+
+6. **Evidence & Traceability**
    - Note key sources (commit hashes, issues, ADRs) in the "Evidence to Capture" or "AI Update Checklist" summary lines.
    - If anything is ambiguous or requires human follow-up, leave a concise note clearly labelled for maintainers.
 

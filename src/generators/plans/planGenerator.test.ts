@@ -61,7 +61,7 @@ describe('PlanGenerator', () => {
 
     expect(content).toContain('related_agents:');
     expect(content).toContain('  - "test-writer"');
-    expect(content).toContain('[Test Writer](../agents/test-writer.md)');
+    expect(content).toContain('[Test Writer](../agents/test-writer.json)');
     expect(content).toContain('[testing-strategy.md](../docs/testing-strategy.md)');
 
     await expect(generator.generatePlan(options)).rejects.toThrow('Plan already exists');

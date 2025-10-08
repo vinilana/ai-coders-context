@@ -102,15 +102,24 @@ describe('DocumentationGenerator', () => {
     const repositoryContext = JSON.parse(await fs.readFile(repoContextPath, 'utf8'));
     expect(repositoryContext.documentation.index).toBe('./docs/README.md');
     expect(repositoryContext.agents.index).toBe('./agents/README.md');
-    expect(repositoryContext.features.length).toBeGreaterThan(0);
+    expect(repositoryContext.testPlan.path).toBe('./test-plan.json');
+    expect(repositoryContext.testPlan.areas.length).toBeGreaterThan(0);
 
-    const featuresDir = path.join(outputDir, 'features');
-    const featureFiles = await fs.readdir(featuresDir);
-    expect(featureFiles).toEqual(expect.arrayContaining(['src.json', 'tests.json']));
+    const testPlanPath = path.join(outputDir, 'test-plan.json');
+    expect(await fs.pathExists(testPlanPath)).toBe(true);
+    const testPlan = JSON.parse(await fs.readFile(testPlanPath, 'utf8'));
+    expect(testPlan.repository.id).toBe(repositoryContext.id);
+    expect(Array.isArray(testPlan.areas)).toBe(true);
+    expect(testPlan.areas.length).toBeGreaterThanOrEqual(2);
+    expect(Array.isArray(testPlan.testDataGuidance.fixtures)).toBe(true);
 
-    const srcFeature = JSON.parse(await fs.readFile(path.join(featuresDir, 'src.json'), 'utf8'));
-    expect(srcFeature.references.documentation.some((ref: { path: string }) => ref.path === '../docs/README.md')).toBe(true);
-    expect(srcFeature.references.agents.some((ref: { path: string }) => ref.path === '../agents/README.md')).toBe(true);
+    const srcArea = testPlan.areas.find((area: { id: string }) => area.id === 'src');
+    expect(srcArea).toBeDefined();
+    expect(srcArea.coverage.frontend.scenarios[0].scenarioId).toContain('FE-001');
+    expect(srcArea.coverage.backend.scenarios[0].scenarioId).toContain('BE-001');
+    expect(srcArea.coverage.frontend.scenarios[0].preconditions.length).toBeGreaterThan(0);
+    expect(srcArea.coverage.frontend.scenarios[0].expectedResults.length).toBeGreaterThan(0);
+    expect(srcArea.coverage.frontend.scenarios[0].relatedFiles).toEqual(expect.arrayContaining(['src/index.ts']));
   });
 
   it('respects explicit guide selection', async () => {

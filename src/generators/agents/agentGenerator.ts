@@ -43,12 +43,23 @@ export class AgentGenerator {
 
     const context = this.buildContext(repoStructure);
     const agentTypes = this.resolveAgentSelection(selectedAgentTypes);
+    const generatedAt = GeneratorUtils.createTimestamp();
 
     let created = 0;
     for (const agentType of agentTypes) {
-      const content = renderAgentPlaybook(agentType, context.topLevelDirectories, this.docTouchpoints);
-      const filePath = path.join(agentsDir, `${agentType}.md`);
-      await GeneratorUtils.writeFileWithLogging(filePath, content, verbose, `Created ${agentType}.md`);
+      const playbook = renderAgentPlaybook(
+        agentType,
+        context.topLevelDirectories,
+        this.docTouchpoints,
+        generatedAt
+      );
+      const filePath = path.join(agentsDir, `${agentType}.json`);
+      await GeneratorUtils.writeFileWithLogging(
+        filePath,
+        this.stringify(playbook),
+        verbose,
+        `Created ${agentType}.json`
+      );
       created += 1;
     }
 
@@ -83,6 +94,10 @@ export class AgentGenerator {
     return {
       topLevelDirectories: Array.from(directorySet).sort()
     };
+  }
+
+  private stringify(value: unknown): string {
+    return `${JSON.stringify(value, null, 2)}\n`;
   }
 
 }

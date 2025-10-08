@@ -34,42 +34,117 @@ export interface AgentReference {
   description?: string;
 }
 
-export interface FeatureComponentSummary {
-  name: string;
+export interface AgentResource {
+  title: string;
   path: string;
-  type: 'file' | 'directory';
-  summary: string;
+  description?: string;
 }
 
-export interface FeatureContext {
+export interface AgentTouchpoint {
+  title: string;
+  path: string;
+  description: string;
+}
+
+export interface AgentTroubleshootingGuide {
+  issue: string;
+  symptoms: string[];
+  rootCause: string;
+  resolutionSteps: string[];
+  prevention: string[];
+}
+
+export interface AgentSuccessMetrics {
+  codeQuality: string[];
+  velocity: string[];
+  documentation: string[];
+  collaboration: string[];
+  targetMetrics: string[];
+}
+
+export interface AgentPlaybook {
   id: string;
   name: string;
-  type: 'directory' | 'file';
+  role: string;
+  mission: string;
+  responsibilities: string[];
+  bestPractices: string[];
+  resources: AgentResource[];
+  startingPoints: string[];
+  touchpoints: AgentTouchpoint[];
+  collaborationChecklist: string[];
+  successMetrics: AgentSuccessMetrics;
+  troubleshooting: AgentTroubleshootingGuide[];
+  handoffNotes: string[];
+  evidenceToCapture: string[];
+  notes: string[];
+  generatedAt: string;
+}
+
+export type TestScenarioPriority = 'P0' | 'P1' | 'P2';
+
+export type AutomationStatus = 'manual' | 'automated' | 'mixed';
+
+export interface TestScenario {
+  scenarioId: string;
+  title: string;
+  userStory: string;
+  preconditions: string[];
+  steps: string[];
+  expectedResults: string[];
+  priority: TestScenarioPriority;
+  automationStatus: AutomationStatus;
+  relatedFiles: string[];
+  notes: string[];
+  testData: {
+    fixtures: string[];
+    mocks: string[];
+    datasets: string[];
+  };
+}
+
+export interface ScenarioCollection {
+  summary: string;
+  scenarios: TestScenario[];
+}
+
+export interface TestAreaPlan {
+  id: string;
+  name: string;
   relativePath: string;
   description: string;
-  keyComponents: FeatureComponentSummary[];
-  stats: {
-    fileCount: number;
-    totalSize: number;
-    sizeHuman: string;
-    primaryExtensions: Array<{ extension: string; count: number }>;
+  coverage: {
+    frontend: ScenarioCollection;
+    backend: ScenarioCollection;
   };
-  architecture: {
-    patterns: string[];
-    notes: string[];
-  };
-  dataFlows: Array<{
-    source: string;
-    target: string;
-    description: string;
-  }>;
-  references: {
-    documentation: DocumentationReference[];
-    agents: AgentReference[];
+  testDataNeeds: {
+    fixtures: string[];
+    mocks: string[];
+    datasets: string[];
   };
   updateChecklist: string[];
   recommendedSources: string[];
-  generatedAt: string;
+}
+
+export interface TestPlanDocument {
+  repository: {
+    id: string;
+    name: string;
+    rootPath: string;
+    generatedAt: string;
+  };
+  areas: TestAreaPlan[];
+  testDataGuidance: {
+    fixtures: string[];
+    mocks: string[];
+    datasets: string[];
+    notes: string[];
+  };
+  checklists: {
+    maintenance: string[];
+    planning: string[];
+  };
+  recommendedSources: string[];
 }
 
 export interface RepositoryContextSummary {
@@ -91,11 +166,15 @@ export interface RepositoryContextSummary {
     index: string;
     playbooks: AgentReference[];
   };
-  features: Array<{
-    id: string;
-    name: string;
-    contextPath: string;
-  }>;
+  testPlan: {
+    path: string;
+    areas: Array<{
+      id: string;
+      name: string;
+      frontendScenarioCount: number;
+      backendScenarioCount: number;
+    }>;
+  };
 }
 
 export interface OpenRouterConfig {

@@ -4,19 +4,16 @@ import { GeneratorUtils } from '../shared/generatorUtils';
 import type {
   AgentReference,
   DocumentationReference,
-  FeatureComponentSummary,
-  FeatureContext,
   RepositoryContextSummary,
   RepoStructure,
-  FileInfo
+  FileInfo,
+  TestPlanDocument,
+  TestAreaPlan,
+  ScenarioCollection,
+  TestScenario
 } from '../../types';
 import type { DocumentationTemplateContext, GuideMeta } from './templates/types';
 import { AGENT_TYPES } from '../agents/agentTypes';
-
-interface FeatureContextFile {
-  fileName: string;
-  context: FeatureContext;
-}
 
 interface JsonContextGeneratorOptions {
   documentationContext: DocumentationTemplateContext;
@@ -24,51 +21,43 @@ interface JsonContextGeneratorOptions {
   verbose?: boolean;
 }
 
+type CoverageKind = 'frontend' | 'backend';
+
 export class JsonContextGenerator {
   async generate(options: JsonContextGeneratorOptions): Promise<void> {
     const { documentationContext, outputDir, verbose = false } = options;
     const generatedAt = GeneratorUtils.createTimestamp();
-    const featuresDir = path.join(outputDir, 'features');
 
-    await GeneratorUtils.ensureDirectoryAndLog(featuresDir, verbose, 'Generating feature context in');
+    await GeneratorUtils.ensureDirectoryAndLog(outputDir, verbose, 'Preparing JSON context in');
 
-    const featureContexts = this.buildFeatureContexts(
-      documentationContext,
-      generatedAt
-    );
+    const testPlan = this.buildTestPlan(documentationContext, generatedAt);
 
     await this.writeRepositorySummary({
       documentationContext,
-      features: featureContexts,
+      testPlan,
       outputDir,
       generatedAt,
       verbose
     });
 
-    for (const feature of featureContexts) {
-      const featurePath = path.join(featuresDir, feature.fileName);
-      await GeneratorUtils.writeFileWithLogging(
-        featurePath,
-        this.stringify(feature.context),
-        verbose,
-        `Created ${feature.fileName}`
-      );
-    }
+    await this.writeTestPlan(outputDir, testPlan, verbose);
   }
 
   private async writeRepositorySummary(params: {
     documentationContext: DocumentationTemplateContext;
-    features: FeatureContextFile[];
+    testPlan: TestPlanDocument;
     outputDir: string;
     generatedAt: string;
     verbose: boolean;
   }): Promise<void> {
-    const { documentationContext, features, outputDir, generatedAt, verbose } = params;
+    const { documentationContext, testPlan, outputDir, generatedAt, verbose } = params;
     const { repoStructure, guides } = documentationContext;
 
+    const repoName = path.basename(repoStructure.rootPath) || 'repository';
+
     const repositorySummary: RepositoryContextSummary = {
-      id: this.createSlug(path.basename(repoStructure.rootPath) || 'repository'),
-      name: path.basename(repoStructure.rootPath),
+      id: this.createSlug(repoName),
+      name: repoName,
       rootPath: repoStructure.rootPath,
       generatedAt,
       stats: {
@@ -85,11 +74,15 @@ export class JsonContextGenerator {
         index: './agents/README.md',
         playbooks: this.buildAgentReferences('./agents')
       },
-      features: features.map(feature => ({
-        id: feature.context.id,
-        name: feature.context.name,
-        contextPath: `./features/${feature.fileName}`
-      }))
+      testPlan: {
+        path: './test-plan.json',
+        areas: testPlan.areas.map(area => ({
+          id: area.id,
+          name: area.name,
+          frontendScenarioCount: area.coverage.frontend.scenarios.length,
+          backendScenarioCount: area.coverage.backend.scenarios.length
+        }))
+      }
     };
 
     const targetPath = path.join(outputDir, 'context.json');
@@ -101,92 +94,224 @@ export class JsonContextGenerator {
     );
   }
 
-  private buildFeatureContexts(
+  private async writeTestPlan(outputDir: string, testPlan: TestPlanDocument, verbose: boolean): Promise<void> {
+    const targetPath = path.join(outputDir, 'test-plan.json');
+    await GeneratorUtils.writeFileWithLogging(
+      targetPath,
+      this.stringify(testPlan),
+      verbose,
+      'Created test-plan.json'
+    );
+  }
+
+  private buildTestPlan(
     documentationContext: DocumentationTemplateContext,
     generatedAt: string
-  ): FeatureContextFile[] {
-    const { repoStructure, directoryStats, guides } = documentationContext;
-    const features: FeatureContextFile[] = [];
+  ): TestPlanDocument {
+    const { repoStructure, directoryStats } = documentationContext;
+    const repoName = path.basename(repoStructure.rootPath) || 'repository';
+    const repositoryId = this.createSlug(repoName);
 
-    directoryStats.forEach(stat => {
-      const featureId = this.createSlug(stat.name || 'root');
-      const featureName = `${stat.name}/`;
-      const filesInFeature = this.getFilesForFeature(repoStructure, stat.name);
-      const primaryExtensions = this.calculatePrimaryExtensions(filesInFeature);
-      const keyComponents = this.buildFeatureComponents(repoStructure, stat.name, filesInFeature);
-      const documentationReferences = this.buildDocumentationReferences(
-        this.matchGuidesToFeature(guides, stat.name),
-        '../docs'
-      );
-      const agentReferences = this.buildAgentReferences('../agents');
+    const areas: TestAreaPlan[] = (directoryStats.length
+      ? directoryStats
+      : [{ name: '.', fileCount: 0, totalSize: 0 }]
+    ).map(stat =>
+      this.createAreaPlan({
+        repoStructure,
+        directoryName: stat.name,
+        fileCount: stat.fileCount,
+        totalSize: stat.totalSize
+      })
+    );
 
-      const context: FeatureContext = {
-        id: featureId,
-        name: featureName,
-        type: 'directory',
-        relativePath: featureName,
-        description: `TODO: Summarize how \`${featureName}\` supports the repository\'s CLI scaffolding and context generation flows.`,
-        keyComponents,
-        stats: {
-          fileCount: stat.fileCount,
-          totalSize: stat.totalSize,
-          sizeHuman: GeneratorUtils.formatBytes(stat.totalSize),
-          primaryExtensions
-        },
-        architecture: {
-          patterns: [
-            'TODO: Record architectural patterns or conventions enforced within this feature.',
-            'Surface layering boundaries, dependency rules, or generator flows relevant to this directory.'
-          ],
-          notes: [
-            'Generated scaffold: replace these notes with maintainers\' guidance once the directory is reviewed.'
-          ]
-        },
-        dataFlows: [
-          {
-            source: featureName,
-            target: 'TODO: Identify dependent modules, services, or outputs.',
-            description: 'TODO: Describe how responsibilities in this directory exchange data with the rest of the system.'
-          }
-        ],
-        references: {
-          documentation: [
-            {
-              title: 'Documentation Index',
-              path: '../docs/README.md',
-              description: 'Navigation hub for generated documentation guides.'
-            },
-            ...documentationReferences
-          ],
-          agents: [
-            {
-              name: 'Agent Handbook',
-              path: '../agents/README.md',
-              description: 'Index of available AI agent playbooks.'
-            },
-            ...agentReferences
-          ]
-        },
-        updateChecklist: [
-          'Validate that keyComponents reflects the latest directories and critical files.',
-          'Document the architectural patterns that govern this area of the codebase.',
-          'Link relevant documentation guides and agent playbooks before sharing with collaborators.'
-        ],
-        recommendedSources: [
-          'Review recent commits touching this directory for context.',
-          'Cross-check guidance in AGENTS.md and CONTRIBUTING.md.',
-          'Confirm details with maintainers or tech leads responsible for this feature.'
-        ],
+    return {
+      repository: {
+        id: repositoryId,
+        name: repoName,
+        rootPath: repoStructure.rootPath,
         generatedAt
-      };
+      },
+      areas,
+      testDataGuidance: {
+        fixtures: [
+          'TODO: Maintain canonical fixtures for high-priority scenarios.',
+          'TODO: Version shared fixtures so teams can coordinate updates.'
+        ],
+        mocks: [
+          'TODO: Document reusable mocks or stubs for external integrations.',
+          'TODO: Record contracts that mocks must satisfy to remain valid.'
+        ],
+        datasets: [
+          'TODO: Track sample datasets mirroring production behaviour.',
+          'TODO: Refresh datasets whenever schemas or API responses change.'
+        ],
+        notes: [
+          'Keep this guidance aligned with the testing strategy documented in `.context/docs/testing-strategy.md`.',
+          'Share updates with QA and engineering leads after major releases.'
+        ]
+      },
+      checklists: {
+        maintenance: [
+          'Verify scenario priorities align with the roadmap each sprint.',
+          'Ensure automationStatus reflects the implemented coverage.',
+          'Archive scenarios when their corresponding features are deprecated.'
+        ],
+        planning: [
+          'Identify P0 scenarios before starting a new epic.',
+          'Pair each scenario with acceptance criteria and owners.',
+          'Link scenarios to tracking tickets for traceability.'
+        ]
+      },
+      recommendedSources: [
+        'Product requirements, RFCs, or user stories describing the feature set.',
+        'Existing Jest or integration tests covering similar behaviour.',
+        'Observability dashboards or incident reports highlighting regressions.',
+        'Team retrospectives or postmortems exposing gaps in test coverage.'
+      ]
+    };
+  }
 
-      features.push({
-        fileName: `${featureId || 'feature'}.json`,
-        context
-      });
-    });
+  private createAreaPlan(params: {
+    repoStructure: RepoStructure;
+    directoryName: string;
+    fileCount: number;
+    totalSize: number;
+  }): TestAreaPlan {
+    const { repoStructure, directoryName } = params;
+    const areaId = this.createSlug(directoryName || 'root');
+    const areaLabel = directoryName ? `${directoryName}/` : './';
+    const filesInArea = this.getFilesForArea(repoStructure, directoryName);
+    const representativeFiles = this.collectRepresentativeFiles(filesInArea);
 
-    return features;
+    return {
+      id: areaId,
+      name: areaLabel,
+      relativePath: areaLabel,
+      description: `TODO: Summarize the behaviours covered by \`${areaLabel}\` and how this area contributes to the product.`,
+      coverage: {
+        frontend: this.buildScenarioCollection(areaId, areaLabel, 'frontend', representativeFiles),
+        backend: this.buildScenarioCollection(areaId, areaLabel, 'backend', representativeFiles)
+      },
+      testDataNeeds: {
+        fixtures: [
+          `TODO: Identify fixtures required to test flows in \`${areaLabel}\`.`,
+          'TODO: Share ownership for keeping these fixtures current.'
+        ],
+        mocks: [
+          `TODO: Document mocks or stubs needed when exercising \`${areaLabel}\`.`
+        ],
+        datasets: [
+          `TODO: Outline dataset samples that represent edge cases for \`${areaLabel}\`.`
+        ]
+      },
+      updateChecklist: [
+        'Review scenario user stories after major roadmap updates.',
+        `Ensure relatedFiles stay in sync with the contents of \`${areaLabel}\`.`,
+        'Confirm automationStatus reflects implemented tests before releases.'
+      ],
+      recommendedSources: [
+        `Inspect recent commits affecting \`${areaLabel}\` for new behaviours.`,
+        'Reference CONTRIBUTING.md and testing-strategy guides for expectations.',
+        'Sync with QA or product leads to validate acceptance criteria.'
+      ]
+    };
+  }
+
+  private buildScenarioCollection(
+    areaId: string,
+    areaLabel: string,
+    coverage: CoverageKind,
+    representativeFiles: string[]
+  ): ScenarioCollection {
+    const summary =
+      coverage === 'frontend'
+        ? `TODO: Outline the UI or experience flows tied to \`${areaLabel}\`.`
+        : `TODO: Capture the service, API, or data processing responsibilities of \`${areaLabel}\`.`;
+
+    return {
+      summary,
+      scenarios: [this.buildScenario(areaId, areaLabel, coverage, representativeFiles)]
+    };
+  }
+
+  private buildScenario(
+    areaId: string,
+    areaLabel: string,
+    coverage: CoverageKind,
+    representativeFiles: string[]
+  ): TestScenario {
+    const prefix = coverage === 'frontend' ? 'FE' : 'BE';
+    const scenarioId = `${(areaId || 'area').toUpperCase()}-${prefix}-001`;
+    const relatedFiles = representativeFiles.slice(0, 5);
+
+    return {
+      scenarioId,
+      title: `TODO: Define the ${coverage} behaviour to validate within \`${areaLabel}\`.`,
+      userStory: 'TODO: As a <role>, I want <goal> so that <benefit>.',
+      preconditions: [
+        'TODO: Given the system state or configuration required before executing the test.',
+        'TODO: And any data, authentication, or environment prerequisites.'
+      ],
+      steps: [
+        'TODO: When the actor performs the primary action.',
+        'TODO: And include any alternative or edge-case paths.'
+      ],
+      expectedResults: [
+        'TODO: Then capture the observable outcomes that must pass.',
+        'TODO: And record any side effects, events, or telemetry to assert.'
+      ],
+      priority: 'P1',
+      automationStatus: 'manual',
+      relatedFiles: relatedFiles.length
+        ? relatedFiles
+        : [`TODO: Identify code entry points inside \`${areaLabel}\` that this scenario exercises.`],
+      notes: [
+        `Use this scenario to drive ${coverage} TDD for \`${areaLabel}\`.`,
+        'TODO: Capture open questions, risks, or follow-up tasks.'
+      ],
+      testData: {
+        fixtures: [
+          'TODO: List fixtures or builders required for this scenario.'
+        ],
+        mocks: [
+          'TODO: Record mocks, stubs, or fakes that isolate dependencies.'
+        ],
+        datasets: [
+          'TODO: Reference datasets or payloads needed to validate outcomes.'
+        ]
+      }
+    };
+  }
+
+  private collectRepresentativeFiles(files: FileInfo[]): string[] {
+    const seen = new Set<string>();
+    const related: string[] = [];
+
+    for (const file of files) {
+      if (file.type !== 'file') {
+        continue;
+      }
+
+      if (!seen.has(file.relativePath)) {
+        seen.add(file.relativePath);
+        related.push(file.relativePath);
+      }
+
+      if (related.length >= 5) {
+        break;
+      }
+    }
+
+    return related;
+  }
+
+  private getFilesForArea(repoStructure: RepoStructure, directoryName: string): FileInfo[] {
+    if (!directoryName || directoryName === '.') {
+      return repoStructure.files;
+    }
+
+    const prefix = `${directoryName.replace(/\\/g, '/')}/`;
+    return repoStructure.files.filter(file => file.relativePath.startsWith(prefix));
   }
 
   private buildDocumentationReferences(guides: GuideMeta[], basePath: string): DocumentationReference[] {
@@ -210,84 +335,13 @@ export class JsonContextGenerator {
       .filter(agent => allowedAgents.has(agent.type as typeof AGENT_TYPES[number]))
       .map(agent => ({
         name: this.formatAgentName(agent.type),
-        path: `${basePath}/${agent.type}.md`,
+        path: `${basePath}/${agent.type}.json`,
         description: agent.description
       }));
   }
 
-  private matchGuidesToFeature(guides: GuideMeta[], featureName: string): GuideMeta[] {
-    const normalizedFeature = featureName.toLowerCase();
-    return guides.filter(guide => {
-      const normalizedKey = guide.key.toLowerCase();
-      const normalizedInputs = guide.primaryInputs.toLowerCase();
-      return normalizedKey.includes(normalizedFeature) || normalizedInputs.includes(normalizedFeature);
-    });
-  }
-
-  private buildFeatureComponents(
-    repoStructure: RepoStructure,
-    featureName: string,
-    filesInFeature: FileInfo[]
-  ): FeatureComponentSummary[] {
-    const componentMap = new Map<string, FeatureComponentSummary>();
-    const basePath = `${featureName}/`;
-    const directories = repoStructure.directories
-      .filter(dir => dir.relativePath.startsWith(`${featureName}/`))
-      .map(dir => dir.relativePath);
-
-    directories.forEach(dirPath => {
-      if (dirPath === featureName) {
-        return;
-      }
-      const remainder = dirPath.slice(basePath.length);
-      const [firstSegment] = remainder.split(/[\\/]/).filter(Boolean);
-      if (!firstSegment) {
-        return;
-      }
-
-      const componentPath = `${basePath}${firstSegment}`;
-      if (!componentMap.has(componentPath)) {
-        componentMap.set(componentPath, {
-          name: firstSegment,
-          path: `${componentPath}/`,
-          type: 'directory',
-          summary: `TODO: Document the responsibilities of \`${componentPath}/\` and how it collaborates with sibling modules.`
-        });
-      }
-    });
-
-    filesInFeature.forEach(file => {
-      const remainder = file.relativePath.slice(basePath.length);
-      if (!remainder || remainder.includes('/')) {
-        return;
-      }
-      const componentPath = `${basePath}${remainder}`;
-      componentMap.set(componentPath, {
-        name: remainder,
-        path: componentPath,
-        type: 'file',
-        summary: `TODO: Explain the purpose of \`${componentPath}\` and when contributors should update it.`
-      });
-    });
-
-    return Array.from(componentMap.values()).sort((a, b) => a.path.localeCompare(b.path));
-  }
-
-  private getFilesForFeature(repoStructure: RepoStructure, featureName: string): FileInfo[] {
-    return repoStructure.files.filter(file => file.relativePath.startsWith(`${featureName}/`));
-  }
-
-  private calculatePrimaryExtensions(files: FileInfo[]): Array<{ extension: string; count: number }> {
-    const extensionCounts = new Map<string, number>();
-    files.forEach(file => {
-      const ext = file.extension || 'no-extension';
-      extensionCounts.set(ext, (extensionCounts.get(ext) || 0) + 1);
-    });
-
-    return Array.from(extensionCounts.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([extension, count]) => ({ extension, count }));
+  private stringify(value: unknown): string {
+    return `${JSON.stringify(value, null, 2)}\n`;
   }
 
   private formatAgentName(agentType: string): string {
@@ -303,9 +357,5 @@ export class JsonContextGenerator {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '');
     return normalized || 'feature';
-  }
-
-  private stringify(value: unknown): string {
-    return `${JSON.stringify(value, null, 2)}\n`;
   }
 }
