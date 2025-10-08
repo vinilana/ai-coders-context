@@ -30,7 +30,7 @@ const localeLabelKeys: Record<Locale, TranslationKey> = {
 
 const program = new Command();
 const ui = new CLIInterface(t);
-const VERSION = '0.4.0';
+const VERSION = '0.5.0';
 const PACKAGE_NAME = '@ai-coders/context';
 const DEFAULT_MODEL = 'x-ai/grok-4-fast';
 

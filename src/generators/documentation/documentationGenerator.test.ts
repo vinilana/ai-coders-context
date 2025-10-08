@@ -101,7 +101,7 @@ describe('DocumentationGenerator', () => {
     expect(await fs.pathExists(repoContextPath)).toBe(true);
     const repositoryContext = JSON.parse(await fs.readFile(repoContextPath, 'utf8'));
     expect(repositoryContext.documentation.index).toBe('./docs/README.md');
-    expect(repositoryContext.agents.index).toBe('./agents/README.md');
+    expect(repositoryContext.agents.index).toBe('./agents/index.json');
     expect(repositoryContext.testPlan.path).toBe('./test-plan.json');
     expect(repositoryContext.testPlan.areas.length).toBeGreaterThan(0);
 
@@ -149,7 +149,7 @@ describe('DocumentationGenerator', () => {
 
     expect(content).toContain('# AGENTS.md');
     expect(content).toContain('## Dev environment tips');
-    expect(content).toContain('`.context/agents/README.md`');
+    expect(content).toContain('`.context/agents/index.json`');
   });
 
   it('adds AI context references to AGENTS.md when present', async () => {
@@ -163,6 +163,6 @@ describe('DocumentationGenerator', () => {
     const updatedAgents = await fs.readFile(agentsPath, 'utf8');
     expect(updatedAgents).toContain('## AI Context References');
     expect(updatedAgents).toContain('`.context/docs/README.md`');
-    expect(updatedAgents).toContain('`.context/agents/README.md`');
+    expect(updatedAgents).toContain('`.context/agents/index.json`');
   });
 });

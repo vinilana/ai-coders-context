@@ -64,6 +64,10 @@ describe('FillService', () => {
       JSON.stringify({ id: 'documentation-writer', mission: 'TODO' }, null, 2)
     );
     await fs.writeFile(
+      path.join(outputDir, 'agents', 'index.json'),
+      JSON.stringify({ summary: 'TODO' }, null, 2)
+    );
+    await fs.writeFile(
       path.join(outputDir, 'test-plan.json'),
       JSON.stringify(
         {
@@ -124,6 +128,7 @@ describe('FillService', () => {
 
     expect(prompts.some(prompt => prompt.includes('Target file: docs/README.md'))).toBe(true);
     expect(prompts.some(prompt => prompt.includes('Target file: agents/documentation-writer.json'))).toBe(true);
+    expect(prompts.some(prompt => prompt.includes('Target file: agents/index.json'))).toBe(true);
     const testPlanPrompt = prompts.find(prompt => prompt.includes('Target file: test-plan.json'));
     expect(testPlanPrompt).toBeDefined();
     expect(testPlanPrompt).toContain('Return only the full updated JSON for this file.');

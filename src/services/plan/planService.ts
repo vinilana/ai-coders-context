@@ -308,7 +308,7 @@ export class PlanService {
     if (context.agentsIndex) {
       sections.push(
         '',
-        'Agent index (agents/README.md):',
+        'Agent index (agents/index.json):',
         '<agents-index>',
         context.agentsIndex,
         '</agents-index>'

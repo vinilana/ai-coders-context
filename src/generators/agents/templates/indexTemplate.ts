@@ -1,33 +1,41 @@
 import { AgentType } from '../agentTypes';
 import { AGENT_RESPONSIBILITIES } from '../agentConfig';
+import type { AgentIndexDocument, AgentIndexEntry } from '../../../types';
 
-export function renderAgentIndex(agentTypes: readonly AgentType[]): string {
-  const agentEntries = agentTypes.map(type => {
+export function renderAgentIndex(agentTypes: readonly AgentType[], generatedAt: string): AgentIndexDocument {
+  const agents: AgentIndexEntry[] = agentTypes.map(type => {
     const title = formatTitle(type);
     const primaryResponsibility = AGENT_RESPONSIBILITIES[type]?.[0] || 'Document responsibilities here.';
-    return `- [${title}](./${type}.json) — ${primaryResponsibility}`;
-  }).join('\n');
+    return {
+      id: type,
+      name: title,
+      primaryResponsibility,
+      playbookPath: `./${type}.json`,
+      description: `TODO: Summarize when to collaborate with the ${title.toLowerCase()} agent and expected deliverables.`
+    };
+  });
 
-  return `# Agent Handbook
-
-This directory contains ready-to-customize playbooks for AI agents collaborating on the repository.
-
-## Available Agents
-${agentEntries}
-
-## How To Use These Playbooks
-1. Pick the agent that matches your task.
-2. Enrich the JSON template with project-specific context or links.
-3. Share the structured prompt with your AI assistant.
-4. Capture learnings in the relevant documentation file so future runs improve.
-
-## Related Resources
-- [Documentation Index](../docs/README.md)
-- [Agent Knowledge Base](../../AGENTS.md)
-- [Contributor Guidelines](../../CONTRIBUTING.md)
-- JSON context: [\`../context.json\`](../context.json)
-- TDD plan: [\`../test-plan.json\`](../test-plan.json)
-`;
+  return {
+    generatedAt,
+    summary: 'TODO: Explain how AI agents collaborate with maintainers to keep this repository healthy.',
+    instructions: [
+      'Review the plan queue and documentation touchpoints before starting a new task.',
+      'Coordinate with maintainers when responsibilities overlap or require clarification.',
+      'Record evidence and lessons learned back into documentation and test plans.'
+    ],
+    agents,
+    updateChecklist: [
+      'Verify every playbook remains current with the latest repository workflows.',
+      'Sync primary responsibilities with AGENT_RESPONSIBILITIES definitions.',
+      'Confirm playbook paths and referenced resources resolve correctly.'
+    ],
+    recommendedSources: [
+      'docs/README.md — latest documentation map and update guidance.',
+      '../../AGENTS.md — repository-wide onboarding notes for AI collaborators.',
+      '../test-plan.json — TDD scenarios that anchor acceptance criteria.',
+      '../context.json — repository summary for quick onboarding.'
+    ]
+  };
 }
 
 function formatTitle(agentType: string): string {

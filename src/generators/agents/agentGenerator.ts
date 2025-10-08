@@ -63,9 +63,14 @@ export class AgentGenerator {
       created += 1;
     }
 
-    const indexPath = path.join(agentsDir, 'README.md');
-    const indexContent = renderAgentIndex(agentTypes);
-    await GeneratorUtils.writeFileWithLogging(indexPath, indexContent, verbose, 'Created README.md');
+    const indexPath = path.join(agentsDir, 'index.json');
+    const indexDocument = renderAgentIndex(agentTypes, generatedAt);
+    await GeneratorUtils.writeFileWithLogging(
+      indexPath,
+      this.stringify(indexDocument),
+      verbose,
+      'Created index.json'
+    );
     created += 1;
 
     return created;

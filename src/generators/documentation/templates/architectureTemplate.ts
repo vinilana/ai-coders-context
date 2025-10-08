@@ -55,6 +55,6 @@ ${directorySnapshot}
 
 ## Related Resources
 - [Project Overview](./project-overview.md)
-- Update [agents/README.md](../agents/README.md) when architecture changes.
+- Update [agents/index.json](../agents/index.json) when architecture changes.
 `;
 }

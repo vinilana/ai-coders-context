@@ -47,12 +47,12 @@ describe('runInit integration', () => {
     expect(docsIndex).toContain('Repository Snapshot');
     expect(docsIndex).toContain('Update Checklist');
 
-    const agentIndex = await fs.readFile(path.join(agentsDir, 'README.md'), 'utf8');
-    expect(agentIndex).toContain('# Agent Handbook');
-    expect(agentIndex).toContain('[Documentation Writer]');
+    const agentIndex = JSON.parse(await fs.readFile(path.join(agentsDir, 'index.json'), 'utf8'));
+    expect(agentIndex.agents.some((entry: { id: string }) => entry.id === 'documentation-writer')).toBe(true);
 
     const generatedAgents = await fs.readdir(agentsDir);
     expect(generatedAgents).toContain('code-reviewer.json');
+    expect(generatedAgents).toContain('index.json');
   });
 
   it('supports docs-only scaffolding without creating agent assets', async () => {

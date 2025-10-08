@@ -28,7 +28,7 @@ ${planList}
 - Cross-link any new documentation or agent resources you introduce so future runs stay discoverable.
 
 ## Related Resources
-- [Agent Handbook](../agents/README.md)
+- Agent index JSON: [\`../agents/index.json\`](../agents/index.json)
 - [Documentation Index](../docs/README.md)
 - [Agent Knowledge Base](../../AGENTS.md)
 - [Contributor Guidelines](../../CONTRIBUTING.md)

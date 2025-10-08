@@ -71,7 +71,7 @@ export class JsonContextGenerator {
         guides: this.buildDocumentationReferences(guides, './docs')
       },
       agents: {
-        index: './agents/README.md',
+        index: './agents/index.json',
         playbooks: this.buildAgentReferences('./agents')
       },
       testPlan: {
@@ -331,13 +331,25 @@ export class JsonContextGenerator {
 
     const allowedAgents = new Set(AGENT_TYPES);
 
-    return preferredAgents
-      .filter(agent => allowedAgents.has(agent.type as typeof AGENT_TYPES[number]))
-      .map(agent => ({
-        name: this.formatAgentName(agent.type),
-        path: `${basePath}/${agent.type}.json`,
-        description: agent.description
-      }));
+    const references: AgentReference[] = [
+      {
+        name: 'Agent Index',
+        path: `${basePath}/index.json`,
+        description: 'Overview of available agent playbooks for this repository.'
+      }
+    ];
+
+    references.push(
+      ...preferredAgents
+        .filter(agent => allowedAgents.has(agent.type as typeof AGENT_TYPES[number]))
+        .map(agent => ({
+          name: this.formatAgentName(agent.type),
+          path: `${basePath}/${agent.type}.json`,
+          description: agent.description
+        }))
+    );
+
+    return references;
   }
 
   private stringify(value: unknown): string {

@@ -34,6 +34,23 @@ export interface AgentReference {
   description?: string;
 }
 
+export interface AgentIndexEntry {
+  id: string;
+  name: string;
+  primaryResponsibility: string;
+  playbookPath: string;
+  description: string;
+}
+
+export interface AgentIndexDocument {
+  generatedAt: string;
+  summary: string;
+  instructions: string[];
+  agents: AgentIndexEntry[];
+  updateChecklist: string[];
+  recommendedSources: string[];
+}
+
 export interface AgentResource {
   title: string;
   path: string;

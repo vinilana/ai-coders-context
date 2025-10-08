@@ -93,7 +93,7 @@ describe('AgentGenerator', () => {
 
     const agentsDir = path.join(outputDir, 'agents');
     const files = (await fs.readdir(agentsDir)).sort();
-    expect(files).toEqual(['README.md', 'code-reviewer.json', 'test-writer.json']);
+    expect(files).toEqual(['code-reviewer.json', 'index.json', 'test-writer.json']);
 
     const playbook = JSON.parse(
       await fs.readFile(path.join(agentsDir, 'code-reviewer.json'), 'utf8')
@@ -106,10 +106,17 @@ describe('AgentGenerator', () => {
     expect(playbook.touchpoints.length).toBeGreaterThan(0);
     expect(playbook.generatedAt).toBeDefined();
 
-    const indexContent = await fs.readFile(path.join(agentsDir, 'README.md'), 'utf8');
-    expect(indexContent).toContain('[Code Reviewer](./code-reviewer.json)');
-    expect(indexContent).toContain('[Test Writer](./test-writer.json)');
-    expect(indexContent).toContain('../context.json');
+    const indexDocument = JSON.parse(await fs.readFile(path.join(agentsDir, 'index.json'), 'utf8'));
+    expect(indexDocument.agents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'code-reviewer', playbookPath: './code-reviewer.json' }),
+        expect.objectContaining({ id: 'test-writer', playbookPath: './test-writer.json' })
+      ])
+    );
+    expect(
+      indexDocument.recommendedSources.some((source: string) => source.includes('../context.json'))
+    ).toBe(true);
+    expect(indexDocument.generatedAt).toBeDefined();
   });
 
   it('falls back to all agent types when selection is invalid', async () => {
@@ -125,6 +132,7 @@ describe('AgentGenerator', () => {
 
     const agentsDir = path.join(outputDir, 'agents');
     const files = await fs.readdir(agentsDir);
+    expect(files).toContain('index.json');
     AGENT_TYPES.forEach(agent => {
       expect(files).toContain(`${agent}.json`);
     });

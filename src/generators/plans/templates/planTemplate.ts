@@ -25,7 +25,7 @@ ai_update_goal: "Define the stages, owners, and evidence required to complete ${
 required_inputs:
   - "Task summary or issue link describing the goal"
   - "Relevant documentation sections from docs/README.md"
-  - "Matching agent playbooks from agents/README.md"
+  - "Matching agent playbooks from agents/index.json"
   - "Structured prompts in ../agents/*.json for the agents involved"
 success_criteria:
   - "Stages list clear owners, deliverables, and success signals"
@@ -44,7 +44,7 @@ ${relatedAgents}
 - **Success signal:** TODO: Define how the team will know the plan worked.
 - **Key references:**
   - [Documentation Index](../docs/README.md)
-  - [Agent Handbook](../agents/README.md)
+  - Agent index JSON: [\`../agents/index.json\`](../agents/index.json)
   - [Plans Index](./README.md)
 
 ## Agent Lineup

@@ -162,7 +162,7 @@ export class DocumentationGenerator {
 
       const content = await fs.readFile(agentGuidePath, 'utf-8');
       const docsReference = '.context/docs/README.md';
-      const agentsReference = '.context/agents/README.md';
+      const agentsReference = '.context/agents/index.json';
 
       if (content.includes(docsReference) && content.includes(agentsReference)) {
         return;
@@ -208,7 +208,7 @@ export class DocumentationGenerator {
 
 ## PR instructions
 - Follow Conventional Commits (for example, \`feat(scaffolding): add doc links\`).
-- Cross-link new scaffolds in \`docs/README.md\` and \`agents/README.md\` so future agents can find them.
+- Cross-link new scaffolds in \`docs/README.md\` and \`agents/index.json\` so future agents can find them.
 - Attach sample CLI output or generated markdown when behaviour shifts.
 - Confirm the built artefacts in \`dist/\` match the new source changes.
 
@@ -217,7 +217,7 @@ ${directorySection}
 
 ## AI Context References
 - Documentation index: \`.context/docs/README.md\`
-- Agent playbooks: \`.context/agents/README.md\`
+- Agent playbooks: \`.context/agents/index.json\`
 - Contributor guide: \`CONTRIBUTING.md\`
 `;
   }

@@ -37,8 +37,8 @@ export function renderAgentPlaybook(
         description: 'Navigation hub for generated documentation guides.'
       },
       {
-        title: 'Agent handbook',
-        path: './README.md',
+        title: 'Agent index',
+        path: '../index.json',
         description: 'Overview of available agents and how to collaborate with them.'
       },
       {
