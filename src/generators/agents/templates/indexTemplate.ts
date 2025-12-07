@@ -1,10 +1,15 @@
-import { AgentType } from '../agentTypes';
-import { AGENT_RESPONSIBILITIES } from '../agentConfig';
+import { AgentType, AGENT_RESPONSIBILITIES, getAgentById } from '../agentRegistry';
 
+/**
+ * Agent Index Template
+ *
+ * REFACTORED: Now uses unified agent registry for data.
+ */
 export function renderAgentIndex(agentTypes: readonly AgentType[]): string {
   const agentEntries = agentTypes.map(type => {
-    const title = formatTitle(type);
-    const primaryResponsibility = AGENT_RESPONSIBILITIES[type]?.[0] || 'Document responsibilities here.';
+    const agent = getAgentById(type);
+    const title = agent?.title ?? formatTitle(type);
+    const primaryResponsibility = agent?.responsibilities?.[0] ?? AGENT_RESPONSIBILITIES[type]?.[0] ?? 'Document responsibilities here.';
     return `- [${title}](./${type}.md) — ${primaryResponsibility}`;
   }).join('\n');
 

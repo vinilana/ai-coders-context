@@ -1,28 +1,39 @@
-import { AGENT_RESPONSIBILITIES, AGENT_BEST_PRACTICES } from '../agentConfig';
-import { AgentType } from '../agentTypes';
-import { formatDirectoryList } from '../../shared/directoryTemplateHelpers';
+import { getAgentById, AGENT_RESPONSIBILITIES, AGENT_BEST_PRACTICES } from '../agentRegistry';
+import { MARKER_IDS, Markers } from '../../shared/markerRegistry';
 import { DocTouchpoint } from './types';
 
+/**
+ * Agent Playbook Template
+ *
+ * REFACTORED:
+ * - Uses centralized agent registry for metadata
+ * - Uses MARKER_IDS for consistent marker generation
+ * - Reduces hardcoded content by pulling from registry
+ * - Each agent gets a customized description from registry
+ */
 export function renderAgentPlaybook(
-  agentType: AgentType,
+  agentType: string,
   topLevelDirectories: string[],
   touchpoints: DocTouchpoint[]
 ): string {
-  const title = formatTitle(agentType);
-  const responsibilities = AGENT_RESPONSIBILITIES[agentType] || ['Clarify this agent\'s responsibilities.'];
-  const bestPractices = AGENT_BEST_PRACTICES[agentType] || ['Document preferred workflows.'];
-  const directoryList = formatDirectoryList(topLevelDirectories);
-  const markerId = `agent-${agentType}`;
+  const agent = getAgentById(agentType);
+  const title = agent?.title ?? formatTitle(agentType);
+  const description = agent?.description ?? `Describe how the ${title.toLowerCase()} agent supports the team.`;
+
+  const responsibilities = agent?.responsibilities ?? AGENT_RESPONSIBILITIES[agentType] ?? ['Clarify this agent\'s responsibilities.'];
+  const bestPractices = agent?.bestPractices ?? AGENT_BEST_PRACTICES[agentType] ?? ['Document preferred workflows.'];
+
+  const directoryList = formatSimpleDirectoryList(topLevelDirectories);
+  const markerId = MARKER_IDS.agent(agentType);
 
   const touchpointList = touchpoints
     .map(tp => `- [${tp.title}](${tp.path}) — ${tp.marker}`)
     .join('\n');
 
-  return `<!-- agent-update:start:${markerId} -->
-# ${title} Agent Playbook
+  const content = `# ${title} Agent Playbook
 
 ## Mission
-Describe how the ${title.toLowerCase()} agent supports the team and when to engage it.
+${description}
 
 ## Responsibilities
 ${formatList(responsibilities)}
@@ -56,10 +67,6 @@ Track effectiveness of this agent's contributions:
 - **Documentation:** Coverage of features, accuracy of guides, usage by team
 - **Collaboration:** PR review turnaround time, feedback quality, knowledge sharing
 
-**Target Metrics:**
-- TODO: Define measurable goals specific to this agent (e.g., "Reduce bug resolution time by 30%")
-- TODO: Track trends over time to identify improvement areas
-
 ## Troubleshooting Common Issues
 Document frequent problems this agent encounters and their solutions:
 
@@ -69,26 +76,15 @@ Document frequent problems this agent encounters and their solutions:
 **Resolution:** Step-by-step fix
 **Prevention:** How to avoid in the future
 
-**Example:**
-### Issue: Build Failures Due to Outdated Dependencies
-**Symptoms:** Tests fail with module resolution errors
-**Root Cause:** Package versions incompatible with codebase
-**Resolution:**
-1. Review package.json for version ranges
-2. Run \`npm update\` to get compatible versions
-3. Test locally before committing
-**Prevention:** Keep dependencies updated regularly, use lockfiles
-
 ## Hand-off Notes
 Summarize outcomes, remaining risks, and suggested follow-up actions after the agent completes its work.
 
 ## Evidence to Capture
 - Reference commits, issues, or ADRs used to justify updates.
 - Command output or logs that informed recommendations.
-- Follow-up items for maintainers or future agent runs.
-- Performance metrics and benchmarks where applicable.
-<!-- agent-update:end -->
-`;
+- Follow-up items for maintainers or future agent runs.`;
+
+  return Markers.wrap(markerId, content);
 }
 
 function formatTitle(agentType: string): string {
@@ -103,4 +99,11 @@ function formatList(items: string[]): string {
     return '- _No entries defined yet._';
   }
   return items.map(item => `- ${item}`).join('\n');
+}
+
+function formatSimpleDirectoryList(directories: string[]): string {
+  if (!directories.length) {
+    return '';
+  }
+  return directories.map(dir => `- \`${dir}/\``).join('\n');
 }

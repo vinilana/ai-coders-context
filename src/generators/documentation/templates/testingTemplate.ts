@@ -1,9 +1,15 @@
+import { MARKER_IDS, wrapDocument } from '../../shared';
 
+/**
+ * Testing Strategy Template
+ *
+ * REFACTORED: Now uses centralized marker registry and template sections.
+ * - Marker ID comes from MARKER_IDS (no more string literals)
+ * - Guidance/Sources use presets (no more copy-paste)
+ * - wrapDocument() ensures consistent structure
+ */
 export function renderTestingStrategy(): string {
-
-  return `
-<!-- agent-update:start:testing-strategy -->
-# Testing Strategy
+  const content = `# Testing Strategy
 
 Document how quality is maintained across the codebase.
 
@@ -22,22 +28,12 @@ Document how quality is maintained across the codebase.
 - Capture linting or formatting requirements before merging.
 
 ## Troubleshooting
-- Document flaky suites, long-running tests, or environment quirks.
+- Document flaky suites, long-running tests, or environment quirks.`;
 
-<!-- agent-readonly:guidance -->
-## AI Update Checklist
-1. Review test scripts and CI workflows to confirm command accuracy.
-2. Update Quality Gates with current thresholds (coverage %, lint rules, required checks).
-3. Document new test categories or suites introduced since the last update.
-4. Record known flaky areas and link to open issues for visibility.
-5. Confirm troubleshooting steps remain valid with current tooling.
-
-<!-- agent-readonly:sources -->
-## Acceptable Sources
-- \`package.json\` scripts and testing configuration files.
-- CI job definitions (GitHub Actions, CircleCI, etc.).
-- Issue tracker items labelled “testing” or “flaky” with maintainer confirmation.
-
-<!-- agent-update:end -->
-`;
+  return wrapDocument({
+    markerId: MARKER_IDS.docs.testingStrategy,
+    content,
+    guidance: 'testing',
+    sources: 'testing',
+  });
 }

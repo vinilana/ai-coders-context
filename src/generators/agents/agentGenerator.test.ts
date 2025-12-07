@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs-extra';
 
 import { AgentGenerator } from './agentGenerator';
-import { AGENT_TYPES } from './agentTypes';
+import { AGENT_TYPES } from './agentRegistry';
 import type { RepoStructure } from '../../types';
 
 function createRepoStructure(rootPath: string): RepoStructure {
@@ -99,7 +99,8 @@ describe('AgentGenerator', () => {
     expect(playbookContent).toContain('# Code Reviewer Agent Playbook');
     expect(playbookContent).toContain('Documentation Touchpoints');
     expect(playbookContent).toContain('<!-- agent-update:start:agent-code-reviewer -->');
-    expect(playbookContent).toContain('agent-update:project-overview');
+    // Code reviewer references development-workflow (one of its doc touchpoints)
+    expect(playbookContent).toContain('agent-update:development-workflow');
 
     const indexContent = await fs.readFile(path.join(agentsDir, 'README.md'), 'utf8');
     expect(indexContent).toContain('[Code Reviewer](./code-reviewer.md)');
