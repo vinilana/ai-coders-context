@@ -32,6 +32,8 @@ export interface FillCommandFlags {
   semantic?: boolean;
   /** Programming languages to analyze (comma-separated or array) */
   languages?: string | string[];
+  /** Enable LSP for deeper semantic analysis (off by default for fill) */
+  useLsp?: boolean;
 }
 
 interface ResolvedFillOptions {
@@ -51,6 +53,7 @@ interface ResolvedFillOptions {
   useAgents: boolean;
   useSemanticContext: boolean;
   languages: string[];
+  useLSP: boolean;
 }
 
 interface TargetFile {
@@ -131,7 +134,8 @@ export class FillService {
       systemPrompt: scaffoldPrompt.content,
       useAgents: rawOptions.useAgents ?? true, // Enable agents by default
       useSemanticContext: rawOptions.semantic !== false, // Semantic mode enabled by default
-      languages: parsedLanguages
+      languages: parsedLanguages,
+      useLSP: Boolean(rawOptions.useLsp) // LSP off by default for fill
     };
 
     this.displayPromptSource(scaffoldPrompt.path, scaffoldPrompt.source);
@@ -246,7 +250,8 @@ export class FillService {
           agentType,
           existingContext: target.content,
           callbacks,
-          useSemanticContext: options.useSemanticContext
+          useSemanticContext: options.useSemanticContext,
+          useLSP: options.useLSP
         });
         updatedContent = result.text;
       } else {
@@ -257,7 +262,8 @@ export class FillService {
           targetFile: target.relativePath,
           context: target.content,
           callbacks,
-          useSemanticContext: options.useSemanticContext
+          useSemanticContext: options.useSemanticContext,
+          useLSP: options.useLSP
         });
         updatedContent = result.text;
       }

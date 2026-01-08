@@ -18,6 +18,8 @@ export interface DocumentationAgentOptions {
   callbacks?: AgentEventCallbacks;
   /** Use pre-computed semantic context instead of tool-based exploration (more token efficient) */
   useSemanticContext?: boolean;
+  /** Enable LSP for deeper semantic analysis (type info, references, implementations) */
+  useLSP?: boolean;
 }
 
 export interface DocumentationAgentResult {
@@ -53,27 +55,25 @@ export class DocumentationAgent {
   private config: LLMConfig;
   private providerResult: ReturnType<typeof createProvider>;
   private tools: ToolSet;
-  private semanticContextBuilder: SemanticContextBuilder;
 
   constructor(config: LLMConfig) {
     this.config = config;
     this.providerResult = createProvider(config);
     this.tools = getCodeAnalysisTools();
-    this.semanticContextBuilder = new SemanticContextBuilder();
   }
 
   /**
    * Generate documentation using tools for context gathering
    */
   async generateDocumentation(options: DocumentationAgentOptions): Promise<DocumentationAgentResult> {
-    const { repoPath, targetFile, context, maxSteps = 15, maxOutputTokens = 8000, callbacks, useSemanticContext = true } = options;
+    const { repoPath, targetFile, context, maxSteps = 15, maxOutputTokens = 8000, callbacks, useSemanticContext = true, useLSP = false } = options;
 
     // Emit agent start event
     callbacks?.onAgentStart?.({ agent: 'documentation', target: targetFile });
 
     // Use semantic context mode for token efficiency
     if (useSemanticContext) {
-      return this.generateWithSemanticContext(repoPath, targetFile, context, maxOutputTokens, callbacks);
+      return this.generateWithSemanticContext(repoPath, targetFile, context, maxOutputTokens, callbacks, useLSP);
     }
 
     // Tool-based mode for thorough analysis
@@ -88,22 +88,30 @@ export class DocumentationAgent {
     targetFile: string,
     context: string | undefined,
     maxOutputTokens: number,
-    callbacks?: AgentEventCallbacks
+    callbacks?: AgentEventCallbacks,
+    useLSP: boolean = false
   ): Promise<DocumentationAgentResult> {
     callbacks?.onToolCall?.({
       agent: 'documentation',
-      toolName: 'semanticAnalysis',
-      args: { repoPath, targetFile }
+      toolName: useLSP ? 'semanticAnalysis+LSP' : 'semanticAnalysis',
+      args: { repoPath, targetFile, useLSP }
     });
 
-    // Pre-compute semantic context
-    const semanticContext = await this.semanticContextBuilder.buildDocumentationContext(repoPath, targetFile);
+    // Create context builder with LSP option
+    const contextBuilder = new SemanticContextBuilder({ useLSP });
 
+    // Pre-compute semantic context
+    const semanticContext = await contextBuilder.buildDocumentationContext(repoPath, targetFile);
+
+    // Cleanup LSP servers if enabled
+    await contextBuilder.shutdown();
+
+    const toolName = useLSP ? 'semanticAnalysis+LSP' : 'semanticAnalysis';
     callbacks?.onToolResult?.({
       agent: 'documentation',
-      toolName: 'semanticAnalysis',
+      toolName,
       success: true,
-      summary: `Analyzed codebase: ${semanticContext.length} chars of context`
+      summary: `Analyzed codebase${useLSP ? ' with LSP' : ''}: ${semanticContext.length} chars of context`
     });
 
     const userPrompt = `Generate comprehensive documentation for: ${targetFile}
@@ -126,11 +134,11 @@ Generate clear, practical documentation that is helpful for developers.`;
     });
 
     // Emit agent complete event
-    callbacks?.onAgentComplete?.({ agent: 'documentation', toolsUsed: ['semanticAnalysis'], steps: 1 });
+    callbacks?.onAgentComplete?.({ agent: 'documentation', toolsUsed: [toolName], steps: 1 });
 
     return {
       text: result.text,
-      toolsUsed: ['semanticAnalysis'],
+      toolsUsed: [toolName],
       steps: 1
     };
   }

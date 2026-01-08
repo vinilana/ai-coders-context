@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Agent sync command**: New `sync-agents` command to sync agent playbooks to AI tool directories
+  - Syncs from `.context/agents/` (source of truth) to tool-specific directories
+  - Built-in presets: `claude` (.claude/agents), `github` (.github/agents), `cursor` (.cursor/agents)
+  - Two sync modes: `symlink` (default, uses relative symlinks) and `markdown` (generates reference files)
+  - Custom target support via `--target` flag for any AI tool directory
+  - `--dry-run` to preview changes, `--force` to overwrite existing files
+  - Cross-platform: Windows fallback (file copy) when symlinks require elevated permissions
+  - Full i18n support (English and Portuguese)
+
+- **Interactive sync flow**: Added "Sync agents to AI tools" option to interactive mode
+  - Prompts for source directory, sync mode, target selection, and options
+  - Supports preset selection or custom path input
+
 - **Multi-provider AI support**: Added support for OpenAI, Anthropic, Google, and OpenRouter providers
   - New `--provider` flag for `fill` and `plan` commands
   - Auto-detection of available API keys from environment variables
@@ -76,6 +89,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `zod` - Schema validation for structured outputs
 
 #### New Files
+- `src/services/sync/` - Agent sync service module
+  - `types.ts` - Type definitions (SyncMode, PresetName, SyncOptions, etc.)
+  - `presets.ts` - Built-in target presets (claude, github, cursor)
+  - `symlinkHandler.ts` - Cross-platform symlink creation
+  - `markdownReferenceHandler.ts` - Markdown reference file generation
+  - `syncService.ts` - Main sync orchestrator
+  - `index.ts` - Barrel export
 - `src/services/ai/aiSdkClient.ts` - Main AI SDK client
 - `src/services/ai/providerFactory.ts` - Provider creation factory
 - `src/services/ai/schemas.ts` - Zod schemas for tools and outputs

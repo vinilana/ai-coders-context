@@ -19,6 +19,8 @@ export interface PlaybookAgentOptions {
   callbacks?: AgentEventCallbacks;
   /** Use pre-computed semantic context instead of tool-based exploration (more token efficient) */
   useSemanticContext?: boolean;
+  /** Enable LSP for deeper semantic analysis (type info, references, implementations) */
+  useLSP?: boolean;
 }
 
 export interface PlaybookAgentResult {
@@ -66,27 +68,25 @@ export class PlaybookAgent {
   private config: LLMConfig;
   private providerResult: ReturnType<typeof createProvider>;
   private tools: ToolSet;
-  private semanticContextBuilder: SemanticContextBuilder;
 
   constructor(config: LLMConfig) {
     this.config = config;
     this.providerResult = createProvider(config);
     this.tools = getCodeAnalysisTools();
-    this.semanticContextBuilder = new SemanticContextBuilder();
   }
 
   /**
    * Generate a playbook using tools for context gathering
    */
   async generatePlaybook(options: PlaybookAgentOptions): Promise<PlaybookAgentResult> {
-    const { repoPath, agentType, existingContext, maxSteps = 12, maxOutputTokens = 8000, callbacks, useSemanticContext = true } = options;
+    const { repoPath, agentType, existingContext, maxSteps = 12, maxOutputTokens = 8000, callbacks, useSemanticContext = true, useLSP = false } = options;
 
     // Emit agent start event
     callbacks?.onAgentStart?.({ agent: 'playbook', target: agentType });
 
     // Use semantic context mode for token efficiency
     if (useSemanticContext) {
-      return this.generateWithSemanticContext(repoPath, agentType, existingContext, maxOutputTokens, callbacks);
+      return this.generateWithSemanticContext(repoPath, agentType, existingContext, maxOutputTokens, callbacks, useLSP);
     }
 
     // Tool-based mode for thorough analysis
@@ -101,22 +101,31 @@ export class PlaybookAgent {
     agentType: GeneratorAgentType,
     existingContext: string | undefined,
     maxOutputTokens: number,
-    callbacks?: AgentEventCallbacks
+    callbacks?: AgentEventCallbacks,
+    useLSP: boolean = false
   ): Promise<PlaybookAgentResult> {
+    const toolName = useLSP ? 'semanticAnalysis+LSP' : 'semanticAnalysis';
+
     callbacks?.onToolCall?.({
       agent: 'playbook',
-      toolName: 'semanticAnalysis',
-      args: { repoPath, agentType }
+      toolName,
+      args: { repoPath, agentType, useLSP }
     });
 
+    // Create context builder with LSP option
+    const contextBuilder = new SemanticContextBuilder({ useLSP });
+
     // Pre-compute semantic context
-    const semanticContext = await this.semanticContextBuilder.buildPlaybookContext(repoPath, agentType);
+    const semanticContext = await contextBuilder.buildPlaybookContext(repoPath, agentType);
+
+    // Cleanup LSP servers if enabled
+    await contextBuilder.shutdown();
 
     callbacks?.onToolResult?.({
       agent: 'playbook',
-      toolName: 'semanticAnalysis',
+      toolName,
       success: true,
-      summary: `Analyzed codebase for ${agentType}: ${semanticContext.length} chars of context`
+      summary: `Analyzed codebase for ${agentType}${useLSP ? ' with LSP' : ''}: ${semanticContext.length} chars of context`
     });
 
     const userPrompt = `Generate a comprehensive playbook for a ${agentType} agent.
@@ -143,11 +152,11 @@ Generate a detailed, actionable playbook with:
     });
 
     // Emit agent complete event
-    callbacks?.onAgentComplete?.({ agent: 'playbook', toolsUsed: ['semanticAnalysis'], steps: 1 });
+    callbacks?.onAgentComplete?.({ agent: 'playbook', toolsUsed: [toolName], steps: 1 });
 
     return {
       text: result.text,
-      toolsUsed: ['semanticAnalysis'],
+      toolsUsed: [toolName],
       steps: 1
     };
   }

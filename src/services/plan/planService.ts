@@ -31,6 +31,8 @@ export interface PlanFillFlags {
   model?: string;
   apiKey?: string;
   baseUrl?: string;
+  /** Enable/disable LSP analysis (ON by default for plan, use --no-lsp to disable) */
+  lsp?: boolean;
 }
 
 interface PlanServiceDependencies {
@@ -177,6 +179,9 @@ export class PlanService {
     this.ui.displayStep(2, 3, this.t('steps.plan.update', { path: planRelativePath, model: llmConfig.model }));
     console.log(''); // Add spacing before agent output
 
+    // LSP is ON by default for plan (use --no-lsp to disable)
+    const useLSP = rawOptions.lsp !== false;
+
     try {
       const agentResult = await planAgent.updatePlan({
         repoPath,
@@ -186,7 +191,8 @@ export class PlanService {
         agentsIndex,
         referencedDocs,
         referencedAgents,
-        callbacks
+        callbacks,
+        useLSP
       });
 
       const updatedContent = agentResult.text;

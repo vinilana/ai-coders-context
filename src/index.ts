@@ -124,6 +124,7 @@ program
   .option('-v, --verbose', t('commands.fill.options.verbose'))
   .option('--no-semantic', t('commands.fill.options.noSemantic'))
   .option('--languages <langs>', t('commands.fill.options.languages'))
+  .option('--use-lsp', t('commands.fill.options.useLsp'))
   .action(async (repoPath: string, options: any) => {
     try {
       await fillService.run(repoPath, options);
@@ -153,6 +154,7 @@ program
   .option('--exclude <patterns...>', t('commands.plan.options.exclude'))
   .option('-v, --verbose', t('commands.plan.options.verbose'))
   .option('--no-semantic', t('commands.plan.options.noSemantic'))
+  .option('--no-lsp', t('commands.plan.options.noLsp'))
   .action(async (planName: string, rawOptions: any) => {
     const outputDir = path.resolve(rawOptions.output || './.context');
 
@@ -504,6 +506,7 @@ async function runInteractiveLlmFill(): Promise<void> {
   ]);
 
   let languages: string[] | undefined;
+  let useLsp = false;
   if (useSemantic) {
     const { selectedLanguages } = await inquirer.prompt<{ selectedLanguages: string[] }>([
       {
@@ -525,6 +528,16 @@ async function runInteractiveLlmFill(): Promise<void> {
       }
     ]);
     languages = selectedLanguages.length > 0 ? selectedLanguages : undefined;
+
+    const { enableLsp } = await inquirer.prompt<{ enableLsp: boolean }>([
+      {
+        type: 'confirm',
+        name: 'enableLsp',
+        message: t('prompts.fill.useLsp'),
+        default: false
+      }
+    ]);
+    useLsp = enableLsp;
   }
 
   await fillService.run(resolvedRepo, {
@@ -536,7 +549,8 @@ async function runInteractiveLlmFill(): Promise<void> {
     apiKey,
     verbose,
     semantic: useSemantic,
-    languages
+    languages,
+    useLsp
   });
 }
 
@@ -663,6 +677,15 @@ async function runInteractivePlan(): Promise<void> {
       }
     ]);
 
+    const { useLsp } = await inquirer.prompt<{ useLsp: boolean }>([
+      {
+        type: 'confirm',
+        name: 'useLsp',
+        message: t('prompts.plan.useLsp'),
+        default: true
+      }
+    ]);
+
     try {
       const resolvedOutput = path.resolve(outputDir.trim() || defaultOutput);
       await planService.scaffoldPlanIfNeeded(planName, resolvedOutput, {
@@ -675,7 +698,8 @@ async function runInteractivePlan(): Promise<void> {
         dryRun,
         provider,
         model,
-        apiKey
+        apiKey,
+        lsp: useLsp
       });
     } catch (error) {
       ui.displayError(t('errors.plan.fillFailed'), error as Error);

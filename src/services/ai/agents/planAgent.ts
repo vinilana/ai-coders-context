@@ -23,6 +23,8 @@ export interface PlanAgentOptions {
   callbacks?: AgentEventCallbacks;
   /** Use pre-computed semantic context instead of tool-based exploration (more token efficient) */
   useSemanticContext?: boolean;
+  /** Enable LSP for deeper semantic analysis (type info, references, implementations) */
+  useLSP?: boolean;
 }
 
 export interface PlanAgentResult {
@@ -77,13 +79,11 @@ export class PlanAgent {
   private config: LLMConfig;
   private providerResult: ReturnType<typeof createProvider>;
   private tools: ToolSet;
-  private semanticContextBuilder: SemanticContextBuilder;
 
   constructor(config: LLMConfig) {
     this.config = config;
     this.providerResult = createProvider(config);
     this.tools = getCodeAnalysisTools();
-    this.semanticContextBuilder = new SemanticContextBuilder();
   }
 
   /**
@@ -207,7 +207,8 @@ export class PlanAgent {
       maxSteps = 12,
       maxOutputTokens = 8000,
       callbacks,
-      useSemanticContext = true
+      useSemanticContext = true,
+      useLSP = false
     } = options;
 
     if (!existingPlanContent) {
@@ -228,7 +229,8 @@ export class PlanAgent {
         referencedDocs,
         referencedAgents,
         maxOutputTokens,
-        callbacks
+        callbacks,
+        useLSP
       );
     }
 
@@ -259,22 +261,31 @@ export class PlanAgent {
     referencedDocs: Array<{ path: string; content: string }> | undefined,
     referencedAgents: Array<{ path: string; content: string }> | undefined,
     maxOutputTokens: number,
-    callbacks?: AgentEventCallbacks
+    callbacks?: AgentEventCallbacks,
+    useLSP: boolean = false
   ): Promise<PlanAgentResult> {
+    const toolName = useLSP ? 'semanticAnalysis+LSP' : 'semanticAnalysis';
+
     callbacks?.onToolCall?.({
       agent: 'plan',
-      toolName: 'semanticAnalysis',
-      args: { repoPath, planName }
+      toolName,
+      args: { repoPath, planName, useLSP }
     });
 
+    // Create context builder with LSP option
+    const contextBuilder = new SemanticContextBuilder({ useLSP });
+
     // Pre-compute semantic context
-    const semanticContext = await this.semanticContextBuilder.buildPlanContext(repoPath, planName);
+    const semanticContext = await contextBuilder.buildPlanContext(repoPath, planName);
+
+    // Cleanup LSP servers if enabled
+    await contextBuilder.shutdown();
 
     callbacks?.onToolResult?.({
       agent: 'plan',
-      toolName: 'semanticAnalysis',
+      toolName,
       success: true,
-      summary: `Analyzed codebase for plan: ${semanticContext.length} chars of context`
+      summary: `Analyzed codebase for plan${useLSP ? ' with LSP' : ''}: ${semanticContext.length} chars of context`
     });
 
     const contextParts: string[] = [
@@ -321,11 +332,11 @@ export class PlanAgent {
     });
 
     // Emit agent complete event
-    callbacks?.onAgentComplete?.({ agent: 'plan', toolsUsed: ['semanticAnalysis'], steps: 1 });
+    callbacks?.onAgentComplete?.({ agent: 'plan', toolsUsed: [toolName], steps: 1 });
 
     return {
       text: result.text,
-      toolsUsed: ['semanticAnalysis'],
+      toolsUsed: [toolName],
       steps: 1
     };
   }

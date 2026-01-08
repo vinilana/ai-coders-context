@@ -28,6 +28,10 @@ export interface ExtractedSymbol {
   parameters?: ParameterInfo[];
   returnType?: string;
   members?: ExtractedSymbol[];
+  // LSP-enhanced properties (populated when useLSP is enabled)
+  typeInfo?: TypeInfo;
+  references?: ReferenceLocation[];
+  implementations?: ReferenceLocation[];
 }
 
 export interface ImportInfo {

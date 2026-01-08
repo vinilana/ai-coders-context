@@ -672,4 +672,11 @@ export class SemanticContextBuilder {
     this.cachedProjectPath = null;
     this.analyzer.clearCache();
   }
+
+  /**
+   * Shutdown analyzer (cleanup LSP servers if enabled)
+   */
+  async shutdown(): Promise<void> {
+    await this.analyzer.shutdown();
+  }
 }

@@ -6,9 +6,9 @@
  */
 
 import { glob } from 'glob';
-import * as fs from 'fs/promises';
 import * as path from 'path';
 import { TreeSitterLayer } from './treeSitter/treeSitterLayer';
+import { LSPLayer } from './lsp/lspLayer';
 import {
   SemanticContext,
   FileAnalysis,
@@ -32,11 +32,17 @@ const DEFAULT_OPTIONS: Required<AnalyzerOptions> = {
 
 export class CodebaseAnalyzer {
   private treeSitter: TreeSitterLayer;
+  private lspLayer?: LSPLayer;
   private options: Required<AnalyzerOptions>;
 
   constructor(options: AnalyzerOptions = {}) {
     this.treeSitter = new TreeSitterLayer();
     this.options = { ...DEFAULT_OPTIONS, ...options };
+
+    // Create LSPLayer if LSP mode is enabled
+    if (this.options.useLSP) {
+      this.lspLayer = new LSPLayer();
+    }
   }
 
   async analyze(projectPath: string): Promise<SemanticContext> {
@@ -51,10 +57,15 @@ export class CodebaseAnalyzer {
     // 3. Build base context
     const context = this.buildBaseContext(fileAnalyses, projectPath);
 
-    // 4. Detect architecture and patterns
+    // 4. Enhance with LSP if enabled (adds type info, references)
+    if (this.lspLayer) {
+      await this.enhanceWithLSP(context, projectPath);
+    }
+
+    // 5. Detect architecture and patterns
     context.architecture = this.detectArchitecture(fileAnalyses, projectPath);
 
-    // 5. Calculate stats
+    // 6. Calculate stats
     context.stats.analysisTimeMs = Date.now() - startTime;
 
     return context;
@@ -571,5 +582,80 @@ export class CodebaseAnalyzer {
 
   clearCache(): void {
     this.treeSitter.clearCache();
+  }
+
+  /**
+   * Shutdown LSP servers gracefully
+   */
+  async shutdown(): Promise<void> {
+    if (this.lspLayer) {
+      await this.lspLayer.shutdown();
+    }
+  }
+
+  /**
+   * Enhance Tree-sitter analysis with LSP semantic information
+   * Adds type info, references, and implementations to key symbols
+   */
+  private async enhanceWithLSP(
+    context: SemanticContext,
+    projectPath: string
+  ): Promise<void> {
+    const allSymbols = [
+      ...context.symbols.classes,
+      ...context.symbols.interfaces,
+      ...context.symbols.functions,
+      ...context.symbols.types,
+    ];
+
+    // Prioritize symbols to enhance (exported and important ones first)
+    const prioritizedSymbols = allSymbols
+      .filter((s) => s.exported)
+      .slice(0, 100); // Limit to avoid excessive LSP calls
+
+    for (const symbol of prioritizedSymbols) {
+      try {
+        // Get type information via LSP hover
+        const typeInfo = await this.lspLayer!.getTypeInfo(
+          symbol.location.file,
+          symbol.location.line,
+          symbol.location.column || 0,
+          projectPath
+        );
+
+        if (typeInfo) {
+          symbol.typeInfo = typeInfo;
+        }
+
+        // For interfaces and classes, find implementations
+        if (symbol.kind === 'interface' || symbol.kind === 'class') {
+          const implementations = await this.lspLayer!.findImplementations(
+            symbol.location.file,
+            symbol.location.line,
+            symbol.location.column || 0,
+            projectPath
+          );
+
+          if (implementations.length > 0) {
+            symbol.implementations = implementations;
+          }
+        }
+
+        // Find references for exported symbols
+        const references = await this.lspLayer!.findReferences(
+          symbol.location.file,
+          symbol.location.line,
+          symbol.location.column || 0,
+          projectPath
+        );
+
+        if (references.length > 0) {
+          symbol.references = references;
+        }
+      } catch (error) {
+        // LSP errors are non-fatal, continue with other symbols
+        console.debug(`LSP enhancement failed for ${symbol.name}:`, error);
+      }
+    }
   }
 }
