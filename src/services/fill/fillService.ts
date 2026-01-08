@@ -8,9 +8,13 @@ import type { TranslateFn } from '../../utils/i18n';
 import { resolveScaffoldPrompt } from '../../utils/promptLoader';
 import { FileMapper } from '../../utils/fileMapper';
 import { LLMClientFactory } from '../llmClientFactory';
+import { DocumentationAgent } from '../ai/agents/documentationAgent';
+import { PlaybookAgent } from '../ai/agents/playbookAgent';
+import type { AgentEventCallbacks } from '../ai/agentEvents';
 import type { LLMConfig, RepoStructure, UsageStats } from '../../types';
 import type { BaseLLMClient } from '../baseLLMClient';
 import { resolveLlmConfig } from '../shared/llmConfig';
+import type { AgentType as GeneratorAgentType } from '../../generators/agents/agentTypes';
 
 export interface FillCommandFlags {
   output?: string;
@@ -23,6 +27,7 @@ export interface FillCommandFlags {
   provider?: LLMConfig['provider'];
   apiKey?: string;
   baseUrl?: string;
+  useAgents?: boolean;
 }
 
 interface ResolvedFillOptions {
@@ -39,6 +44,7 @@ interface ResolvedFillOptions {
   apiKey: string;
   baseUrl?: string;
   systemPrompt: string;
+  useAgents: boolean;
 }
 
 interface TargetFile {
@@ -113,7 +119,8 @@ export class FillService {
       model: llmConfig.model,
       apiKey: llmConfig.apiKey,
       baseUrl: llmConfig.baseUrl,
-      systemPrompt: scaffoldPrompt.content
+      systemPrompt: scaffoldPrompt.content,
+      useAgents: rawOptions.useAgents ?? true // Enable agents by default
     };
 
     this.displayPromptSource(scaffoldPrompt.path, scaffoldPrompt.source);
@@ -139,25 +146,42 @@ export class FillService {
       return;
     }
 
-    const llmClient = this.llmClientFactory.createClient({
-      apiKey: options.apiKey,
-      model: options.model,
-      provider: options.provider,
-      baseUrl: options.baseUrl
-    });
-
-    const contextSummary = this.buildContextSummary(repoStructure);
     const results: Array<{ file: string; status: 'updated' | 'skipped' | 'failed'; message?: string }> = [];
 
     this.ui.displayStep(2, 3, this.t('steps.fill.processFiles', { count: targets.length, model: options.model }));
 
-    for (const target of targets) {
-      const result = await this.processTarget(target, llmClient, options, contextSummary);
-      results.push(result);
+    if (options.useAgents) {
+      // Use agents with tool-based analysis and real-time callbacks
+      const callbacks = this.ui.createAgentCallbacks();
+      const llmConfig: LLMConfig = {
+        apiKey: options.apiKey,
+        model: options.model,
+        provider: options.provider,
+        baseUrl: options.baseUrl
+      };
+
+      for (const target of targets) {
+        const result = await this.processTargetWithAgent(target, llmConfig, options, callbacks);
+        results.push(result);
+      }
+    } else {
+      // Use basic LLM client without tool calls
+      const llmClient = this.llmClientFactory.createClient({
+        apiKey: options.apiKey,
+        model: options.model,
+        provider: options.provider,
+        baseUrl: options.baseUrl
+      });
+      const contextSummary = this.buildContextSummary(repoStructure);
+
+      for (const target of targets) {
+        const result = await this.processTarget(target, llmClient, options, contextSummary);
+        results.push(result);
+      }
     }
 
     this.ui.displayStep(3, 3, this.t('steps.fill.summary'));
-    this.printLlmSummary(llmClient.getUsageStats(), results);
+    this.printLlmSummarySimple(results, options.model);
     this.ui.displaySuccess(this.t('success.fill.completed'));
   }
 
@@ -189,6 +213,84 @@ export class FillService {
         message: error instanceof Error ? error.message : String(error)
       };
     }
+  }
+
+  private async processTargetWithAgent(
+    target: TargetFile,
+    llmConfig: LLMConfig,
+    options: ResolvedFillOptions,
+    callbacks: AgentEventCallbacks
+  ): Promise<{ file: string; status: 'updated' | 'skipped' | 'failed'; message?: string }> {
+    console.log(''); // Add spacing before agent output
+
+    try {
+      let updatedContent: string;
+
+      if (target.isAgent) {
+        // Use PlaybookAgent for agent files
+        const agentType = this.extractAgentTypeFromPath(target.relativePath);
+        const playbookAgent = new PlaybookAgent(llmConfig);
+        const result = await playbookAgent.generatePlaybook({
+          repoPath: options.repoPath,
+          agentType,
+          existingContext: target.content,
+          callbacks
+        });
+        updatedContent = result.text;
+      } else {
+        // Use DocumentationAgent for documentation files
+        const documentationAgent = new DocumentationAgent(llmConfig);
+        const result = await documentationAgent.generateDocumentation({
+          repoPath: options.repoPath,
+          targetFile: target.relativePath,
+          context: target.content,
+          callbacks
+        });
+        updatedContent = result.text;
+      }
+
+      if (!updatedContent || !updatedContent.trim()) {
+        console.log(''); // Spacing after agent output
+        this.ui.displayWarning(this.t('spinner.fill.noContent', { path: target.relativePath }));
+        return { file: target.relativePath, status: 'skipped', message: this.t('messages.fill.emptyResponse') };
+      }
+
+      await fs.writeFile(target.fullPath, this.ensureTrailingNewline(updatedContent));
+      console.log(''); // Spacing after agent output
+      this.ui.displaySuccess(this.t('spinner.fill.updated', { path: target.relativePath }));
+      return { file: target.relativePath, status: 'updated' };
+    } catch (error) {
+      console.log(''); // Spacing after agent output
+      this.ui.displayError(this.t('spinner.fill.failed', { path: target.relativePath }), error as Error);
+      return {
+        file: target.relativePath,
+        status: 'failed',
+        message: error instanceof Error ? error.message : String(error)
+      };
+    }
+  }
+
+  private extractAgentTypeFromPath(relativePath: string): GeneratorAgentType {
+    // Extract agent type from path like "agents/code-reviewer.md"
+    const filename = path.basename(relativePath, '.md');
+    // Map common filenames to agent types
+    const agentTypeMap: Record<string, GeneratorAgentType> = {
+      'code-reviewer': 'code-reviewer',
+      'bug-fixer': 'bug-fixer',
+      'feature-developer': 'feature-developer',
+      'refactoring-specialist': 'refactoring-specialist',
+      'test-writer': 'test-writer',
+      'documentation-writer': 'documentation-writer',
+      'performance-optimizer': 'performance-optimizer',
+      'security-auditor': 'security-auditor',
+      'backend-specialist': 'backend-specialist',
+      'frontend-specialist': 'frontend-specialist',
+      'architect-specialist': 'architect-specialist',
+      'devops-specialist': 'devops-specialist',
+      'database-specialist': 'database-specialist',
+      'mobile-specialist': 'mobile-specialist'
+    };
+    return agentTypeMap[filename] || 'feature-developer';
   }
 
   private async collectTargets(options: ResolvedFillOptions): Promise<TargetFile[]> {
@@ -290,9 +392,9 @@ export class FillService {
     ].join('\n');
   }
 
-  private printLlmSummary(
-    usage: UsageStats,
-    results: Array<{ file: string; status: 'updated' | 'skipped' | 'failed'; message?: string }>
+  private printLlmSummarySimple(
+    results: Array<{ file: string; status: 'updated' | 'skipped' | 'failed'; message?: string }>,
+    model: string
   ): void {
     const updated = results.filter(result => result.status === 'updated').length;
     const skipped = results.filter(result => result.status === 'skipped').length;
@@ -303,14 +405,7 @@ export class FillService {
     console.log(`${chalk.blue('Updated files:')} ${chalk.white(updated.toString())}`);
     console.log(`${chalk.blue('Skipped files:')} ${chalk.white(skipped.toString())}`);
     console.log(`${chalk.blue('Failures:')} ${failed.length}`);
-
-    if (usage.totalCalls > 0) {
-      console.log(chalk.gray('─'.repeat(50)));
-      console.log(`${chalk.blue('LLM calls:')} ${usage.totalCalls}`);
-      console.log(`${chalk.blue('Prompt tokens:')} ${usage.totalPromptTokens}`);
-      console.log(`${chalk.blue('Completion tokens:')} ${usage.totalCompletionTokens}`);
-      console.log(`${chalk.blue('Model:')} ${usage.model}`);
-    }
+    console.log(`${chalk.blue('Model:')} ${model}`);
 
     if (failed.length > 0) {
       console.log(chalk.gray('─'.repeat(50)));

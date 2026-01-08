@@ -5,6 +5,14 @@ import boxen from 'boxen';
 import figures from 'figures';
 
 import { TranslateFn, TranslationKey, TranslateParams } from './i18n';
+import type {
+  AgentType,
+  AgentStartEvent,
+  ToolCallEvent,
+  ToolResultEvent,
+  AgentCompleteEvent,
+  AgentEventCallbacks
+} from '../services/ai/agentEvents';
 
 export class CLIInterface {
   private spinner: Ora | null = null;
@@ -244,6 +252,122 @@ export class CLIInterface {
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  }
+
+  // Agent activity display methods
+
+  /**
+   * Get the icon for an agent type
+   */
+  private getAgentIcon(agent: AgentType): string {
+    const icons: Record<AgentType, string> = {
+      documentation: '📝',
+      playbook: '📋',
+      plan: '🗺️',
+      fill: '✨'
+    };
+    return icons[agent] || '🤖';
+  }
+
+  /**
+   * Get the icon for a tool
+   */
+  private getToolIcon(toolName: string): string {
+    const icons: Record<string, string> = {
+      readFile: '📄',
+      listFiles: '📁',
+      analyzeSymbols: '🔍',
+      getFileStructure: '🌳',
+      searchCode: '🔎'
+    };
+    return icons[toolName] || '🔧';
+  }
+
+  /**
+   * Display agent start event
+   */
+  displayAgentStart(event: AgentStartEvent): void {
+    const icon = this.getAgentIcon(event.agent);
+    const agentLabel = this.t(`agent.type.${event.agent}` as TranslationKey) || event.agent;
+    const targetInfo = event.target ? chalk.gray(` → ${event.target}`) : '';
+
+    console.log(
+      chalk.cyan(`${icon} ${this.t('agent.starting' as TranslationKey)} `) +
+      chalk.bold.white(agentLabel) +
+      targetInfo
+    );
+  }
+
+  /**
+   * Display tool call event
+   */
+  displayToolCall(event: ToolCallEvent): void {
+    const icon = this.getToolIcon(event.toolName);
+    const argsStr = event.args ? chalk.gray(` (${this.formatToolArgs(event.args)})`) : '';
+
+    console.log(
+      chalk.dim('  │ ') +
+      chalk.yellow(`${icon} ${event.toolName}`) +
+      argsStr
+    );
+  }
+
+  /**
+   * Display tool result event
+   */
+  displayToolResult(event: ToolResultEvent): void {
+    const statusIcon = event.success ? chalk.green(figures.tick) : chalk.red(figures.cross);
+    const summary = event.summary ? chalk.gray(` ${event.summary}`) : '';
+
+    console.log(
+      chalk.dim('  │ ') +
+      `${statusIcon}${summary}`
+    );
+  }
+
+  /**
+   * Display agent complete event
+   */
+  displayAgentComplete(event: AgentCompleteEvent): void {
+    const icon = this.getAgentIcon(event.agent);
+    const toolsSummary = event.toolsUsed.length > 0
+      ? chalk.gray(` (${event.toolsUsed.join(', ')})`)
+      : '';
+
+    console.log(
+      chalk.green(`${icon} ${this.t('agent.complete' as TranslationKey)} `) +
+      chalk.dim(`${event.steps} ${this.t('agent.steps' as TranslationKey)}`) +
+      toolsSummary
+    );
+  }
+
+  /**
+   * Format tool arguments for display
+   */
+  private formatToolArgs(args: Record<string, unknown>): string {
+    const entries = Object.entries(args);
+    if (entries.length === 0) return '';
+
+    return entries
+      .slice(0, 2)
+      .map(([key, value]) => {
+        const strValue = String(value);
+        const truncated = strValue.length > 40 ? strValue.slice(0, 37) + '...' : strValue;
+        return `${key}: ${truncated}`;
+      })
+      .join(', ');
+  }
+
+  /**
+   * Create event callbacks bound to this CLI instance
+   */
+  createAgentCallbacks(): AgentEventCallbacks {
+    return {
+      onAgentStart: (event) => this.displayAgentStart(event),
+      onToolCall: (event) => this.displayToolCall(event),
+      onToolResult: (event) => this.displayToolResult(event),
+      onAgentComplete: (event) => this.displayAgentComplete(event)
+    };
   }
 
   private t(key: TranslationKey, params?: TranslateParams): string {

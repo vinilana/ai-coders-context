@@ -40,3 +40,16 @@ export {
   type PlanAgentOptions,
   type PlanAgentResult
 } from './agents';
+
+// Agent Events
+export {
+  type AgentType,
+  type AgentStartEvent,
+  type AgentStepEvent,
+  type ToolCallEvent,
+  type ToolResultEvent,
+  type AgentCompleteEvent,
+  type AgentEventCallbacks,
+  summarizeToolArgs,
+  summarizeToolResult
+} from './agentEvents';

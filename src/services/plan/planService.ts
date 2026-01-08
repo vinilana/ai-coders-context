@@ -10,7 +10,8 @@ import { resolvePlanPrompt } from '../../utils/promptLoader';
 import { resolveLlmConfig } from '../shared/llmConfig';
 import { FileMapper } from '../../utils/fileMapper';
 import { LLMClientFactory } from '../llmClientFactory';
-import type { UsageStats, RepoStructure, LLMConfig } from '../../types';
+import { PlanAgent } from '../ai/agents/planAgent';
+import type { LLMConfig, RepoStructure } from '../../types';
 
 interface PlanScaffoldOptions {
   title?: string;
@@ -158,62 +159,67 @@ export class PlanService {
     this.ui.displayStep(1, 3, this.t('steps.plan.summary'));
     this.ui.startSpinner(this.t('spinner.planFill.analyzingRepo'));
     const repoStructure = await fileMapper.mapRepository(repoPath, rawOptions.include);
-    const contextSummary = this.buildContextSummary(repoStructure);
     this.ui.updateSpinner(this.t('spinner.planFill.summaryReady'), 'success');
 
-    const llmClient = this.llmClientFactory.createClient({
+    // Create the PlanAgent with callbacks for real-time display
+    const planAgent = new PlanAgent({
       apiKey: llmConfig.apiKey,
       model: llmConfig.model,
       provider: llmConfig.provider,
       baseUrl: llmConfig.baseUrl
     });
 
+    const callbacks = this.ui.createAgentCallbacks();
+
     const planRelativePath = path.relative(outputDir, planPath);
     const results: Array<{ file: string; status: 'updated' | 'skipped' | 'failed'; message?: string }> = [];
 
     this.ui.displayStep(2, 3, this.t('steps.plan.update', { path: planRelativePath, model: llmConfig.model }));
-    this.ui.startSpinner(this.t('spinner.planFill.updating', { path: planRelativePath }));
+    console.log(''); // Add spacing before agent output
 
     try {
-      const userPrompt = this.buildPlanUserPrompt({
-        relativePath: planRelativePath,
-        planContent,
-        contextSummary,
+      const agentResult = await planAgent.updatePlan({
+        repoPath,
+        planName: path.basename(planPath, '.md'),
+        existingPlanContent: planContent,
         docsIndex,
         agentsIndex,
-        docs: referencedDocs,
-        agents: referencedAgents
+        referencedDocs,
+        referencedAgents,
+        callbacks
       });
 
-      const updatedContent = await llmClient.generateText(userPrompt, planPrompt.content);
+      const updatedContent = agentResult.text;
 
       if (!updatedContent || !updatedContent.trim()) {
-        this.ui.updateSpinner(this.t('spinner.planFill.noContent'), 'warn');
+        console.log(''); // Spacing after agent output
+        this.ui.displayWarning(this.t('spinner.planFill.noContent'));
         results.push({ file: planRelativePath, status: 'skipped', message: this.t('messages.fill.emptyResponse') });
       } else if (rawOptions.dryRun) {
-        this.ui.updateSpinner(this.t('spinner.planFill.dryRun'), 'info');
+        console.log(''); // Spacing after agent output
+        this.ui.displayInfo(this.t('spinner.planFill.dryRun'), '');
         console.log(chalk.gray(`\n${this.t('messages.fill.previewStart')}`));
         console.log(updatedContent.trim());
         console.log(chalk.gray(`${this.t('messages.fill.previewEnd')}\n`));
         results.push({ file: planRelativePath, status: 'skipped', message: 'dry-run' });
       } else {
         await fs.writeFile(planPath, this.ensureTrailingNewline(updatedContent));
-        this.ui.updateSpinner(this.t('spinner.planFill.updated', { path: planRelativePath }), 'success');
+        console.log(''); // Spacing after agent output
+        this.ui.displaySuccess(this.t('spinner.planFill.updated', { path: planRelativePath }));
         results.push({ file: planRelativePath, status: 'updated' });
       }
     } catch (error) {
-      this.ui.updateSpinner(this.t('spinner.planFill.failed'), 'fail');
+      console.log(''); // Spacing after agent output
+      this.ui.displayError(this.t('spinner.planFill.failed'), error as Error);
       results.push({
         file: planRelativePath,
         status: 'failed',
         message: error instanceof Error ? error.message : String(error)
       });
-    } finally {
-      this.ui.stopSpinner();
     }
 
     this.ui.displayStep(3, 3, this.t('steps.plan.summaryResults'));
-    this.printLlmSummary(llmClient.getUsageStats(), results, Boolean(rawOptions.dryRun));
+    this.printLlmSummarySimple(results, Boolean(rawOptions.dryRun), llmConfig.model);
     this.ui.displaySuccess(this.t('success.plan.filled'));
   }
 
@@ -390,7 +396,11 @@ export class PlanService {
     ].join('\n');
   }
 
-  private printLlmSummary(usage: UsageStats, results: Array<{ file: string; status: 'updated' | 'skipped' | 'failed'; message?: string }>, dryRun: boolean): void {
+  private printLlmSummarySimple(
+    results: Array<{ file: string; status: 'updated' | 'skipped' | 'failed'; message?: string }>,
+    dryRun: boolean,
+    model: string
+  ): void {
     const updated = results.filter(result => result.status === 'updated').length;
     const skipped = results.filter(result => result.status === 'skipped').length;
     const failed = results.filter(result => result.status === 'failed');
@@ -400,14 +410,7 @@ export class PlanService {
     console.log(`${chalk.blue('Updated plans:')} ${chalk.white(updated.toString())}`);
     console.log(`${chalk.blue('Skipped plans:')} ${chalk.white(skipped.toString())}${dryRun ? chalk.gray(' (dry run)') : ''}`);
     console.log(`${chalk.blue('Failures:')} ${failed.length}`);
-
-    if (usage.totalCalls > 0) {
-      console.log(chalk.gray('─'.repeat(50)));
-      console.log(`${chalk.blue('LLM calls:')} ${usage.totalCalls}`);
-      console.log(`${chalk.blue('Prompt tokens:')} ${usage.totalPromptTokens}`);
-      console.log(`${chalk.blue('Completion tokens:')} ${usage.totalCompletionTokens}`);
-      console.log(`${chalk.blue('Model:')} ${usage.model}`);
-    }
+    console.log(`${chalk.blue('Model:')} ${model}`);
 
     if (failed.length > 0) {
       console.log(chalk.gray('─'.repeat(50)));

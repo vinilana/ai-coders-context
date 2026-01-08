@@ -4,15 +4,18 @@ import { createProvider } from '../providerFactory';
 import { getCodeAnalysisTools } from '../tools';
 import { AgentPlaybookSchema } from '../schemas';
 import type { LLMConfig } from '../../../types';
-import type { AgentType } from '../../../generators/agents/agentTypes';
+import type { AgentType as GeneratorAgentType } from '../../../generators/agents/agentTypes';
 import type { AgentPlaybook } from '../schemas';
+import type { AgentEventCallbacks } from '../agentEvents';
+import { summarizeToolResult } from '../agentEvents';
 
 export interface PlaybookAgentOptions {
   repoPath: string;
-  agentType: AgentType;
+  agentType: GeneratorAgentType;
   existingContext?: string;
   maxSteps?: number;
   maxOutputTokens?: number;
+  callbacks?: AgentEventCallbacks;
 }
 
 export interface PlaybookAgentResult {
@@ -39,7 +42,7 @@ Use the tools to discover:
 - Existing documentation
 - Code patterns and conventions`;
 
-const AGENT_TYPE_FOCUS: Record<AgentType, string[]> = {
+const AGENT_TYPE_FOCUS: Record<GeneratorAgentType, string[]> = {
   'code-reviewer': ['**/*.ts', '**/*.tsx', '.eslintrc*', 'tsconfig.json'],
   'bug-fixer': ['**/*.ts', '**/*.test.ts', '**/error*', '**/exception*'],
   'feature-developer': ['src/**/*', 'package.json', 'README.md'],
@@ -71,7 +74,10 @@ export class PlaybookAgent {
    * Generate a playbook using tools for context gathering
    */
   async generatePlaybook(options: PlaybookAgentOptions): Promise<PlaybookAgentResult> {
-    const { repoPath, agentType, existingContext, maxSteps = 12, maxOutputTokens = 8000 } = options;
+    const { repoPath, agentType, existingContext, maxSteps = 12, maxOutputTokens = 8000, callbacks } = options;
+
+    // Emit agent start event
+    callbacks?.onAgentStart?.({ agent: 'playbook', target: agentType });
 
     const focusPatterns = AGENT_TYPE_FOCUS[agentType] || ['src/**/*'];
 
@@ -90,6 +96,7 @@ Use the tools to analyze the codebase and identify:
 Then generate a detailed, actionable playbook.`;
 
     const { provider, modelId } = this.providerResult;
+    let stepCount = 0;
 
     const result = await generateText({
       model: provider(modelId),
@@ -97,7 +104,31 @@ Then generate a detailed, actionable playbook.`;
       prompt: userPrompt,
       tools: this.tools,
       stopWhen: stepCountIs(maxSteps),
-      maxOutputTokens
+      maxOutputTokens,
+      onStepFinish: (step) => {
+        stepCount++;
+        callbacks?.onAgentStep?.({ agent: 'playbook', step: stepCount });
+
+        for (const toolCall of step.toolCalls || []) {
+          callbacks?.onToolCall?.({
+            agent: 'playbook',
+            toolName: toolCall.toolName,
+            args: 'args' in toolCall ? toolCall.args as Record<string, unknown> : undefined
+          });
+
+          const toolResult = step.toolResults?.find(
+            (r) => 'toolCallId' in r && r.toolCallId === toolCall.toolCallId
+          );
+          if (toolResult && 'result' in toolResult) {
+            callbacks?.onToolResult?.({
+              agent: 'playbook',
+              toolName: toolCall.toolName,
+              success: true,
+              summary: summarizeToolResult(toolCall.toolName, toolResult.result)
+            });
+          }
+        }
+      }
     });
 
     // Extract tool names used
@@ -108,10 +139,16 @@ Then generate a detailed, actionable playbook.`;
       }
     }
 
+    const toolsUsedArray = Array.from(toolsUsed);
+    const totalSteps = result.steps?.length || 1;
+
+    // Emit agent complete event
+    callbacks?.onAgentComplete?.({ agent: 'playbook', toolsUsed: toolsUsedArray, steps: totalSteps });
+
     return {
       text: result.text,
-      toolsUsed: Array.from(toolsUsed),
-      steps: result.steps?.length || 1
+      toolsUsed: toolsUsedArray,
+      steps: totalSteps
     };
   }
 
@@ -124,7 +161,10 @@ Then generate a detailed, actionable playbook.`;
     playbook: AgentPlaybook;
     toolsUsed: string[];
   }> {
-    const { repoPath, agentType, existingContext, maxSteps = 8, maxOutputTokens = 8000 } = options;
+    const { repoPath, agentType, existingContext, maxSteps = 8, maxOutputTokens = 8000, callbacks } = options;
+
+    // Emit agent start event
+    callbacks?.onAgentStart?.({ agent: 'playbook', target: agentType });
 
     const focusPatterns = AGENT_TYPE_FOCUS[agentType] || ['src/**/*'];
 
@@ -136,6 +176,7 @@ Then generate a detailed, actionable playbook.`;
 ${existingContext ? `\nExisting context: ${existingContext}` : ''}`;
 
     const { provider, modelId } = this.providerResult;
+    let stepCount = 0;
 
     // First gather context using tools
     const analysisResult = await generateText({
@@ -144,7 +185,31 @@ ${existingContext ? `\nExisting context: ${existingContext}` : ''}`;
       prompt: analysisPrompt,
       tools: this.tools,
       stopWhen: stepCountIs(maxSteps),
-      maxOutputTokens: Math.floor(maxOutputTokens / 2)
+      maxOutputTokens: Math.floor(maxOutputTokens / 2),
+      onStepFinish: (step) => {
+        stepCount++;
+        callbacks?.onAgentStep?.({ agent: 'playbook', step: stepCount });
+
+        for (const toolCall of step.toolCalls || []) {
+          callbacks?.onToolCall?.({
+            agent: 'playbook',
+            toolName: toolCall.toolName,
+            args: 'args' in toolCall ? toolCall.args as Record<string, unknown> : undefined
+          });
+
+          const toolResult = step.toolResults?.find(
+            (r) => 'toolCallId' in r && r.toolCallId === toolCall.toolCallId
+          );
+          if (toolResult && 'result' in toolResult) {
+            callbacks?.onToolResult?.({
+              agent: 'playbook',
+              toolName: toolCall.toolName,
+              success: true,
+              summary: summarizeToolResult(toolCall.toolName, toolResult.result)
+            });
+          }
+        }
+      }
     });
 
     // Extract tool names used
@@ -164,9 +229,14 @@ ${existingContext ? `\nExisting context: ${existingContext}` : ''}`;
       maxOutputTokens: Math.floor(maxOutputTokens / 2)
     });
 
+    const toolsUsedArray = Array.from(toolsUsed);
+
+    // Emit agent complete event
+    callbacks?.onAgentComplete?.({ agent: 'playbook', toolsUsed: toolsUsedArray, steps: stepCount });
+
     return {
       playbook: playbook.object,
-      toolsUsed: Array.from(toolsUsed)
+      toolsUsed: toolsUsedArray
     };
   }
 

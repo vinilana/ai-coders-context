@@ -5,6 +5,8 @@ import { getCodeAnalysisTools } from '../tools';
 import { DocumentationOutputSchema } from '../schemas';
 import type { LLMConfig } from '../../../types';
 import type { DocumentationOutput } from '../schemas';
+import type { AgentEventCallbacks } from '../agentEvents';
+import { summarizeToolArgs, summarizeToolResult } from '../agentEvents';
 
 export interface DocumentationAgentOptions {
   repoPath: string;
@@ -12,6 +14,7 @@ export interface DocumentationAgentOptions {
   context?: string;
   maxSteps?: number;
   maxOutputTokens?: number;
+  callbacks?: AgentEventCallbacks;
 }
 
 export interface DocumentationAgentResult {
@@ -58,7 +61,10 @@ export class DocumentationAgent {
    * Generate documentation using tools for context gathering
    */
   async generateDocumentation(options: DocumentationAgentOptions): Promise<DocumentationAgentResult> {
-    const { repoPath, targetFile, context, maxSteps = 15, maxOutputTokens = 8000 } = options;
+    const { repoPath, targetFile, context, maxSteps = 15, maxOutputTokens = 8000, callbacks } = options;
+
+    // Emit agent start event
+    callbacks?.onAgentStart?.({ agent: 'documentation', target: targetFile });
 
     const userPrompt = `Generate comprehensive documentation for: ${targetFile}
 
@@ -68,6 +74,7 @@ ${context ? `Additional context:\n${context}` : ''}
 First, use the available tools to analyze the file and gather context, then generate the documentation.`;
 
     const { provider, modelId } = this.providerResult;
+    let stepCount = 0;
 
     const result = await generateText({
       model: provider(modelId),
@@ -75,7 +82,33 @@ First, use the available tools to analyze the file and gather context, then gene
       prompt: userPrompt,
       tools: this.tools,
       stopWhen: stepCountIs(maxSteps),
-      maxOutputTokens
+      maxOutputTokens,
+      onStepFinish: (step) => {
+        stepCount++;
+        callbacks?.onAgentStep?.({ agent: 'documentation', step: stepCount });
+
+        // Report tool calls
+        for (const toolCall of step.toolCalls || []) {
+          callbacks?.onToolCall?.({
+            agent: 'documentation',
+            toolName: toolCall.toolName,
+            args: 'args' in toolCall ? toolCall.args as Record<string, unknown> : undefined
+          });
+
+          // Find the result for this tool call
+          const toolResult = step.toolResults?.find(
+            (r) => 'toolCallId' in r && r.toolCallId === toolCall.toolCallId
+          );
+          if (toolResult && 'result' in toolResult) {
+            callbacks?.onToolResult?.({
+              agent: 'documentation',
+              toolName: toolCall.toolName,
+              success: true,
+              summary: summarizeToolResult(toolCall.toolName, toolResult.result)
+            });
+          }
+        }
+      }
     });
 
     // Extract tool names used
@@ -86,10 +119,16 @@ First, use the available tools to analyze the file and gather context, then gene
       }
     }
 
+    const toolsUsedArray = Array.from(toolsUsed);
+    const totalSteps = result.steps?.length || 1;
+
+    // Emit agent complete event
+    callbacks?.onAgentComplete?.({ agent: 'documentation', toolsUsed: toolsUsedArray, steps: totalSteps });
+
     return {
       text: result.text,
-      toolsUsed: Array.from(toolsUsed),
-      steps: result.steps?.length || 1
+      toolsUsed: toolsUsedArray,
+      steps: totalSteps
     };
   }
 
@@ -102,7 +141,10 @@ First, use the available tools to analyze the file and gather context, then gene
     documentation: DocumentationOutput;
     toolsUsed: string[];
   }> {
-    const { repoPath, targetFile, context, maxSteps = 10, maxOutputTokens = 8000 } = options;
+    const { repoPath, targetFile, context, maxSteps = 10, maxOutputTokens = 8000, callbacks } = options;
+
+    // Emit agent start event
+    callbacks?.onAgentStart?.({ agent: 'documentation', target: targetFile });
 
     const analysisPrompt = `Analyze ${targetFile} in ${repoPath}.
 1. Read the file
@@ -112,6 +154,7 @@ First, use the available tools to analyze the file and gather context, then gene
 ${context ? `\nAdditional context: ${context}` : ''}`;
 
     const { provider, modelId } = this.providerResult;
+    let stepCount = 0;
 
     // First gather context using tools
     const analysisResult = await generateText({
@@ -120,7 +163,31 @@ ${context ? `\nAdditional context: ${context}` : ''}`;
       prompt: analysisPrompt,
       tools: this.tools,
       stopWhen: stepCountIs(maxSteps),
-      maxOutputTokens: Math.floor(maxOutputTokens / 2)
+      maxOutputTokens: Math.floor(maxOutputTokens / 2),
+      onStepFinish: (step) => {
+        stepCount++;
+        callbacks?.onAgentStep?.({ agent: 'documentation', step: stepCount });
+
+        for (const toolCall of step.toolCalls || []) {
+          callbacks?.onToolCall?.({
+            agent: 'documentation',
+            toolName: toolCall.toolName,
+            args: 'args' in toolCall ? toolCall.args as Record<string, unknown> : undefined
+          });
+
+          const toolResult = step.toolResults?.find(
+            (r) => 'toolCallId' in r && r.toolCallId === toolCall.toolCallId
+          );
+          if (toolResult && 'result' in toolResult) {
+            callbacks?.onToolResult?.({
+              agent: 'documentation',
+              toolName: toolCall.toolName,
+              success: true,
+              summary: summarizeToolResult(toolCall.toolName, toolResult.result)
+            });
+          }
+        }
+      }
     });
 
     // Extract tool names used
@@ -140,9 +207,14 @@ ${context ? `\nAdditional context: ${context}` : ''}`;
       maxOutputTokens: Math.floor(maxOutputTokens / 2)
     });
 
+    const toolsUsedArray = Array.from(toolsUsed);
+
+    // Emit agent complete event
+    callbacks?.onAgentComplete?.({ agent: 'documentation', toolsUsed: toolsUsedArray, steps: stepCount });
+
     return {
       documentation: documentation.object,
-      toolsUsed: Array.from(toolsUsed)
+      toolsUsed: toolsUsedArray
     };
   }
 

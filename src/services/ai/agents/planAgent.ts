@@ -5,6 +5,8 @@ import { getCodeAnalysisTools } from '../tools';
 import { DevelopmentPlanSchema } from '../schemas';
 import type { LLMConfig } from '../../../types';
 import type { DevelopmentPlan } from '../schemas';
+import type { AgentEventCallbacks } from '../agentEvents';
+import { summarizeToolResult } from '../agentEvents';
 
 export interface PlanAgentOptions {
   repoPath: string;
@@ -17,6 +19,7 @@ export interface PlanAgentOptions {
   referencedAgents?: Array<{ path: string; content: string }>;
   maxSteps?: number;
   maxOutputTokens?: number;
+  callbacks?: AgentEventCallbacks;
 }
 
 export interface PlanAgentResult {
@@ -91,8 +94,12 @@ export class PlanAgent {
       referencedDocs,
       referencedAgents,
       maxSteps = 15,
-      maxOutputTokens = 8000
+      maxOutputTokens = 8000,
+      callbacks
     } = options;
+
+    // Emit agent start event
+    callbacks?.onAgentStart?.({ agent: 'plan', target: planName });
 
     const contextParts: string[] = [
       `Create a development plan named "${planName}" for the repository at: ${repoPath}`,
@@ -125,6 +132,7 @@ export class PlanAgent {
 
     const userPrompt = contextParts.filter(Boolean).join('\n');
     const { provider, modelId } = this.providerResult;
+    let stepCount = 0;
 
     const result = await generateText({
       model: provider(modelId),
@@ -132,7 +140,31 @@ export class PlanAgent {
       prompt: userPrompt,
       tools: this.tools,
       stopWhen: stepCountIs(maxSteps),
-      maxOutputTokens
+      maxOutputTokens,
+      onStepFinish: (step) => {
+        stepCount++;
+        callbacks?.onAgentStep?.({ agent: 'plan', step: stepCount });
+
+        for (const toolCall of step.toolCalls || []) {
+          callbacks?.onToolCall?.({
+            agent: 'plan',
+            toolName: toolCall.toolName,
+            args: 'args' in toolCall ? toolCall.args as Record<string, unknown> : undefined
+          });
+
+          const toolResult = step.toolResults?.find(
+            (r) => 'toolCallId' in r && r.toolCallId === toolCall.toolCallId
+          );
+          if (toolResult && 'result' in toolResult) {
+            callbacks?.onToolResult?.({
+              agent: 'plan',
+              toolName: toolCall.toolName,
+              success: true,
+              summary: summarizeToolResult(toolCall.toolName, toolResult.result)
+            });
+          }
+        }
+      }
     });
 
     const toolsUsed = new Set<string>();
@@ -142,10 +174,16 @@ export class PlanAgent {
       }
     }
 
+    const toolsUsedArray = Array.from(toolsUsed);
+    const totalSteps = result.steps?.length || 1;
+
+    // Emit agent complete event
+    callbacks?.onAgentComplete?.({ agent: 'plan', toolsUsed: toolsUsedArray, steps: totalSteps });
+
     return {
       text: result.text,
-      toolsUsed: Array.from(toolsUsed),
-      steps: result.steps?.length || 1
+      toolsUsed: toolsUsedArray,
+      steps: totalSteps
     };
   }
 
@@ -162,12 +200,16 @@ export class PlanAgent {
       referencedDocs,
       referencedAgents,
       maxSteps = 12,
-      maxOutputTokens = 8000
+      maxOutputTokens = 8000,
+      callbacks
     } = options;
 
     if (!existingPlanContent) {
       return this.generatePlan(options);
     }
+
+    // Emit agent start event
+    callbacks?.onAgentStart?.({ agent: 'plan', target: planName });
 
     const contextParts: string[] = [
       `Update the development plan "${planName}" for repository: ${repoPath}`,
@@ -202,6 +244,7 @@ export class PlanAgent {
 
     const userPrompt = contextParts.join('\n');
     const { provider, modelId } = this.providerResult;
+    let stepCount = 0;
 
     const result = await generateText({
       model: provider(modelId),
@@ -209,7 +252,31 @@ export class PlanAgent {
       prompt: userPrompt,
       tools: this.tools,
       stopWhen: stepCountIs(maxSteps),
-      maxOutputTokens
+      maxOutputTokens,
+      onStepFinish: (step) => {
+        stepCount++;
+        callbacks?.onAgentStep?.({ agent: 'plan', step: stepCount });
+
+        for (const toolCall of step.toolCalls || []) {
+          callbacks?.onToolCall?.({
+            agent: 'plan',
+            toolName: toolCall.toolName,
+            args: 'args' in toolCall ? toolCall.args as Record<string, unknown> : undefined
+          });
+
+          const toolResult = step.toolResults?.find(
+            (r) => 'toolCallId' in r && r.toolCallId === toolCall.toolCallId
+          );
+          if (toolResult && 'result' in toolResult) {
+            callbacks?.onToolResult?.({
+              agent: 'plan',
+              toolName: toolCall.toolName,
+              success: true,
+              summary: summarizeToolResult(toolCall.toolName, toolResult.result)
+            });
+          }
+        }
+      }
     });
 
     const toolsUsed = new Set<string>();
@@ -219,10 +286,16 @@ export class PlanAgent {
       }
     }
 
+    const toolsUsedArray = Array.from(toolsUsed);
+    const totalSteps = result.steps?.length || 1;
+
+    // Emit agent complete event
+    callbacks?.onAgentComplete?.({ agent: 'plan', toolsUsed: toolsUsedArray, steps: totalSteps });
+
     return {
       text: result.text,
-      toolsUsed: Array.from(toolsUsed),
-      steps: result.steps?.length || 1
+      toolsUsed: toolsUsedArray,
+      steps: totalSteps
     };
   }
 
@@ -242,8 +315,12 @@ export class PlanAgent {
       docsIndex,
       agentsIndex,
       maxSteps = 10,
-      maxOutputTokens = 8000
+      maxOutputTokens = 8000,
+      callbacks
     } = options;
+
+    // Emit agent start event
+    callbacks?.onAgentStart?.({ agent: 'plan', target: planName });
 
     const analysisPrompt = `Analyze the repository at ${repoPath} for creating a development plan "${planName}".
 ${summary ? `Goal: ${summary}` : ''}
@@ -259,6 +336,7 @@ ${docsIndex ? `\nAvailable docs:\n${docsIndex}` : ''}
 ${agentsIndex ? `\nAvailable agents:\n${agentsIndex}` : ''}`;
 
     const { provider, modelId } = this.providerResult;
+    let stepCount = 0;
 
     // First gather context using tools
     const analysisResult = await generateText({
@@ -267,7 +345,31 @@ ${agentsIndex ? `\nAvailable agents:\n${agentsIndex}` : ''}`;
       prompt: analysisPrompt,
       tools: this.tools,
       stopWhen: stepCountIs(maxSteps),
-      maxOutputTokens: Math.floor(maxOutputTokens / 2)
+      maxOutputTokens: Math.floor(maxOutputTokens / 2),
+      onStepFinish: (step) => {
+        stepCount++;
+        callbacks?.onAgentStep?.({ agent: 'plan', step: stepCount });
+
+        for (const toolCall of step.toolCalls || []) {
+          callbacks?.onToolCall?.({
+            agent: 'plan',
+            toolName: toolCall.toolName,
+            args: 'args' in toolCall ? toolCall.args as Record<string, unknown> : undefined
+          });
+
+          const toolResult = step.toolResults?.find(
+            (r) => 'toolCallId' in r && r.toolCallId === toolCall.toolCallId
+          );
+          if (toolResult && 'result' in toolResult) {
+            callbacks?.onToolResult?.({
+              agent: 'plan',
+              toolName: toolCall.toolName,
+              success: true,
+              summary: summarizeToolResult(toolCall.toolName, toolResult.result)
+            });
+          }
+        }
+      }
     });
 
     const toolsUsed = new Set<string>();
@@ -286,9 +388,14 @@ ${agentsIndex ? `\nAvailable agents:\n${agentsIndex}` : ''}`;
       maxOutputTokens: Math.floor(maxOutputTokens / 2)
     });
 
+    const toolsUsedArray = Array.from(toolsUsed);
+
+    // Emit agent complete event
+    callbacks?.onAgentComplete?.({ agent: 'plan', toolsUsed: toolsUsedArray, steps: stepCount });
+
     return {
       plan: plan.object,
-      toolsUsed: Array.from(toolsUsed)
+      toolsUsed: toolsUsedArray
     };
   }
 

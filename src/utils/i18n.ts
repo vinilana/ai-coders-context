@@ -169,7 +169,14 @@ const englishMessages = {
   'errors.fill.apiKeyMissing': '{provider} API key is required. Set one of {envVars} or use --api-key.',
   'info.interactive.returning.title': 'Main menu',
   'info.interactive.returning.detail': 'Returning to the interactive menu. Pick another action or choose Exit.',
-  'success.interactive.goodbye': 'Goodbye! Thanks for using ai-context.'
+  'success.interactive.goodbye': 'Goodbye! Thanks for using ai-context.',
+  'agent.starting': 'Starting',
+  'agent.complete': 'Complete',
+  'agent.steps': 'steps',
+  'agent.type.documentation': 'Documentation Agent',
+  'agent.type.playbook': 'Playbook Agent',
+  'agent.type.plan': 'Plan Agent',
+  'agent.type.fill': 'Fill Agent'
 } as const;
 
 export type TranslationKey = keyof typeof englishMessages;
@@ -342,7 +349,14 @@ const portugueseMessages: TranslationDictionary = {
   'errors.fill.apiKeyMissing': 'É necessária uma chave de API {provider}. Defina uma das variáveis {envVars} ou use --api-key.',
   'info.interactive.returning.title': 'Menu principal',
   'info.interactive.returning.detail': 'Voltando ao menu interativo. Escolha outra ação ou selecione Sair.',
-  'success.interactive.goodbye': 'Até logo! Obrigado por usar o ai-context.'
+  'success.interactive.goodbye': 'Até logo! Obrigado por usar o ai-context.',
+  'agent.starting': 'Iniciando',
+  'agent.complete': 'Concluído',
+  'agent.steps': 'passos',
+  'agent.type.documentation': 'Agente de Documentação',
+  'agent.type.playbook': 'Agente de Playbook',
+  'agent.type.plan': 'Agente de Plano',
+  'agent.type.fill': 'Agente de Preenchimento'
 };
 
 const dictionaries: Record<Locale, TranslationDictionary> = {
