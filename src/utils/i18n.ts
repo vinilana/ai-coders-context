@@ -222,7 +222,19 @@ const englishMessages = {
   'steps.sync.processingTarget': 'Processing target: {path}',
   'steps.sync.summary': 'Generating sync summary',
   'info.sync.foundAgents': 'Agent files discovered',
-  'info.sync.foundAgentsDetail': 'Found {count} agent playbooks to sync'
+  'info.sync.foundAgentsDetail': 'Found {count} agent playbooks to sync',
+  'prompts.mode.select': 'How would you like to configure this operation?',
+  'prompts.mode.quick': 'Quick Start (use smart defaults)',
+  'prompts.mode.advanced': 'Advanced (customize all options)',
+  'prompts.summary.title': 'Configuration Summary',
+  'prompts.summary.proceed': 'Proceed with this configuration?',
+  'prompts.llm.autoDetected': 'Auto-detected from environment',
+  'prompts.quick.confirmRepo': 'Use this repository?',
+  'prompts.sync.quickTarget': 'Where should agents be synced?',
+  'prompts.sync.quickTarget.common': 'Claude Code + GitHub Copilot (recommended)',
+  'prompts.sync.quickTarget.claude': 'Claude Code only',
+  'prompts.sync.quickTarget.all': 'All AI tools',
+  'prompts.sync.quickTarget.custom': 'Custom path...'
 } as const;
 
 export type TranslationKey = keyof typeof englishMessages;
@@ -448,7 +460,19 @@ const portugueseMessages: TranslationDictionary = {
   'steps.sync.processingTarget': 'Processando destino: {path}',
   'steps.sync.summary': 'Gerando resumo da sincronização',
   'info.sync.foundAgents': 'Arquivos de agentes descobertos',
-  'info.sync.foundAgentsDetail': 'Encontrados {count} playbooks de agentes para sincronizar'
+  'info.sync.foundAgentsDetail': 'Encontrados {count} playbooks de agentes para sincronizar',
+  'prompts.mode.select': 'Como você quer configurar esta operação?',
+  'prompts.mode.quick': 'Início Rápido (usar configurações automáticas)',
+  'prompts.mode.advanced': 'Avançado (personalizar todas as opções)',
+  'prompts.summary.title': 'Resumo da Configuração',
+  'prompts.summary.proceed': 'Prosseguir com esta configuração?',
+  'prompts.llm.autoDetected': 'Detectado automaticamente do ambiente',
+  'prompts.quick.confirmRepo': 'Usar este repositório?',
+  'prompts.sync.quickTarget': 'Para onde sincronizar os agentes?',
+  'prompts.sync.quickTarget.common': 'Claude Code + GitHub Copilot (recomendado)',
+  'prompts.sync.quickTarget.claude': 'Somente Claude Code',
+  'prompts.sync.quickTarget.all': 'Todas as ferramentas IA',
+  'prompts.sync.quickTarget.custom': 'Caminho personalizado...'
 };
 
 const dictionaries: Record<Locale, TranslationDictionary> = {
