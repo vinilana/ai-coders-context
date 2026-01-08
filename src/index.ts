@@ -17,6 +17,7 @@ import { FillService } from './services/fill/fillService';
 import { PlanService } from './services/plan/planService';
 import { SyncService } from './services/sync/syncService';
 import { ServeService } from './services/serve';
+import { startMCPServer } from './services/mcp';
 import { DEFAULT_MODELS } from './services/ai/providerFactory';
 import {
   detectSmartDefaults,
@@ -249,6 +250,36 @@ program
     } catch (error) {
       if (options.verbose) {
         process.stderr.write(`[serve] Error: ${error}\n`);
+      }
+      process.exit(1);
+    }
+  });
+
+program
+  .command('mcp')
+  .description('Start MCP (Model Context Protocol) server for Claude Code integration')
+  .option('-r, --repo-path <path>', 'Default repository path for tools')
+  .option('-v, --verbose', 'Enable verbose logging to stderr')
+  .action(async (options: any) => {
+    try {
+      const server = await startMCPServer({
+        repoPath: options.repoPath,
+        verbose: options.verbose
+      });
+
+      // Handle graceful shutdown
+      process.on('SIGINT', async () => {
+        await server.stop();
+        process.exit(0);
+      });
+
+      process.on('SIGTERM', async () => {
+        await server.stop();
+        process.exit(0);
+      });
+    } catch (error) {
+      if (options.verbose) {
+        process.stderr.write(`[mcp] Error: ${error}\n`);
       }
       process.exit(1);
     }

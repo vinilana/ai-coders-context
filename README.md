@@ -23,6 +23,8 @@ A lightweight CLI that scaffolds living documentation and AI-agent playbooks for
 - 🌐 **Multi-provider support** for OpenAI, Anthropic, Google, and OpenRouter
 - ⚡ **Semantic context mode** using Tree-sitter for token-efficient LLM calls
 - 📊 **Real-time progress** showing agent activity and tool usage
+- 🔌 **MCP Server** for seamless Claude Code integration
+- 🔗 **Passthrough mode** for external AI agents via stdin/stdout JSON
 
 ## 📦 Installation
 
@@ -226,6 +228,125 @@ In scaffold mode the command creates `.context/plans/<plan-name>.md`, keeps a `p
 💡 Tip: run `npx @ai-coders/context` with no arguments to enter an interactive mode that guides you through scaffold and LLM-fill options.
 
 Prefer driving the update elsewhere? Just grab [`prompts/update_scaffold_prompt.md`](./prompts/update_scaffold_prompt.md) and run it in your favorite playground or agent host. When you're ready to automate, drop your API key in `.env` (for example `OPENROUTER_API_KEY` and `OPENROUTER_MODEL`) and let `fill` handle the edits inline.
+
+### `mcp`
+Start an MCP (Model Context Protocol) server for Claude Code integration. This exposes code analysis tools and semantic context as MCP resources.
+
+```
+Usage: ai-context mcp
+
+Options:
+  -r, --repo-path <path>  Default repository path for tools
+  -v, --verbose           Enable verbose logging to stderr
+  -h, --help              Display help for command
+```
+
+**Available MCP Tools:**
+- `readFile` - Read file contents from the filesystem
+- `listFiles` - List files matching a glob pattern
+- `analyzeSymbols` - Extract code symbols (classes, functions, interfaces) using Tree-sitter
+- `getFileStructure` - Get the directory structure of a repository
+- `searchCode` - Search for code patterns using regex
+- `buildSemanticContext` - Build optimized semantic context for LLM prompts
+
+**Available MCP Resources:**
+- `context://codebase/{contextType}` - Semantic context (documentation, playbook, plan, compact)
+- `file://{path}` - Read file contents
+
+### `serve`
+Start a passthrough server for external AI agents. Accepts JSON commands via stdin and responds via stdout.
+
+```
+Usage: ai-context serve
+
+Options:
+  -r, --repo-path <path>  Default repository path for tools
+  -f, --format <format>   Output format: json or jsonl (default: jsonl)
+  -v, --verbose           Enable verbose logging to stderr
+  -h, --help              Display help for command
+```
+
+**Available Methods:**
+- `capabilities` - List server capabilities
+- `tool.list` - List available tools
+- `tool.call` - Execute a tool
+- `context.build` - Build semantic context
+- `agent.run` - Run an agent (requires LLM config)
+
+## 🔌 Claude Code Integration (MCP)
+
+The easiest way to use this package with Claude Code is through the MCP server. Add the following to your Claude Code settings:
+
+**~/.claude/settings.json:**
+```json
+{
+  "mcpServers": {
+    "ai-context": {
+      "command": "npx",
+      "args": ["@ai-coders/context", "mcp", "-r", "/path/to/your/repo"]
+    }
+  }
+}
+```
+
+Once configured, Claude Code will have access to all code analysis tools:
+
+```
+# Claude Code can now use these tools:
+- readFile: Read any file in your repository
+- listFiles: Find files by glob patterns
+- analyzeSymbols: Extract code structure with Tree-sitter
+- searchCode: Search for patterns across the codebase
+- buildSemanticContext: Get optimized context for any task
+```
+
+### Example MCP Usage in Claude Code
+
+When working with Claude Code, you can ask it to:
+
+- "Use the ai-context tools to analyze the authentication module"
+- "Build a semantic context for the src/services directory"
+- "List all TypeScript files in the project and analyze their exports"
+
+## 🔗 External AI Agent Integration (Passthrough)
+
+For AI agents that don't support MCP, use the passthrough server with JSON communication:
+
+```bash
+# Start the server
+npx @ai-coders/context serve -r ./my-project
+
+# Send commands via stdin
+echo '{"id":"1","method":"capabilities"}' | npx @ai-coders/context serve
+```
+
+**Example: List files**
+```bash
+echo '{"id":"1","method":"tool.call","params":{"tool":"listFiles","args":{"pattern":"**/*.ts"}}}' \
+  | npx @ai-coders/context serve -r ./my-project
+```
+
+**Example: Build semantic context**
+```bash
+echo '{"id":"1","method":"context.build","params":{"repoPath":"./","contextType":"documentation"}}' \
+  | npx @ai-coders/context serve
+```
+
+**Response format:**
+```json
+{
+  "id": "1",
+  "success": true,
+  "result": { /* tool output */ }
+}
+```
+
+**Notifications (streamed during execution):**
+```json
+{"type": "progress", "data": {"step": 1, "message": "Analyzing..."}}
+{"type": "tool_call", "data": {"toolName": "readFile", "args": {"filePath": "..."}}}
+{"type": "tool_result", "data": {"toolName": "readFile", "success": true}}
+```
 
 ## 🔧 Environment Variables
 

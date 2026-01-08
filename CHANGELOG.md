@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **MCP Server**: New `mcp` command for Claude Code integration via Model Context Protocol
+  - Exposes 6 code analysis tools: `readFile`, `listFiles`, `analyzeSymbols`, `getFileStructure`, `searchCode`, `buildSemanticContext`
+  - Exposes 2 resource templates: `context://codebase/{contextType}` for semantic context, `file://{path}` for file contents
+  - Uses stdio transport for seamless Claude Code integration
+  - Configure in `~/.claude/settings.json` with `npx @ai-coders/context mcp`
+
+- **Passthrough Server**: New `serve` command for external AI agent integration
+  - JSON-RPC style communication via stdin/stdout
+  - Supports methods: `capabilities`, `tool.list`, `tool.call`, `context.build`, `agent.run`
+  - Real-time notifications for progress, tool calls, and results
+  - Protocol types with Zod validation for type safety
+  - Enables any AI agent to use code analysis tools without MCP support
+
 - **Agent sync command**: New `sync-agents` command to sync agent playbooks to AI tool directories
   - Syncs from `.context/agents/` (source of truth) to tool-specific directories
   - Built-in presets: `claude` (.claude/agents), `github` (.github/agents), `cursor` (.cursor/agents)
@@ -106,6 +119,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `@ai-sdk/google` - Google provider
 - `@ai-sdk/openrouter` - OpenRouter provider
 - `zod` - Schema validation for structured outputs
+- `@modelcontextprotocol/sdk` - MCP server SDK for Claude Code integration
 
 #### New Files
 - `src/services/sync/` - Agent sync service module
@@ -129,6 +143,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `src/services/plan/planService.test.ts` - PlanService unit tests
 - `src/services/fill/fillService.test.ts` - FillService unit tests
 - `src/services/semantic/codebaseAnalyzer.test.ts` - CodebaseAnalyzer unit tests
+- `src/services/mcp/` - MCP server module
+  - `mcpServer.ts` - Main MCP server implementation
+  - `mcpServer.test.ts` - MCP server tests
+  - `index.ts` - Barrel export
+- `src/services/passthrough/` - Passthrough server module
+  - `protocol.ts` - JSON-RPC protocol types with Zod schemas
+  - `protocol.test.ts` - Protocol tests
+  - `stdinReader.ts` - stdin JSON reader with event emitter
+  - `commandRouter.ts` - Command routing and tool execution
+  - `commandRouter.test.ts` - Router tests
+  - `index.ts` - Barrel export
+- `src/services/serve/` - Serve command service
+  - `serveService.ts` - Main serve service implementation
+  - `index.ts` - Barrel export
 
 #### Environment Variables
 ```bash

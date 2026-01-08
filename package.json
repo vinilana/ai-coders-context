@@ -50,6 +50,7 @@
     "@ai-sdk/anthropic": "^3.0.9",
     "@ai-sdk/google": "^3.0.6",
     "@ai-sdk/openai": "^3.0.7",
+    "@modelcontextprotocol/sdk": "^1.25.2",
     "ai": "^6.0.19",
     "axios": "^1.12.2",
     "boxen": "^5.1.2",
