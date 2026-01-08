@@ -141,6 +141,38 @@ npx @ai-coders/context fill . --languages typescript,python
 
 Supported languages: `typescript`, `javascript`, `python`, `go`, `rust`, `java`, `cpp`, `c_sharp`, `ruby`, `php`
 
+### LSP Enhancement (Optional)
+
+For deeper semantic analysis, the tool supports optional **LSP (Language Server Protocol)** integration. While Tree-sitter handles ~90% of the analysis with fast syntactic parsing, LSP provides additional semantic information when enabled:
+
+| Feature | Tree-sitter | LSP |
+|---------|-------------|-----|
+| Symbol extraction | ✅ | - |
+| Import/export analysis | ✅ | - |
+| Type inference | - | ✅ |
+| Interface implementations | - | ✅ |
+| Cross-file references | - | ✅ |
+| Definition resolution | - | ✅ |
+
+**Usage:**
+
+```bash
+# Enable LSP for fill command (disabled by default)
+npx @ai-coders/context fill ./my-repo --lsp
+
+# LSP is enabled by default for plan fill
+npx @ai-coders/context plan my-plan --fill
+
+# Disable LSP for plan fill
+npx @ai-coders/context plan my-plan --fill --no-lsp
+```
+
+**Supported Language Servers:**
+- TypeScript/JavaScript: `typescript-language-server`
+- Python: `pylsp`
+
+**Graceful Degradation:** If a language server is not installed, the analysis continues without LSP enhancement—no errors, no interruption.
+
 ## 🧠 Guided Updates for AI Assistants
 
 Need help filling in the scaffold? Use [`prompts/update_scaffold_prompt.md`](./prompts/update_scaffold_prompt.md) as the canonical instruction set for any LLM or CLI agent. Share that prompt verbatim with your assistant to keep updates consistent across teams.
