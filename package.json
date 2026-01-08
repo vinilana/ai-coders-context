@@ -47,6 +47,10 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.9",
+    "@ai-sdk/google": "^3.0.6",
+    "@ai-sdk/openai": "^3.0.7",
+    "ai": "^6.0.19",
     "axios": "^1.12.2",
     "boxen": "^5.1.2",
     "chalk": "^4.1.2",
@@ -58,7 +62,8 @@
     "glob": "^10.4.5",
     "inquirer": "^12.6.3",
     "ora": "^5.4.1",
-    "semver": "^7.6.3"
+    "semver": "^7.6.3",
+    "zod": "^4.3.5"
   },
   "devDependencies": {
     "@types/cli-progress": "^3.11.0",

@@ -11,10 +11,11 @@ import { CLIInterface } from './utils/cliUI';
 import { checkForUpdates } from './utils/versionChecker';
 import { createTranslator, detectLocale, SUPPORTED_LOCALES, normalizeLocale } from './utils/i18n';
 import type { TranslateFn, Locale, TranslationKey } from './utils/i18n';
-import { LLMConfig } from './types';
+import { LLMConfig, AIProvider } from './types';
 import { InitService } from './services/init/initService';
 import { FillService } from './services/fill/fillService';
 import { PlanService } from './services/plan/planService';
+import { DEFAULT_MODELS } from './services/ai/providerFactory';
 
 dotenv.config();
 
@@ -401,19 +402,34 @@ async function runInteractiveLlmFill(): Promise<void> {
     }
   ]);
 
-  let provider: LLMConfig['provider'] | undefined;
+  let provider: AIProvider | undefined;
   let model: string | undefined;
   if (specifyModel) {
+    const providerAnswer = await inquirer.prompt<{ provider: AIProvider }>([
+      {
+        type: 'list',
+        name: 'provider',
+        message: t('prompts.fill.provider'),
+        choices: [
+          { name: t('prompts.fill.provider.openrouter'), value: 'openrouter' },
+          { name: t('prompts.fill.provider.openai'), value: 'openai' },
+          { name: t('prompts.fill.provider.anthropic'), value: 'anthropic' },
+          { name: t('prompts.fill.provider.google'), value: 'google' }
+        ],
+        default: 'openrouter'
+      }
+    ]);
+    provider = providerAnswer.provider;
+
     const modelAnswer = await inquirer.prompt<{ model: string }>([
       {
         type: 'input',
         name: 'model',
         message: t('prompts.fill.model'),
-        default: DEFAULT_MODEL
+        default: DEFAULT_MODELS[provider]
       }
     ]);
     model = modelAnswer.model.trim();
-    provider = 'openrouter';
   }
 
   const { provideApiKey } = await inquirer.prompt<{ provideApiKey: boolean }>([
@@ -510,6 +526,68 @@ async function runInteractivePlan(): Promise<void> {
       }
     ]);
 
+    const { specifyModel } = await inquirer.prompt<{ specifyModel: boolean }>([
+      {
+        type: 'confirm',
+        name: 'specifyModel',
+        message: t('prompts.fill.overrideModel'),
+        default: false
+      }
+    ]);
+
+    let provider: AIProvider | undefined;
+    let model: string | undefined;
+    let apiKey: string | undefined;
+
+    if (specifyModel) {
+      const providerAnswer = await inquirer.prompt<{ provider: AIProvider }>([
+        {
+          type: 'list',
+          name: 'provider',
+          message: t('prompts.fill.provider'),
+          choices: [
+            { name: t('prompts.fill.provider.openrouter'), value: 'openrouter' },
+            { name: t('prompts.fill.provider.openai'), value: 'openai' },
+            { name: t('prompts.fill.provider.anthropic'), value: 'anthropic' },
+            { name: t('prompts.fill.provider.google'), value: 'google' }
+          ],
+          default: 'openrouter'
+        }
+      ]);
+      provider = providerAnswer.provider;
+
+      const modelAnswer = await inquirer.prompt<{ model: string }>([
+        {
+          type: 'input',
+          name: 'model',
+          message: t('prompts.fill.model'),
+          default: DEFAULT_MODELS[provider]
+        }
+      ]);
+      model = modelAnswer.model.trim();
+    }
+
+    const { provideApiKey } = await inquirer.prompt<{ provideApiKey: boolean }>([
+      {
+        type: 'confirm',
+        name: 'provideApiKey',
+        message: t('prompts.fill.provideApiKey'),
+        default: false
+      }
+    ]);
+
+    if (provideApiKey) {
+      const apiKeyAnswer = await inquirer.prompt<{ apiKey: string }>([
+        {
+          type: 'password',
+          name: 'apiKey',
+          message: t('prompts.fill.apiKey'),
+          mask: '*'
+        }
+      ]);
+      apiKey = apiKeyAnswer.apiKey.trim();
+    }
+
     const { dryRun } = await inquirer.prompt<{ dryRun: boolean }>([
       {
         type: 'confirm',
@@ -528,7 +606,10 @@ async function runInteractivePlan(): Promise<void> {
       await planService.fillPlan(planName, {
         output: resolvedOutput,
         repo: repoPath,
-        dryRun
+        dryRun,
+        provider,
+        model,
+        apiKey
       });
     } catch (error) {
       ui.displayError(t('errors.plan.fillFailed'), error as Error);
