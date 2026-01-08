@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.0] - 2026-01-08
 
 ### Added
 
@@ -173,10 +173,10 @@ ANTHROPIC_API_KEY=...
 GOOGLE_API_KEY=...
 
 # Model overrides
-OPENROUTER_MODEL=x-ai/grok-4-fast
-OPENAI_MODEL=gpt-4o
-ANTHROPIC_MODEL=claude-sonnet-4-20250514
-GOOGLE_MODEL=gemini-2.0-flash
+OPENROUTER_MODEL=x-ai/grok-4.1-fast
+OPENAI_MODEL=gpt-5.2
+ANTHROPIC_MODEL=claude-sonnet-4.5
+GOOGLE_MODEL=gemini-3-flash-preview
 ```
 
 ## [0.4.0] - Previous Release
