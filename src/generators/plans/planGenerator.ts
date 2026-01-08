@@ -7,7 +7,8 @@ import { AGENT_RESPONSIBILITIES } from '../agents/agentConfig';
 import { getGuidesByKeys } from '../documentation/guideRegistry';
 import { renderPlanTemplate } from './templates/planTemplate';
 import { renderPlanIndex } from './templates/indexTemplate';
-import { PlanAgentSummary, PlanIndexEntry } from './templates/types';
+import { PlanAgentSummary, PlanIndexEntry, CodebaseSnapshot } from './templates/types';
+import { CodebaseAnalyzer, SemanticContext } from '../../services/semantic';
 
 interface PlanGeneratorOptions {
   planName: string;
@@ -18,6 +19,8 @@ interface PlanGeneratorOptions {
   selectedDocKeys?: string[] | null;
   force?: boolean;
   verbose?: boolean;
+  semantic?: boolean;
+  projectPath?: string;
 }
 
 interface PlanGenerationResult {
@@ -27,6 +30,8 @@ interface PlanGenerationResult {
 }
 
 export class PlanGenerator {
+  private analyzer?: CodebaseAnalyzer;
+
   async generatePlan(options: PlanGeneratorOptions): Promise<PlanGenerationResult> {
     const {
       planName,
@@ -36,7 +41,9 @@ export class PlanGenerator {
       selectedAgentTypes,
       selectedDocKeys,
       force = false,
-      verbose = false
+      verbose = false,
+      semantic = false,
+      projectPath
     } = options;
 
     const slug = GeneratorUtils.slugify(planName);
@@ -58,6 +65,25 @@ export class PlanGenerator {
       throw new Error(`Plan already exists at ${planPath}. Use --force to overwrite.`);
     }
 
+    // Perform semantic analysis if enabled
+    let semantics: SemanticContext | undefined;
+    let codebaseSnapshot: CodebaseSnapshot | undefined;
+
+    if (semantic && projectPath) {
+      GeneratorUtils.logProgress('Running semantic analysis for plan...', verbose);
+      this.analyzer = new CodebaseAnalyzer();
+      try {
+        semantics = await this.analyzer.analyze(projectPath);
+        codebaseSnapshot = this.buildCodebaseSnapshot(semantics);
+        GeneratorUtils.logProgress(
+          `Analyzed ${semantics.stats.totalFiles} files, found ${semantics.stats.totalSymbols} symbols`,
+          verbose
+        );
+      } catch (error) {
+        GeneratorUtils.logError('Semantic analysis failed, continuing without it', error, verbose);
+      }
+    }
+
     const agentSummaries = this.resolveAgents(selectedAgentTypes);
     const docGuides = selectedDocKeys === null
       ? []
@@ -68,7 +94,9 @@ export class PlanGenerator {
       slug,
       summary,
       agents: agentSummaries,
-      docs: docGuides
+      docs: docGuides,
+      semantics,
+      codebaseSnapshot
     });
 
     await GeneratorUtils.writeFileWithLogging(
@@ -104,6 +132,18 @@ export class PlanGenerator {
       title: GeneratorUtils.formatTitle(type),
       responsibility: AGENT_RESPONSIBILITIES[type]?.[0] || 'Document this agent\'s primary responsibility.'
     }));
+  }
+
+  private buildCodebaseSnapshot(semantics: SemanticContext): CodebaseSnapshot {
+    const { architecture, stats } = semantics;
+
+    return {
+      totalFiles: stats.totalFiles,
+      totalSymbols: stats.totalSymbols,
+      layers: architecture.layers.map(layer => layer.name),
+      patterns: architecture.patterns.map(pattern => pattern.name),
+      entryPoints: architecture.entryPoints
+    };
   }
 
   private async updatePlanIndex(plansDir: string, verbose: boolean): Promise<void> {

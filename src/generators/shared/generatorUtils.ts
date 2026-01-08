@@ -1,7 +1,7 @@
 import * as fs from 'fs-extra';
 import * as path from 'path';
-import chalk from 'chalk';
 import { RepoStructure } from '../../types';
+import { colors, symbols, typography } from '../../utils/theme';
 
 export class GeneratorUtils {
   static formatBytes(bytes: number): string {
@@ -27,7 +27,7 @@ export class GeneratorUtils {
   }
 
   static formatTitle(text: string): string {
-    return text.split('-').map(word => 
+    return text.split('-').map(word =>
       word.charAt(0).toUpperCase() + word.slice(1)
     ).join(' ');
   }
@@ -35,38 +35,38 @@ export class GeneratorUtils {
   static async ensureDirectoryAndLog(dir: string, verbose: boolean, description: string): Promise<void> {
     await fs.ensureDir(dir);
     if (verbose) {
-      console.log(chalk.blue(`📁 ${description}: ${dir}`));
+      console.log(`  ${colors.secondary(symbols.pointer)} ${colors.secondary(description)}: ${colors.primary(dir)}`);
     }
   }
 
   static async writeFileWithLogging(
-    filePath: string, 
-    content: string, 
-    verbose: boolean, 
+    filePath: string,
+    content: string,
+    verbose: boolean,
     successMessage?: string
   ): Promise<void> {
     const fileName = path.basename(filePath);
-    
+
     if (verbose) {
-      console.log(chalk.blue(`📄 Creating ${fileName}...`));
+      console.log(`  ${colors.secondary(symbols.pointer)} ${colors.secondary(`Creating ${fileName}...`)}`);
     }
 
     await fs.writeFile(filePath, content);
 
     if (verbose) {
-      console.log(chalk.green(`✅ ${successMessage || `Created ${fileName}`}`));
+      console.log(typography.success(successMessage || `Created ${fileName}`));
     }
   }
 
   static logError(message: string, error: any, verbose: boolean): void {
     if (verbose) {
-      console.log(chalk.red(`❌ ${message}: ${error}`));
+      console.log(typography.error(`${message}: ${error}`));
     }
   }
 
   static logProgress(message: string, verbose: boolean): void {
     if (verbose) {
-      console.log(chalk.yellow(message));
+      console.log(typography.warning(message));
     }
   }
 

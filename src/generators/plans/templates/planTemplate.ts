@@ -1,7 +1,65 @@
-import { PlanTemplateContext } from './types';
+import { PlanTemplateContext, CodebaseSnapshot } from './types';
+import { SemanticContext } from '../../../services/semantic';
+
+function renderCodebaseSnapshot(snapshot?: CodebaseSnapshot): string {
+  if (!snapshot) {
+    return `- **Codebase analysis:** *No codebase insights available.*`;
+  }
+
+  const lines = [
+    `- **Total files analyzed:** ${snapshot.totalFiles}`,
+    `- **Total symbols discovered:** ${snapshot.totalSymbols}`
+  ];
+
+  if (snapshot.layers.length > 0) {
+    lines.push(`- **Architecture layers:** ${snapshot.layers.join(', ')}`);
+  }
+
+  if (snapshot.patterns.length > 0) {
+    lines.push(`- **Detected patterns:** ${snapshot.patterns.join(', ')}`);
+  }
+
+  if (snapshot.entryPoints.length > 0) {
+    lines.push(`- **Entry points:** ${snapshot.entryPoints.slice(0, 3).join(', ')}${snapshot.entryPoints.length > 3 ? ` (+${snapshot.entryPoints.length - 3} more)` : ''}`);
+  }
+
+  return lines.join('\n');
+}
+
+function renderKeyComponents(semantics?: SemanticContext): string {
+  if (!semantics) {
+    return '';
+  }
+
+  const { symbols } = semantics;
+  const keyClasses = symbols.classes.filter(s => s.exported).slice(0, 5);
+  const keyInterfaces = symbols.interfaces.filter(s => s.exported).slice(0, 5);
+
+  if (keyClasses.length === 0 && keyInterfaces.length === 0) {
+    return '';
+  }
+
+  const lines = ['### Key Components'];
+
+  if (keyClasses.length > 0) {
+    lines.push('**Core Classes:**');
+    keyClasses.forEach(cls => {
+      lines.push(`- \`${cls.name}\` — ${cls.location.file}:${cls.location.line}`);
+    });
+  }
+
+  if (keyInterfaces.length > 0) {
+    lines.push('', '**Key Interfaces:**');
+    keyInterfaces.forEach(iface => {
+      lines.push(`- \`${iface.name}\` — ${iface.location.file}:${iface.location.line}`);
+    });
+  }
+
+  return lines.join('\n') + '\n';
+}
 
 export function renderPlanTemplate(context: PlanTemplateContext): string {
-  const { title, slug, summary, agents, docs } = context;
+  const { title, slug, summary, agents, docs, semantics, codebaseSnapshot } = context;
 
   const relatedAgents = agents.length
     ? agents.map(agent => `  - "${agent.type}"`).join('\n')
@@ -15,27 +73,11 @@ export function renderPlanTemplate(context: PlanTemplateContext): string {
 
   const docsTableRows = docs.length
     ? docs
-        .map(doc => `| ${doc.title} | [${doc.file}](../docs/${doc.file}) | ${doc.marker} | ${doc.primaryInputs} |`)
+        .map(doc => `| ${doc.title} | [${doc.file}](../docs/${doc.file}) | ${doc.primaryInputs} |`)
         .join('\n')
-    : '| Documentation Index | [README.md](../docs/README.md) | agent-update:docs-index | Current docs directory listing |';
+    : '| Documentation Index | [README.md](../docs/README.md) | Current docs directory listing |';
 
-  return `---
-id: plan-${slug}
-ai_update_goal: "Define the stages, owners, and evidence required to complete ${title}."
-required_inputs:
-  - "Task summary or issue link describing the goal"
-  - "Relevant documentation sections from docs/README.md"
-  - "Matching agent playbooks from agents/README.md"
-success_criteria:
-  - "Stages list clear owners, deliverables, and success signals"
-  - "Plan references documentation and agent resources that exist today"
-  - "Follow-up actions and evidence expectations are recorded"
-related_agents:
-${relatedAgents}
----
-
-<!-- agent-update:start:plan-${slug} -->
-# ${title} Plan
+  return `# ${title} Plan
 
 > ${summary?.trim() || 'TODO: Summarize the desired outcome and the problem this plan addresses.'}
 
@@ -47,14 +89,17 @@ ${relatedAgents}
   - [Agent Handbook](../agents/README.md)
   - [Plans Index](./README.md)
 
-## Agent Lineup
+## Codebase Context
+${renderCodebaseSnapshot(codebaseSnapshot)}
+
+${renderKeyComponents(semantics)}## Agent Lineup
 | Agent | Role in this plan | Playbook | First responsibility focus |
 | --- | --- | --- | --- |
 ${agentTableRows}
 
 ## Documentation Touchpoints
-| Guide | File | Task Marker | Primary Inputs |
-| --- | --- | --- | --- |
+| Guide | File | Primary Inputs |
+| --- | --- | --- |
 ${docsTableRows}
 
 ## Risk Assessment
@@ -152,17 +197,8 @@ When to initiate rollback:
 3. Schedule post-mortem to analyze failure
 4. Update plan with lessons learned before retry
 
-<!-- agent-readonly:guidance -->
-## Agent Playbook Checklist
-1. Pick the agent that matches your task.
-2. Enrich the template with project-specific context or links.
-3. Share the final prompt with your AI assistant.
-4. Capture learnings in the relevant documentation file so future runs improve.
-
 ## Evidence & Follow-up
 - TODO: List artifacts to collect (logs, PR links, test runs, design notes).
 - TODO: Record follow-up actions or owners.
-
-<!-- agent-update:end -->
 `;
 }

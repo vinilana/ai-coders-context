@@ -28,11 +28,13 @@ export interface OpenRouterConfig {
   model: string;
 }
 
+export type AIProvider = 'openrouter' | 'openai' | 'anthropic' | 'google';
+
 export interface LLMConfig {
   apiKey: string;
   model: string;
   baseUrl?: string;
-  provider: 'openrouter';
+  provider: AIProvider;
 }
 
 export interface CLIOptions {

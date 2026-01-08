@@ -1,6 +1,6 @@
 {
   "name": "@ai-coders/context",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "CLI tool for generating codebase documentation and AI agent prompts",
   "main": "dist/index.js",
   "bin": {
@@ -47,6 +47,11 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.9",
+    "@ai-sdk/google": "^3.0.6",
+    "@ai-sdk/openai": "^3.0.7",
+    "@modelcontextprotocol/sdk": "^1.25.2",
+    "ai": "^6.0.19",
     "axios": "^1.12.2",
     "boxen": "^5.1.2",
     "chalk": "^4.1.2",
@@ -58,7 +63,8 @@
     "glob": "^10.4.5",
     "inquirer": "^12.6.3",
     "ora": "^5.4.1",
-    "semver": "^7.6.3"
+    "semver": "^7.6.3",
+    "zod": "^4.3.5"
   },
   "devDependencies": {
     "@types/cli-progress": "^3.11.0",
@@ -71,5 +77,9 @@
     "ts-jest": "^29.4.4",
     "tsx": "^4.20.6",
     "typescript": "^5.9.2"
+  },
+  "optionalDependencies": {
+    "tree-sitter": "^0.21.0",
+    "tree-sitter-typescript": "^0.23.2"
   }
 }

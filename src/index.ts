@@ -3,18 +3,32 @@
 import { Command } from 'commander';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
-import chalk from 'chalk';
 import inquirer from 'inquirer';
 
+import { colors } from './utils/theme';
 import { PlanGenerator } from './generators/plans/planGenerator';
 import { CLIInterface } from './utils/cliUI';
 import { checkForUpdates } from './utils/versionChecker';
 import { createTranslator, detectLocale, SUPPORTED_LOCALES, normalizeLocale } from './utils/i18n';
 import type { TranslateFn, Locale, TranslationKey } from './utils/i18n';
-import { LLMConfig } from './types';
+import { LLMConfig, AIProvider } from './types';
 import { InitService } from './services/init/initService';
 import { FillService } from './services/fill/fillService';
 import { PlanService } from './services/plan/planService';
+import { SyncService } from './services/sync/syncService';
+import { ServeService } from './services/serve';
+import { startMCPServer } from './services/mcp';
+import { DEFAULT_MODELS } from './services/ai/providerFactory';
+import {
+  detectSmartDefaults,
+  promptInteractiveMode,
+  promptLLMConfig,
+  promptAnalysisOptions,
+  promptConfirmProceed,
+  displayConfigSummary,
+  type ConfigSummary
+} from './utils/prompts';
+import { VERSION, PACKAGE_NAME } from './version';
 
 dotenv.config();
 
@@ -30,9 +44,7 @@ const localeLabelKeys: Record<Locale, TranslationKey> = {
 
 const program = new Command();
 const ui = new CLIInterface(t);
-const VERSION = '0.4.0';
-const PACKAGE_NAME = '@ai-coders/context';
-const DEFAULT_MODEL = 'x-ai/grok-4-fast';
+const DEFAULT_MODEL = 'gemini-3-flash-preview';	
 
 const initService = new InitService({
   ui,
@@ -52,6 +64,12 @@ const planService = new PlanService({
   t,
   version: VERSION,
   defaultModel: DEFAULT_MODEL
+});
+
+const syncService = new SyncService({
+  ui,
+  t,
+  version: VERSION
 });
 
 program
@@ -90,6 +108,7 @@ program
   .option('--exclude <patterns...>', t('commands.init.options.exclude'))
   .option('--include <patterns...>', t('commands.init.options.include'))
   .option('-v, --verbose', t('commands.init.options.verbose'))
+  .option('--no-semantic', t('commands.init.options.noSemantic'))
   .action(async (repoPath: string, type: string, options: any) => {
     try {
       await initService.run(repoPath, type, options);
@@ -113,6 +132,9 @@ program
   .option('--exclude <patterns...>', t('commands.fill.options.exclude'))
   .option('--include <patterns...>', t('commands.fill.options.include'))
   .option('-v, --verbose', t('commands.fill.options.verbose'))
+  .option('--no-semantic', t('commands.fill.options.noSemantic'))
+  .option('--languages <langs>', t('commands.fill.options.languages'))
+  .option('--use-lsp', t('commands.fill.options.useLsp'))
   .action(async (repoPath: string, options: any) => {
     try {
       await fillService.run(repoPath, options);
@@ -141,6 +163,8 @@ program
   .option('--include <patterns...>', t('commands.plan.options.include'))
   .option('--exclude <patterns...>', t('commands.plan.options.exclude'))
   .option('-v, --verbose', t('commands.plan.options.verbose'))
+  .option('--no-semantic', t('commands.plan.options.noSemantic'))
+  .option('--no-lsp', t('commands.plan.options.noLsp'))
   .action(async (planName: string, rawOptions: any) => {
     const outputDir = path.resolve(rawOptions.output || './.context');
 
@@ -172,17 +196,91 @@ program
         title: rawOptions.title,
         summary: rawOptions.summary,
         force: Boolean(rawOptions.force),
-        verbose: Boolean(rawOptions.verbose)
+        verbose: Boolean(rawOptions.verbose),
+        semantic: rawOptions.semantic !== false,
+        projectPath: rawOptions.repo ? path.resolve(rawOptions.repo) : path.resolve(rawOptions.output || './.context', '..')
       });
 
       ui.updateSpinner(t('spinner.plan.created'), 'success');
-      ui.displaySuccess(t('success.plan.createdAt', { path: chalk.cyan(result.relativePath) }));
+      ui.displaySuccess(t('success.plan.createdAt', { path: colors.accent(result.relativePath) }));
     } catch (error) {
       ui.updateSpinner(t('spinner.plan.creationFailed'), 'fail');
       ui.displayError(t('errors.plan.creationFailed'), error as Error);
       process.exit(1);
     } finally {
       ui.stopSpinner();
+    }
+  });
+
+program
+  .command('sync-agents')
+  .description(t('commands.sync.description'))
+  .option('-s, --source <dir>', t('commands.sync.options.source'), './.context/agents')
+  .option('-t, --target <paths...>', t('commands.sync.options.target'))
+  .option('-m, --mode <type>', t('commands.sync.options.mode'), 'symlink')
+  .option('-p, --preset <name>', t('commands.sync.options.preset'))
+  .option('--force', t('commands.sync.options.force'))
+  .option('--dry-run', t('commands.sync.options.dryRun'))
+  .option('-v, --verbose', t('commands.sync.options.verbose'))
+  .action(async (options: any) => {
+    try {
+      await syncService.run(options);
+    } catch (error) {
+      ui.displayError(t('errors.sync.failed'), error as Error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('serve')
+  .description('Start passthrough server for external AI agents (stdin/stdout JSON)')
+  .option('-r, --repo-path <path>', 'Default repository path for tools')
+  .option('-f, --format <format>', 'Output format: json or jsonl', 'jsonl')
+  .option('-v, --verbose', 'Enable verbose logging to stderr')
+  .action(async (options: any) => {
+    const service = new ServeService({
+      repoPath: options.repoPath,
+      format: options.format,
+      verbose: options.verbose
+    });
+
+    try {
+      await service.run();
+    } catch (error) {
+      if (options.verbose) {
+        process.stderr.write(`[serve] Error: ${error}\n`);
+      }
+      process.exit(1);
+    }
+  });
+
+program
+  .command('mcp')
+  .description('Start MCP (Model Context Protocol) server for Claude Code integration')
+  .option('-r, --repo-path <path>', 'Default repository path for tools')
+  .option('-v, --verbose', 'Enable verbose logging to stderr')
+  .action(async (options: any) => {
+    try {
+      const server = await startMCPServer({
+        repoPath: options.repoPath,
+        verbose: options.verbose
+      });
+
+      // Handle graceful shutdown
+      process.on('SIGINT', async () => {
+        await server.stop();
+        process.exit(0);
+      });
+
+      process.on('SIGTERM', async () => {
+        await server.stop();
+        process.exit(0);
+      });
+    } catch (error) {
+      if (options.verbose) {
+        process.stderr.write(`[mcp] Error: ${error}\n`);
+      }
+      process.exit(1);
     }
   });
 
@@ -246,7 +344,7 @@ async function selectLocale(showWelcome: boolean): Promise<void> {
   }
 }
 
-type InteractiveAction = 'scaffold' | 'fill' | 'plan' | 'changeLanguage' | 'exit';
+type InteractiveAction = 'scaffold' | 'fill' | 'plan' | 'syncAgents' | 'changeLanguage' | 'exit';
 
 async function runInteractive(): Promise<void> {
   await selectLocale(true);
@@ -262,6 +360,7 @@ async function runInteractive(): Promise<void> {
           { name: t('prompts.main.choice.scaffold'), value: 'scaffold' },
           { name: t('prompts.main.choice.fill'), value: 'fill' },
           { name: t('prompts.main.choice.plan'), value: 'plan' },
+          { name: t('prompts.main.choice.syncAgents'), value: 'syncAgents' },
           { name: t('prompts.main.choice.changeLanguage'), value: 'changeLanguage' },
           { name: t('prompts.main.choice.exit'), value: 'exit' }
         ]
@@ -282,8 +381,10 @@ async function runInteractive(): Promise<void> {
       await runInteractiveScaffold();
     } else if (action === 'fill') {
       await runInteractiveLlmFill();
-    } else {
+    } else if (action === 'plan') {
       await runInteractivePlan();
+    } else if (action === 'syncAgents') {
+      await runInteractiveSync();
     }
 
     ui.displayInfo(
@@ -342,17 +443,73 @@ async function runInteractiveScaffold(): Promise<void> {
 
   await runInit(resolvedRepo, scaffoldType, {
     output: outputDir,
-    verbose
+    verbose,
+    semantic: true
   });
 }
 
 async function runInteractiveLlmFill(): Promise<void> {
+  const defaults = await detectSmartDefaults();
+  const interactiveMode = await promptInteractiveMode(t);
+
+  if (interactiveMode === 'quick') {
+    // Quick mode: minimal prompts with smart defaults
+    const { confirmRepo } = await inquirer.prompt<{ confirmRepo: boolean }>([
+      {
+        type: 'confirm',
+        name: 'confirmRepo',
+        message: `${t('prompts.quick.confirmRepo')} (${defaults.repoPath})`,
+        default: true
+      }
+    ]);
+
+    const resolvedRepo = confirmRepo ? defaults.repoPath : (await inquirer.prompt<{ repoPath: string }>([
+      { type: 'input', name: 'repoPath', message: t('prompts.fill.repoPath'), default: defaults.repoPath }
+    ])).repoPath;
+
+    // Get LLM config (auto-detected or prompt for API key)
+    const llmConfig = await promptLLMConfig(t, { defaultModel: DEFAULT_MODEL, skipIfConfigured: true });
+
+    // Build summary
+    const summary: ConfigSummary = {
+      operation: 'fill',
+      repoPath: resolvedRepo,
+      outputDir: defaults.outputDir,
+      provider: llmConfig.provider,
+      model: llmConfig.model,
+      apiKeySource: llmConfig.autoDetected ? 'env' : llmConfig.apiKey ? 'provided' : 'none',
+      options: {
+        Semantic: true,
+        Languages: defaults.detectedLanguages.join(', '),
+        LSP: false
+      }
+    };
+
+    displayConfigSummary(summary, t);
+    const proceed = await promptConfirmProceed(t);
+
+    if (proceed) {
+      await fillService.run(resolvedRepo, {
+        output: defaults.outputDir,
+        model: llmConfig.model,
+        provider: llmConfig.provider,
+        apiKey: llmConfig.apiKey,
+        verbose: false,
+        semantic: true,
+        languages: defaults.detectedLanguages,
+        useLsp: false
+      });
+    }
+    return;
+  }
+
+  // Advanced mode: full configuration
   const { repoPath } = await inquirer.prompt<{ repoPath: string }>([
     {
       type: 'input',
       name: 'repoPath',
       message: t('prompts.fill.repoPath'),
-      default: process.cwd()
+      default: defaults.repoPath
     }
   ]);
 
@@ -387,73 +544,55 @@ async function runInteractiveLlmFill(): Promise<void> {
   const limitValue = limit ? parseInt(limit, 10) : undefined;
   const parsedLimit = Number.isNaN(limitValue) ? undefined : limitValue;
 
-  const { specifyModel } = await inquirer.prompt<{ specifyModel: boolean }>([
-    {
-      type: 'confirm',
-      name: 'specifyModel',
-      message: t('prompts.fill.overrideModel'),
-      default: false
-    }
-  ]);
+  // Use shared LLM prompt helper
+  const llmConfig = await promptLLMConfig(t, { defaultModel: DEFAULT_MODEL, skipIfConfigured: false });
 
-  let provider: LLMConfig['provider'] | undefined;
-  let model: string | undefined;
-  if (specifyModel) {
-    const modelAnswer = await inquirer.prompt<{ model: string }>([
-      {
-        type: 'input',
-        name: 'model',
-        message: t('prompts.fill.model'),
-        default: DEFAULT_MODEL
-      }
-    ]);
-    model = modelAnswer.model.trim();
-    provider = 'openrouter';
-  }
-
-  const { provideApiKey } = await inquirer.prompt<{ provideApiKey: boolean }>([
-    {
-      type: 'confirm',
-      name: 'provideApiKey',
-      message: t('prompts.fill.provideApiKey'),
-      default: false
-    }
-  ]);
-
-  let apiKey: string | undefined;
-  if (provideApiKey) {
-    const apiKeyAnswer = await inquirer.prompt<{ apiKey: string }>([
-      {
-        type: 'password',
-        name: 'apiKey',
-        message: t('prompts.fill.apiKey'),
-        mask: '*'
-      }
-    ]);
-    apiKey = apiKeyAnswer.apiKey.trim();
-  }
-
-  const { verbose } = await inquirer.prompt<{ verbose: boolean }>([
-    {
-      type: 'confirm',
-      name: 'verbose',
-      message: t('prompts.common.verbose'),
-      default: false
-    }
-  ]);
-
-  await fillService.run(resolvedRepo, {
-    output: outputDir,
-    prompt: promptPath,
-    limit: parsedLimit,
-    model,
-    provider,
-    apiKey,
-    verbose
+  // Use shared analysis options prompt
+  const analysisOptions = await promptAnalysisOptions(t, {
+    languages: defaults.detectedLanguages,
+    useLsp: false
   });
+
+  // Show summary before execution
+  const summary: ConfigSummary = {
+    operation: 'fill',
+    repoPath: resolvedRepo,
+    outputDir,
+    provider: llmConfig.provider,
+    model: llmConfig.model,
+    apiKeySource: llmConfig.autoDetected ? 'env' : llmConfig.apiKey ? 'provided' : 'none',
+    options: {
+      Semantic: analysisOptions.semantic,
+      Languages: analysisOptions.languages?.join(', ') || 'none',
+      LSP: analysisOptions.useLsp,
+      Verbose: analysisOptions.verbose,
+      ...(parsedLimit ? { Limit: String(parsedLimit) } : {})
+    }
+  };
+
+  displayConfigSummary(summary, t);
+  const proceed = await promptConfirmProceed(t);
+
+  if (proceed) {
+    await fillService.run(resolvedRepo, {
+      output: outputDir,
+      prompt: promptPath,
+      limit: parsedLimit,
+      model: llmConfig.model,
+      provider: llmConfig.provider,
+      apiKey: llmConfig.apiKey,
+      verbose: analysisOptions.verbose,
+      semantic: analysisOptions.semantic,
+      languages: analysisOptions.languages,
+      useLsp: analysisOptions.useLsp
+    });
+  }
 }
 
 async function runInteractivePlan(): Promise<void> {
+  const defaults = await detectSmartDefaults();
+
+  // Always ask for plan name first
   const { planName } = await inquirer.prompt<{ planName: string }>([
     {
       type: 'input',
@@ -463,6 +602,88 @@ async function runInteractivePlan(): Promise<void> {
     }
   ]);
 
+  const interactiveMode = await promptInteractiveMode(t);
+
+  if (interactiveMode === 'quick') {
+    // Quick mode: choose scaffold or fill with defaults
+    const { action } = await inquirer.prompt<{ action: 'scaffold' | 'fill' }>([
+      {
+        type: 'list',
+        name: 'action',
+        message: t('prompts.plan.mode'),
+        choices: [
+          { name: t('prompts.plan.modeScaffold'), value: 'scaffold' },
+          { name: t('prompts.plan.modeFill'), value: 'fill' }
+        ],
+        default: 'scaffold'
+      }
+    ]);
+
+    if (action === 'scaffold') {
+      // Quick scaffold: just create the template
+      const generator = new PlanGenerator();
+      ui.startSpinner(t('spinner.plan.creating'));
+
+      try {
+        const result = await generator.generatePlan({
+          planName,
+          outputDir: defaults.outputDir,
+          verbose: false,
+          semantic: true,
+          projectPath: defaults.repoPath
+        });
+
+        ui.updateSpinner(t('spinner.plan.created'), 'success');
+        ui.displaySuccess(t('success.plan.createdAt', { path: colors.accent(result.relativePath) }));
+      } catch (error) {
+        ui.updateSpinner(t('spinner.plan.creationFailed'), 'fail');
+        ui.displayError(t('errors.plan.creationFailed'), error as Error);
+      } finally {
+        ui.stopSpinner();
+      }
+      return;
+    }
+
+    // Quick fill: use auto-detected LLM config
+    const llmConfig = await promptLLMConfig(t, { defaultModel: DEFAULT_MODEL, skipIfConfigured: true });
+
+    const summary: ConfigSummary = {
+      operation: 'plan',
+      repoPath: defaults.repoPath,
+      outputDir: defaults.outputDir,
+      provider: llmConfig.provider,
+      model: llmConfig.model,
+      apiKeySource: llmConfig.autoDetected ? 'env' : llmConfig.apiKey ? 'provided' : 'none',
+      options: {
+        'Plan Name': planName,
+        LSP: true,
+        'Dry Run': false
+      }
+    };
+
+    displayConfigSummary(summary, t);
+    const proceed = await promptConfirmProceed(t);
+
+    if (proceed) {
+      try {
+        await planService.scaffoldPlanIfNeeded(planName, defaults.outputDir, {});
+        await planService.fillPlan(planName, {
+          output: defaults.outputDir,
+          repo: defaults.repoPath,
+          dryRun: false,
+          provider: llmConfig.provider,
+          model: llmConfig.model,
+          apiKey: llmConfig.apiKey,
+          lsp: true
+        });
+      } catch (error) {
+        ui.displayError(t('errors.plan.fillFailed'), error as Error);
+      }
+    }
+    return;
+  }
+
+  // Advanced mode: full configuration
   const defaultOutput = path.resolve(process.cwd(), '.context');
   const { mode } = await inquirer.prompt<{ mode: 'scaffold' | 'fill' }>([
     {
@@ -505,6 +726,9 @@ async function runInteractivePlan(): Promise<void> {
       }
     ]);
 
+    // Use shared LLM prompt helper
+    const llmConfig = await promptLLMConfig(t, { defaultModel: DEFAULT_MODEL, skipIfConfigured: false });
+
     const { dryRun } = await inquirer.prompt<{ dryRun: boolean }>([
       {
         type: 'confirm',
@@ -514,24 +738,57 @@ async function runInteractivePlan(): Promise<void> {
       }
     ]);
 
-    try {
-      const resolvedOutput = path.resolve(outputDir.trim() || defaultOutput);
-      await planService.scaffoldPlanIfNeeded(planName, resolvedOutput, {
-        summary: summary || undefined
-      });
+    const { useLsp } = await inquirer.prompt<{ useLsp: boolean }>([
+      {
+        type: 'confirm',
+        name: 'useLsp',
+        message: t('prompts.plan.useLsp'),
+        default: true
+      }
+    ]);
 
-      await planService.fillPlan(planName, {
-        output: resolvedOutput,
-        repo: repoPath,
-        dryRun
-      });
-    } catch (error) {
-      ui.displayError(t('errors.plan.fillFailed'), error as Error);
+    // Show summary before execution
+    const configSummary: ConfigSummary = {
+      operation: 'plan',
+      repoPath,
+      outputDir,
+      provider: llmConfig.provider,
+      model: llmConfig.model,
+      apiKeySource: llmConfig.autoDetected ? 'env' : llmConfig.apiKey ? 'provided' : 'none',
+      options: {
+        'Plan Name': planName,
+        LSP: useLsp,
+        'Dry Run': dryRun
+      }
+    };
+
+    displayConfigSummary(configSummary, t);
+    const proceed = await promptConfirmProceed(t);
+
+    if (proceed) {
+      try {
+        const resolvedOutput = path.resolve(outputDir.trim() || defaultOutput);
+        await planService.scaffoldPlanIfNeeded(planName, resolvedOutput, {
+          summary: summary || undefined
+        });
+
+        await planService.fillPlan(planName, {
+          output: resolvedOutput,
+          repo: repoPath,
+          dryRun,
+          provider: llmConfig.provider,
+          model: llmConfig.model,
+          apiKey: llmConfig.apiKey,
+          lsp: useLsp
+        });
+      } catch (error) {
+        ui.displayError(t('errors.plan.fillFailed'), error as Error);
+      }
     }
-
     return;
   }
 
+  // Scaffold mode
   const { summary } = await inquirer.prompt<{ summary: string }>([
     {
       type: 'input',
@@ -549,16 +806,98 @@ async function runInteractivePlan(): Promise<void> {
       planName,
       outputDir: path.resolve(outputDir.trim() || defaultOutput),
       summary: summary || undefined,
-      verbose: false
+      verbose: false,
+      semantic: true,
+      projectPath: path.resolve(outputDir.trim() || defaultOutput, '..')
     });
 
     ui.updateSpinner(t('spinner.plan.created'), 'success');
-    ui.displaySuccess(t('success.plan.createdAt', { path: chalk.cyan(result.relativePath) }));
+    ui.displaySuccess(t('success.plan.createdAt', { path: colors.accent(result.relativePath) }));
   } catch (error) {
     ui.updateSpinner(t('spinner.plan.creationFailed'), 'fail');
     ui.displayError(t('errors.plan.creationFailed'), error as Error);
   } finally {
     ui.stopSpinner();
+  }
+}
+
+async function runInteractiveSync(): Promise<void> {
+  const defaults = await detectSmartDefaults();
+  const defaultSource = path.resolve(defaults.repoPath, '.context/agents');
+
+  // Simplified: single prompt for target selection with common presets
+  const { quickTarget } = await inquirer.prompt<{ quickTarget: string }>([
+    {
+      type: 'list',
+      name: 'quickTarget',
+      message: t('prompts.sync.quickTarget'),
+      choices: [
+        { name: t('prompts.sync.quickTarget.common'), value: 'common' },
+        { name: t('prompts.sync.quickTarget.claude'), value: 'claude' },
+        { name: t('prompts.sync.quickTarget.all'), value: 'all' },
+        { name: t('prompts.sync.quickTarget.custom'), value: 'custom' }
+      ],
+      default: 'common'
+    }
+  ]);
+
+  let preset: string | undefined;
+  let target: string[] | undefined;
+  let sourcePath = defaultSource;
+
+  if (quickTarget === 'custom') {
+    // Custom path: ask for source and target
+    const answers = await inquirer.prompt<{ sourcePath: string; customPath: string }>([
+      {
+        type: 'input',
+        name: 'sourcePath',
+        message: t('prompts.sync.source'),
+        default: defaultSource
+      },
+      {
+        type: 'input',
+        name: 'customPath',
+        message: t('prompts.sync.customPath')
+      }
+    ]);
+    sourcePath = answers.sourcePath;
+    target = [answers.customPath];
+  } else if (quickTarget === 'common') {
+    // Common: Claude + GitHub - use explicit target paths instead of preset
+    target = [
+      path.resolve(defaults.repoPath, '.claude/agents'),
+      path.resolve(defaults.repoPath, '.github/agents')
+    ];
+  } else {
+    preset = quickTarget;
+  }
+
+  // Show summary
+  const summary: ConfigSummary = {
+    operation: 'sync',
+    repoPath: sourcePath,
+    options: {
+      Target: quickTarget === 'custom' ? (target?.[0] || 'custom') : quickTarget,
+      Mode: 'symlink'
+    }
+  };
+
+  displayConfigSummary(summary, t);
+  const proceed = await promptConfirmProceed(t);
+
+  if (proceed) {
+    try {
+      await syncService.run({
+        source: sourcePath,
+        mode: 'symlink',
+        preset: preset as any,
+        target,
+        force: false,
+        dryRun: false
+      });
+    } catch (error) {
+      ui.displayError(t('errors.sync.failed'), error as Error);
+    }
   }
 }
 
@@ -590,9 +929,41 @@ async function main(): Promise<void> {
   await program.parseAsync(process.argv);
 }
 
+/**
+ * Check if an error is from user interrupt (Ctrl+C)
+ */
+function isUserInterrupt(error: unknown): boolean {
+  if (error instanceof Error) {
+    // Inquirer's ExitPromptError when user presses Ctrl+C
+    if (error.name === 'ExitPromptError') return true;
+    // Check message patterns
+    if (error.message.includes('force closed')) return true;
+    if (error.message.includes('User force closed')) return true;
+  }
+  return false;
+}
+
+/**
+ * Handle graceful exit
+ */
+function handleGracefulExit(): void {
+  console.log('');
+  ui.displaySuccess(t('success.interactive.goodbye'));
+  process.exit(0);
+}
+
+// Handle SIGINT (Ctrl+C) at process level
+process.on('SIGINT', () => {
+  handleGracefulExit();
+});
+
 if (require.main === module) {
   main().catch(error => {
-    ui.displayError(t('errors.cli.executionFailed'), error as Error);
-    process.exit(1);
+    if (isUserInterrupt(error)) {
+      handleGracefulExit();
+    } else {
+      ui.displayError(t('errors.cli.executionFailed'), error as Error);
+      process.exit(1);
+    }
   });
 }

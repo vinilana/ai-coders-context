@@ -16,6 +16,7 @@ import {
   renderToolingGuide
 } from './templates';
 import { getGuidesByKeys } from './guideRegistry';
+import { CodebaseAnalyzer, SemanticContext } from '../../services/semantic';
 
 interface DocSection {
   fileName: string;
@@ -24,9 +25,12 @@ interface DocSection {
 
 interface DocumentationGenerationConfig {
   selectedDocs?: string[];
+  semantic?: boolean;
 }
 
 export class DocumentationGenerator {
+  private analyzer?: CodebaseAnalyzer;
+
   constructor(..._legacyArgs: unknown[]) {}
 
   async generateDocumentation(
@@ -38,8 +42,24 @@ export class DocumentationGenerator {
     const docsDir = path.join(outputDir, 'docs');
     await GeneratorUtils.ensureDirectoryAndLog(docsDir, verbose, 'Generating documentation scaffold in');
 
+    // Perform semantic analysis if enabled
+    let semantics: SemanticContext | undefined;
+    if (config.semantic) {
+      GeneratorUtils.logProgress('Running semantic analysis...', verbose);
+      this.analyzer = new CodebaseAnalyzer();
+      try {
+        semantics = await this.analyzer.analyze(repoStructure.rootPath);
+        GeneratorUtils.logProgress(
+          `Analyzed ${semantics.stats.totalFiles} files, found ${semantics.stats.totalSymbols} symbols in ${semantics.stats.analysisTimeMs}ms`,
+          verbose
+        );
+      } catch (error) {
+        GeneratorUtils.logError('Semantic analysis failed, continuing without it', error, verbose);
+      }
+    }
+
     const guidesToGenerate = getGuidesByKeys(config.selectedDocs);
-    const context = this.buildContext(repoStructure, guidesToGenerate);
+    const context = this.buildContext(repoStructure, guidesToGenerate, semantics);
     const sections = this.getDocSections(guidesToGenerate);
 
     let created = 0;
@@ -57,7 +77,8 @@ export class DocumentationGenerator {
 
   private buildContext(
     repoStructure: RepoStructure,
-    guides: GuideMeta[]
+    guides: GuideMeta[],
+    semantics?: SemanticContext
   ): DocumentationTemplateContext {
     const topLevelStats = repoStructure.topLevelDirectoryStats ?? [];
     const topLevelDirectories = topLevelStats.length
@@ -79,7 +100,8 @@ export class DocumentationGenerator {
       topLevelDirectories,
       primaryLanguages,
       directoryStats,
-      guides
+      guides,
+      semantics
     };
   }
 

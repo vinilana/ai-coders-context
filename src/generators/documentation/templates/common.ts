@@ -1,4 +1,6 @@
+import * as path from 'path';
 import { DirectoryStat, DocumentationTemplateContext } from './types';
+import type { ExtractedSymbol } from '../../../services/semantic/types';
 
 const KNOWN_DESCRIPTIONS: Record<string, string> = {
   src: 'TypeScript source files and CLI entrypoints.',
@@ -28,15 +30,14 @@ export function formatDirectoryList(
         return `- \`${dir}/\``;
       }
 
-      const slotId = slugify(dir);
-      return `- <!-- agent-fill:directory-${slotId} -->\`${dir}/\` — TODO: Describe the purpose of this directory.<!-- /agent-fill -->`;
+      return `- \`${dir}/\` — TODO: Describe the purpose of this directory.`;
     })
     .join('\n');
 }
 
 export function buildDocumentMapTable(guides: DocumentationTemplateContext['guides']): string {
-  const rows = guides.map(meta => `| ${meta.title} | \`${meta.file}\` | ${meta.marker} | ${meta.primaryInputs} |`);
-  return ['| Guide | File | AI Marker | Primary Inputs |', '| --- | --- | --- | --- |', ...rows].join('\n');
+  const rows = guides.map(meta => `| ${meta.title} | \`${meta.file}\` | ${meta.primaryInputs} |`);
+  return ['| Guide | File | Primary Inputs |', '| --- | --- | --- |', ...rows].join('\n');
 }
 
 export function formatDirectoryStats(stats: DirectoryStat[]): string {
@@ -57,9 +58,127 @@ export function formatInlineDirectoryList(directories: string[]): string {
   return directories.map(dir => `\`${dir}\``).join(', ');
 }
 
-export function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+// Code Reference Helpers
+
+/**
+ * Format a symbol as a markdown link with line number
+ * Output: [`SymbolName`](src/path/file.ts#L42)
+ */
+export function formatSymbolRef(
+  symbol: ExtractedSymbol,
+  repoRoot: string
+): string {
+  const relPath = path.relative(repoRoot, symbol.location.file);
+  return `[\`${symbol.name}\`](${relPath}#L${symbol.location.line})`;
+}
+
+/**
+ * Format a file:line reference (non-link format)
+ * Output: src/path/file.ts:42
+ */
+export function formatCodeLocation(
+  filePath: string,
+  line: number,
+  repoRoot: string
+): string {
+  const relPath = path.relative(repoRoot, filePath);
+  return `${relPath}:${line}`;
+}
+
+/**
+ * Format a file path as a markdown link with line number
+ * Output: [`file.ts`](src/path/file.ts#L42)
+ */
+export function formatFileRef(
+  filePath: string,
+  line: number,
+  repoRoot: string,
+  displayName?: string
+): string {
+  const relPath = path.relative(repoRoot, filePath);
+  const name = displayName || path.basename(filePath);
+  return `[\`${name}\`](${relPath}#L${line})`;
+}
+
+/**
+ * Build a markdown table of symbols with links
+ */
+export function buildSymbolTable(
+  symbols: ExtractedSymbol[],
+  repoRoot: string,
+  columns: ('name' | 'kind' | 'location' | 'description')[] = ['name', 'kind', 'location']
+): string {
+  if (symbols.length === 0) {
+    return '*No symbols found.*';
+  }
+
+  const headers: Record<string, string> = {
+    name: 'Symbol',
+    kind: 'Type',
+    location: 'Location',
+    description: 'Description'
+  };
+
+  const headerRow = '| ' + columns.map(c => headers[c]).join(' | ') + ' |';
+  const separatorRow = '| ' + columns.map(() => '---').join(' | ') + ' |';
+
+  const dataRows = symbols.map(sym => {
+    const cells = columns.map(col => {
+      switch (col) {
+        case 'name':
+          return formatSymbolRef(sym, repoRoot);
+        case 'kind':
+          return sym.kind;
+        case 'location':
+          return formatCodeLocation(sym.location.file, sym.location.line, repoRoot);
+        case 'description':
+          return sym.documentation || '-';
+        default:
+          return '-';
+      }
+    });
+    return '| ' + cells.join(' | ') + ' |';
+  });
+
+  return [headerRow, separatorRow, ...dataRows].join('\n');
+}
+
+/**
+ * Build a bullet list of symbols with links
+ */
+export function buildSymbolList(
+  symbols: ExtractedSymbol[],
+  repoRoot: string,
+  includeKind: boolean = true
+): string {
+  if (symbols.length === 0) {
+    return '*No symbols found.*';
+  }
+
+  return symbols.map(sym => {
+    const ref = formatSymbolRef(sym, repoRoot);
+    const kindSuffix = includeKind ? ` (${sym.kind})` : '';
+    const docSuffix = sym.documentation ? ` — ${sym.documentation}` : '';
+    return `- ${ref}${kindSuffix}${docSuffix}`;
+  }).join('\n');
+}
+
+/**
+ * Group symbols by their containing directory
+ */
+export function groupSymbolsByDirectory(
+  symbols: ExtractedSymbol[],
+  repoRoot: string
+): Map<string, ExtractedSymbol[]> {
+  const groups = new Map<string, ExtractedSymbol[]>();
+
+  for (const sym of symbols) {
+    const relPath = path.relative(repoRoot, sym.location.file);
+    const dir = path.dirname(relPath);
+    const existing = groups.get(dir) || [];
+    existing.push(sym);
+    groups.set(dir, existing);
+  }
+
+  return groups;
 }
