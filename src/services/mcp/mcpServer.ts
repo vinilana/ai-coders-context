@@ -193,35 +193,42 @@ export class AIContextMCPServer {
         }).optional()
       }
     }, async ({ repoPath, contextType, targetFile, options }) => {
-      const builder = options
+      const isLocalBuilder = !!options;
+      const builder = isLocalBuilder
         ? new SemanticContextBuilder(options)
         : this.contextBuilder;
 
-      let context: string;
-      const resolvedPath = repoPath || this.options.repoPath || '.';
+      try {
+        let context: string;
+        const resolvedPath = repoPath || this.options.repoPath || '.';
 
-      switch (contextType) {
-        case 'documentation':
-          context = await builder.buildDocumentationContext(resolvedPath, targetFile);
-          break;
-        case 'playbook':
-          context = await builder.buildPlaybookContext(resolvedPath, targetFile || 'generic');
-          break;
-        case 'plan':
-          context = await builder.buildPlanContext(resolvedPath, targetFile);
-          break;
-        case 'compact':
-        default:
-          context = await builder.buildCompactContext(resolvedPath);
-          break;
+        switch (contextType) {
+          case 'documentation':
+            context = await builder.buildDocumentationContext(resolvedPath, targetFile);
+            break;
+          case 'playbook':
+            context = await builder.buildPlaybookContext(resolvedPath, targetFile || 'generic');
+            break;
+          case 'plan':
+            context = await builder.buildPlanContext(resolvedPath, targetFile);
+            break;
+          case 'compact':
+          default:
+            context = await builder.buildCompactContext(resolvedPath);
+            break;
+        }
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: context
+          }]
+        };
+      } finally {
+        if (isLocalBuilder) {
+          await builder.shutdown();
+        }
       }
-
-      return {
-        content: [{
-          type: 'text' as const,
-          text: context
-        }]
-      };
     });
 
     // checkScaffolding tool

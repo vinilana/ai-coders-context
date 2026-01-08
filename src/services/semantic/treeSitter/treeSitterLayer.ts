@@ -25,9 +25,10 @@ export class TreeSitterLayer {
   private cache: Map<string, CacheEntry> = new Map();
   private treeSitterAvailable: boolean = false;
   private parsers: Map<string, any> = new Map();
+  public readonly ready: Promise<void>;
 
   constructor() {
-    this.initializeParsers();
+    this.ready = this.initializeParsers();
   }
 
   private async initializeParsers(): Promise<void> {
@@ -54,6 +55,9 @@ export class TreeSitterLayer {
   }
 
   async analyzeFile(filePath: string): Promise<FileAnalysis> {
+    // Ensure initialization is complete before checking treeSitterAvailable
+    await this.ready;
+
     const ext = path.extname(filePath);
     const language = LANGUAGE_EXTENSIONS[ext];
 
@@ -556,7 +560,8 @@ export class TreeSitterLayer {
     this.cache.clear();
   }
 
-  isTreeSitterAvailable(): boolean {
+  async isTreeSitterAvailable(): Promise<boolean> {
+    await this.ready;
     return this.treeSitterAvailable;
   }
 }

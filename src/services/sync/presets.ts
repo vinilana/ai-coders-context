@@ -1,3 +1,4 @@
+import path from 'node:path';
 import type { TargetPreset, PresetName } from './types';
 
 export const TARGET_PRESETS: Record<Exclude<PresetName, 'all'>, TargetPreset> = {
@@ -28,7 +29,18 @@ export function resolvePresets(presetName: PresetName): TargetPreset[] {
 }
 
 export function getPresetByPath(targetPath: string): TargetPreset | undefined {
-  return Object.values(TARGET_PRESETS).find(p => targetPath.includes(p.path));
+  const normalizedTarget = path.normalize(path.resolve(targetPath));
+
+  for (const preset of Object.values(TARGET_PRESETS)) {
+    const normalizedPreset = path.normalize(path.resolve(preset.path));
+
+    if (normalizedTarget === normalizedPreset ||
+        normalizedTarget.startsWith(normalizedPreset + path.sep)) {
+      return preset;
+    }
+  }
+
+  return undefined;
 }
 
 export function getAllPresetNames(): PresetName[] {
