@@ -118,8 +118,14 @@ export class PlanService {
 
     const docsDir = path.join(outputDir, 'docs');
     const agentsDir = path.join(outputDir, 'agents');
-    await this.ensureDirectoryExists(docsDir, this.t('errors.fill.missingDocsScaffold'));
-    await this.ensureDirectoryExists(agentsDir, this.t('errors.fill.missingAgentsScaffold'));
+
+    // At least one of docs or agents must exist
+    const docsExists = await fs.pathExists(docsDir);
+    const agentsExists = await fs.pathExists(agentsDir);
+
+    if (!docsExists && !agentsExists) {
+      throw new Error(this.t('errors.fill.missingScaffold'));
+    }
 
     const repoPath = path.resolve(rawOptions.repo || process.cwd());
     if (!(await fs.pathExists(repoPath))) {

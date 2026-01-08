@@ -457,7 +457,7 @@ export class FillService {
 
   private parseLanguages(input?: string | string[]): string[] {
     if (!input) {
-      return ['typescript', 'javascript', 'python', 'go']; // Default languages
+      return ['typescript', 'javascript', 'python']; // Default languages
     }
 
     if (Array.isArray(input)) {

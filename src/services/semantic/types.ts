@@ -135,10 +135,7 @@ export interface LSPServerConfig {
 export type SupportedLanguage =
   | 'typescript'
   | 'javascript'
-  | 'python'
-  | 'go'
-  | 'rust'
-  | 'java';
+  | 'python';
 
 export const LANGUAGE_EXTENSIONS: Record<string, SupportedLanguage> = {
   '.ts': 'typescript',
@@ -148,9 +145,8 @@ export const LANGUAGE_EXTENSIONS: Record<string, SupportedLanguage> = {
   '.mjs': 'javascript',
   '.cjs': 'javascript',
   '.py': 'python',
-  '.go': 'go',
-  '.rs': 'rust',
-  '.java': 'java',
+  '.pyw': 'python',
+  '.pyi': 'python',
 };
 
 export const DEFAULT_EXCLUDE_PATTERNS = [

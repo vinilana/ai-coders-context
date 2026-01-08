@@ -8,6 +8,7 @@ import type { DocumentationOutput } from '../schemas';
 import type { AgentEventCallbacks } from '../agentEvents';
 import { summarizeToolResult } from '../agentEvents';
 import { SemanticContextBuilder } from '../../semantic';
+import { sanitizeAIResponse } from '../../../utils/contentSanitizer';
 
 export interface DocumentationAgentOptions {
   repoPath: string;
@@ -49,7 +50,14 @@ Generate documentation that is:
 - Clear and concise
 - Practical for developers
 - Includes code examples where helpful
-- Cross-references related files`;
+- Cross-references related files
+
+IMPORTANT OUTPUT FORMAT:
+- Output ONLY the final documentation content in Markdown format
+- Do NOT include your reasoning, planning, or analysis process
+- Do NOT start with phrases like "I will...", "Let me...", "First, I need to..."
+- Begin directly with the documentation title or YAML front matter
+- Your response will be saved directly to a file`;
 
 export class DocumentationAgent {
   private config: LLMConfig;
@@ -137,7 +145,7 @@ Generate clear, practical documentation that is helpful for developers.`;
     callbacks?.onAgentComplete?.({ agent: 'documentation', toolsUsed: [toolName], steps: 1 });
 
     return {
-      text: result.text,
+      text: sanitizeAIResponse(result.text, { preserveFrontMatter: true }),
       toolsUsed: [toolName],
       steps: 1
     };
@@ -214,7 +222,7 @@ First, use the available tools to analyze the file and gather context, then gene
     callbacks?.onAgentComplete?.({ agent: 'documentation', toolsUsed: toolsUsedArray, steps: totalSteps });
 
     return {
-      text: result.text,
+      text: sanitizeAIResponse(result.text, { preserveFrontMatter: true }),
       toolsUsed: toolsUsedArray,
       steps: totalSteps
     };

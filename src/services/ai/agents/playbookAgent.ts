@@ -9,6 +9,7 @@ import type { AgentPlaybook } from '../schemas';
 import type { AgentEventCallbacks } from '../agentEvents';
 import { summarizeToolResult } from '../agentEvents';
 import { SemanticContextBuilder } from '../../semantic';
+import { sanitizeAIResponse } from '../../../utils/contentSanitizer';
 
 export interface PlaybookAgentOptions {
   repoPath: string;
@@ -45,7 +46,14 @@ Use the tools to discover:
 - Test files and testing patterns
 - Configuration files
 - Existing documentation
-- Code patterns and conventions`;
+- Code patterns and conventions
+
+IMPORTANT OUTPUT FORMAT:
+- Output ONLY the final playbook content in Markdown format
+- Do NOT include your reasoning, planning, or analysis process
+- Do NOT start with phrases like "I will...", "Let me...", "First, I need to..."
+- Begin directly with the playbook title or content structure
+- Your response will be saved directly to a .md file`;
 
 const AGENT_TYPE_FOCUS: Record<GeneratorAgentType, string[]> = {
   'code-reviewer': ['**/*.ts', '**/*.tsx', '.eslintrc*', 'tsconfig.json'],
@@ -155,7 +163,7 @@ Generate a detailed, actionable playbook with:
     callbacks?.onAgentComplete?.({ agent: 'playbook', toolsUsed: [toolName], steps: 1 });
 
     return {
-      text: result.text,
+      text: sanitizeAIResponse(result.text, { preserveFrontMatter: true }),
       toolsUsed: [toolName],
       steps: 1
     };
@@ -239,7 +247,7 @@ Then generate a detailed, actionable playbook.`;
     callbacks?.onAgentComplete?.({ agent: 'playbook', toolsUsed: toolsUsedArray, steps: totalSteps });
 
     return {
-      text: result.text,
+      text: sanitizeAIResponse(result.text, { preserveFrontMatter: true }),
       toolsUsed: toolsUsedArray,
       steps: totalSteps
     };

@@ -652,9 +652,8 @@ export class CodebaseAnalyzer {
         if (references.length > 0) {
           symbol.references = references;
         }
-      } catch (error) {
+      } catch {
         // LSP errors are non-fatal, continue with other symbols
-        console.debug(`LSP enhancement failed for ${symbol.name}:`, error);
       }
     }
   }

@@ -8,6 +8,7 @@ import type { DevelopmentPlan } from '../schemas';
 import type { AgentEventCallbacks } from '../agentEvents';
 import { summarizeToolResult } from '../agentEvents';
 import { SemanticContextBuilder } from '../../semantic';
+import { sanitizeAIResponse } from '../../../utils/contentSanitizer';
 
 export interface PlanAgentOptions {
   repoPath: string;
@@ -57,7 +58,14 @@ Use the tools to:
 - Find existing documentation and agent playbooks
 - Discover dependencies and relationships
 
-Then create a detailed, actionable plan.`;
+Then create a detailed, actionable plan.
+
+IMPORTANT OUTPUT FORMAT:
+- Output ONLY the final plan content in Markdown format
+- Do NOT include your reasoning, planning, or analysis process
+- Do NOT start with phrases like "I will...", "Let me...", "First, I need to..."
+- Begin directly with the plan content (YAML front matter or title)
+- Your response will be saved directly to a file`;
 
 const PLAN_UPDATE_PROMPT = `You are updating an existing development plan with fresh context from the repository.
 
@@ -73,7 +81,11 @@ Update:
 - Add specific file paths and code references
 - Segment work into clear phases with commit checkpoints
 
-Return only the complete updated Markdown plan.`;
+CRITICAL OUTPUT REQUIREMENT:
+- Return ONLY the complete updated Markdown plan content
+- Do NOT include reasoning, thinking, or analysis
+- Do NOT start with "I will...", "Let me...", etc.
+- Your response replaces the plan file directly`;
 
 export class PlanAgent {
   private config: LLMConfig;
@@ -186,7 +198,7 @@ export class PlanAgent {
     callbacks?.onAgentComplete?.({ agent: 'plan', toolsUsed: toolsUsedArray, steps: totalSteps });
 
     return {
-      text: result.text,
+      text: sanitizeAIResponse(result.text, { preserveFrontMatter: true, preserveComments: true }),
       toolsUsed: toolsUsedArray,
       steps: totalSteps
     };
@@ -335,7 +347,7 @@ export class PlanAgent {
     callbacks?.onAgentComplete?.({ agent: 'plan', toolsUsed: [toolName], steps: 1 });
 
     return {
-      text: result.text,
+      text: sanitizeAIResponse(result.text, { preserveFrontMatter: true, preserveComments: true }),
       toolsUsed: [toolName],
       steps: 1
     };
@@ -438,7 +450,7 @@ export class PlanAgent {
     callbacks?.onAgentComplete?.({ agent: 'plan', toolsUsed: toolsUsedArray, steps: totalSteps });
 
     return {
-      text: result.text,
+      text: sanitizeAIResponse(result.text, { preserveFrontMatter: true, preserveComments: true }),
       toolsUsed: toolsUsedArray,
       steps: totalSteps
     };

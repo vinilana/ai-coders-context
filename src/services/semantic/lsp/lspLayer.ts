@@ -44,17 +44,7 @@ const LSP_SERVER_CONFIGS: Record<string, LSPServerConfig> = {
   python: {
     command: 'pylsp',
     args: [],
-    rootPatterns: ['setup.py', 'pyproject.toml', 'requirements.txt'],
-  },
-  go: {
-    command: 'gopls',
-    args: ['serve'],
-    rootPatterns: ['go.mod', 'go.sum'],
-  },
-  rust: {
-    command: 'rust-analyzer',
-    args: [],
-    rootPatterns: ['Cargo.toml'],
+    rootPatterns: ['setup.py', 'pyproject.toml', 'requirements.txt', 'setup.cfg'],
   },
 };
 
@@ -87,15 +77,29 @@ export class LSPLayer {
     }
 
     try {
-      const serverProcess = spawn(config.command, config.args, {
-        cwd: projectPath,
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env },
-      });
+      // Wrap spawn in a promise to properly handle ENOENT and other spawn errors
+      const serverProcess = await new Promise<ChildProcess>((resolve, reject) => {
+        const proc = spawn(config.command, config.args, {
+          cwd: projectPath,
+          stdio: ['pipe', 'pipe', 'pipe'],
+          env: { ...process.env },
+        });
 
-      if (!serverProcess.pid) {
-        return false;
-      }
+        // Handle spawn errors (e.g., command not found)
+        proc.on('error', (error) => {
+          reject(error);
+        });
+
+        // Give spawn a moment to fail or succeed
+        // If no error within a short time, assume spawn succeeded
+        setTimeout(() => {
+          if (proc.pid) {
+            resolve(proc);
+          } else {
+            reject(new Error(`Failed to spawn ${config.command}`));
+          }
+        }, 100);
+      });
 
       this.servers.set(language, serverProcess);
       this.buffers.set(language, '');
@@ -105,13 +109,13 @@ export class LSPLayer {
         this.handleServerData(language, data);
       });
 
-      serverProcess.stderr?.on('data', (data: Buffer) => {
-        // Log errors but don't fail
-        console.debug(`LSP ${language} stderr:`, data.toString());
+      serverProcess.stderr?.on('data', () => {
+        // Silently ignore stderr - LSP servers may output diagnostics
       });
 
-      serverProcess.on('error', (error) => {
-        console.debug(`LSP ${language} error:`, error.message);
+      // Re-attach error handler for runtime errors (after spawn)
+      serverProcess.on('error', () => {
+        // Silently cleanup on error
         this.cleanup(language);
       });
 
@@ -137,8 +141,9 @@ export class LSPLayer {
       this.initialized.set(language, true);
 
       return true;
-    } catch (error) {
-      console.debug(`Failed to start LSP server for ${language}:`, error);
+    } catch {
+      // LSP server not available - this is expected if the language server isn't installed
+      // Silently return false and fall back to non-LSP analysis
       return false;
     }
   }
@@ -161,8 +166,8 @@ export class LSPLayer {
       try {
         const message: LSPMessage = JSON.parse(content);
         this.handleMessage(message);
-      } catch (e) {
-        console.debug('Failed to parse LSP message:', e);
+      } catch {
+        // Silently ignore malformed messages
       }
     }
 
@@ -223,8 +228,8 @@ export class LSPLayer {
 
     try {
       server.stdin.write(header + content);
-    } catch (e) {
-      console.debug(`Failed to send LSP message to ${language}:`, e);
+    } catch {
+      // Silently ignore send failures
     }
   }
 
@@ -262,8 +267,8 @@ export class LSPLayer {
       if (result && typeof result === 'object' && 'contents' in result) {
         return this.parseHoverResult((result as { contents: unknown }).contents);
       }
-    } catch (e) {
-      console.debug(`LSP hover failed for ${filePath}:${line}:${column}`, e);
+    } catch {
+      // LSP request failed - return null to fall back to non-LSP analysis
     }
 
     return null;
@@ -295,8 +300,8 @@ export class LSPLayer {
           column: ref.range.start.character,
         }));
       }
-    } catch (e) {
-      console.debug(`LSP references failed for ${filePath}:${line}:${column}`, e);
+    } catch {
+      // LSP request failed - return empty array
     }
 
     return [];
@@ -328,8 +333,8 @@ export class LSPLayer {
           column: def.range.start.character,
         };
       }
-    } catch (e) {
-      console.debug(`LSP definition failed for ${filePath}:${line}:${column}`, e);
+    } catch {
+      // LSP request failed - return null
     }
 
     return null;
@@ -360,8 +365,8 @@ export class LSPLayer {
           column: impl.range.start.character,
         }));
       }
-    } catch (e) {
-      console.debug(`LSP implementations failed for ${filePath}:${line}:${column}`, e);
+    } catch {
+      // LSP request failed - return empty array
     }
 
     return [];

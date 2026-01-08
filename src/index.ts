@@ -516,14 +516,7 @@ async function runInteractiveLlmFill(): Promise<void> {
         choices: [
           { name: 'TypeScript', value: 'typescript', checked: true },
           { name: 'JavaScript', value: 'javascript', checked: true },
-          { name: 'Python', value: 'python', checked: false },
-          { name: 'Go', value: 'go', checked: false },
-          { name: 'Rust', value: 'rust', checked: false },
-          { name: 'Java', value: 'java', checked: false },
-          { name: 'C/C++', value: 'cpp', checked: false },
-          { name: 'C#', value: 'c_sharp', checked: false },
-          { name: 'Ruby', value: 'ruby', checked: false },
-          { name: 'PHP', value: 'php', checked: false }
+          { name: 'Python', value: 'python', checked: true }
         ]
       }
     ]);
