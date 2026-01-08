@@ -7,6 +7,7 @@ import type { LLMConfig } from '../../../types';
 import type { DevelopmentPlan } from '../schemas';
 import type { AgentEventCallbacks } from '../agentEvents';
 import { summarizeToolResult } from '../agentEvents';
+import { SemanticContextBuilder } from '../../semantic';
 
 export interface PlanAgentOptions {
   repoPath: string;
@@ -20,6 +21,8 @@ export interface PlanAgentOptions {
   maxSteps?: number;
   maxOutputTokens?: number;
   callbacks?: AgentEventCallbacks;
+  /** Use pre-computed semantic context instead of tool-based exploration (more token efficient) */
+  useSemanticContext?: boolean;
 }
 
 export interface PlanAgentResult {
@@ -74,11 +77,13 @@ export class PlanAgent {
   private config: LLMConfig;
   private providerResult: ReturnType<typeof createProvider>;
   private tools: ToolSet;
+  private semanticContextBuilder: SemanticContextBuilder;
 
   constructor(config: LLMConfig) {
     this.config = config;
     this.providerResult = createProvider(config);
     this.tools = getCodeAnalysisTools();
+    this.semanticContextBuilder = new SemanticContextBuilder();
   }
 
   /**
@@ -201,7 +206,8 @@ export class PlanAgent {
       referencedAgents,
       maxSteps = 12,
       maxOutputTokens = 8000,
-      callbacks
+      callbacks,
+      useSemanticContext = true
     } = options;
 
     if (!existingPlanContent) {
@@ -211,6 +217,134 @@ export class PlanAgent {
     // Emit agent start event
     callbacks?.onAgentStart?.({ agent: 'plan', target: planName });
 
+    // Use semantic context mode for token efficiency
+    if (useSemanticContext) {
+      return this.updatePlanWithSemanticContext(
+        repoPath,
+        planName,
+        existingPlanContent,
+        docsIndex,
+        agentsIndex,
+        referencedDocs,
+        referencedAgents,
+        maxOutputTokens,
+        callbacks
+      );
+    }
+
+    // Tool-based mode for thorough analysis
+    return this.updatePlanWithTools(
+      repoPath,
+      planName,
+      existingPlanContent,
+      docsIndex,
+      agentsIndex,
+      referencedDocs,
+      referencedAgents,
+      maxSteps,
+      maxOutputTokens,
+      callbacks
+    );
+  }
+
+  /**
+   * Update plan using pre-computed semantic context (more token efficient)
+   */
+  private async updatePlanWithSemanticContext(
+    repoPath: string,
+    planName: string,
+    existingPlanContent: string,
+    docsIndex: string | undefined,
+    agentsIndex: string | undefined,
+    referencedDocs: Array<{ path: string; content: string }> | undefined,
+    referencedAgents: Array<{ path: string; content: string }> | undefined,
+    maxOutputTokens: number,
+    callbacks?: AgentEventCallbacks
+  ): Promise<PlanAgentResult> {
+    callbacks?.onToolCall?.({
+      agent: 'plan',
+      toolName: 'semanticAnalysis',
+      args: { repoPath, planName }
+    });
+
+    // Pre-compute semantic context
+    const semanticContext = await this.semanticContextBuilder.buildPlanContext(repoPath, planName);
+
+    callbacks?.onToolResult?.({
+      agent: 'plan',
+      toolName: 'semanticAnalysis',
+      success: true,
+      summary: `Analyzed codebase for plan: ${semanticContext.length} chars of context`
+    });
+
+    const contextParts: string[] = [
+      `Update the development plan "${planName}" for repository: ${repoPath}`,
+      '',
+      semanticContext,
+      '',
+      'Current plan content:',
+      '<plan>',
+      existingPlanContent,
+      '</plan>'
+    ];
+
+    if (docsIndex) {
+      contextParts.push('\n\nDocumentation index:', '<docs-index>', docsIndex, '</docs-index>');
+    }
+
+    if (agentsIndex) {
+      contextParts.push('\n\nAgent index:', '<agents-index>', agentsIndex, '</agents-index>');
+    }
+
+    if (referencedDocs && referencedDocs.length > 0) {
+      const docContent = referencedDocs
+        .map((d) => `<doc path="${d.path}">\n${d.content}\n</doc>`)
+        .join('\n\n');
+      contextParts.push('\n\nReferenced documentation:', docContent);
+    }
+
+    if (referencedAgents && referencedAgents.length > 0) {
+      const agentContent = referencedAgents
+        .map((a) => `<agent path="${a.path}">\n${a.content}\n</agent>`)
+        .join('\n\n');
+      contextParts.push('\n\nReferenced agents:', agentContent);
+    }
+
+    const userPrompt = contextParts.join('\n');
+    const { provider, modelId } = this.providerResult;
+
+    const result = await generateText({
+      model: provider(modelId),
+      system: PLAN_UPDATE_PROMPT,
+      prompt: userPrompt,
+      maxOutputTokens
+    });
+
+    // Emit agent complete event
+    callbacks?.onAgentComplete?.({ agent: 'plan', toolsUsed: ['semanticAnalysis'], steps: 1 });
+
+    return {
+      text: result.text,
+      toolsUsed: ['semanticAnalysis'],
+      steps: 1
+    };
+  }
+
+  /**
+   * Update plan using multi-step tool-based exploration (more thorough)
+   */
+  private async updatePlanWithTools(
+    repoPath: string,
+    planName: string,
+    existingPlanContent: string,
+    docsIndex: string | undefined,
+    agentsIndex: string | undefined,
+    referencedDocs: Array<{ path: string; content: string }> | undefined,
+    referencedAgents: Array<{ path: string; content: string }> | undefined,
+    maxSteps: number,
+    maxOutputTokens: number,
+    callbacks?: AgentEventCallbacks
+  ): Promise<PlanAgentResult> {
     const contextParts: string[] = [
       `Update the development plan "${planName}" for repository: ${repoPath}`,
       '\nFirst, use tools to gather fresh context about the codebase.',

@@ -28,6 +28,10 @@ export interface FillCommandFlags {
   apiKey?: string;
   baseUrl?: string;
   useAgents?: boolean;
+  /** Use pre-computed semantic context instead of tool-based exploration */
+  semantic?: boolean;
+  /** Programming languages to analyze (comma-separated or array) */
+  languages?: string | string[];
 }
 
 interface ResolvedFillOptions {
@@ -45,6 +49,8 @@ interface ResolvedFillOptions {
   baseUrl?: string;
   systemPrompt: string;
   useAgents: boolean;
+  useSemanticContext: boolean;
+  languages: string[];
 }
 
 interface TargetFile {
@@ -106,6 +112,9 @@ export class FillService {
       missingPath => this.t('errors.fill.promptMissing', { path: missingPath })
     );
 
+    // Parse languages option
+    const parsedLanguages = this.parseLanguages(rawOptions.languages);
+
     const options: ResolvedFillOptions = {
       repoPath: resolvedRepo,
       outputDir,
@@ -120,7 +129,9 @@ export class FillService {
       apiKey: llmConfig.apiKey,
       baseUrl: llmConfig.baseUrl,
       systemPrompt: scaffoldPrompt.content,
-      useAgents: rawOptions.useAgents ?? true // Enable agents by default
+      useAgents: rawOptions.useAgents ?? true, // Enable agents by default
+      useSemanticContext: rawOptions.semantic !== false, // Semantic mode enabled by default
+      languages: parsedLanguages
     };
 
     this.displayPromptSource(scaffoldPrompt.path, scaffoldPrompt.source);
@@ -234,7 +245,8 @@ export class FillService {
           repoPath: options.repoPath,
           agentType,
           existingContext: target.content,
-          callbacks
+          callbacks,
+          useSemanticContext: options.useSemanticContext
         });
         updatedContent = result.text;
       } else {
@@ -244,7 +256,8 @@ export class FillService {
           repoPath: options.repoPath,
           targetFile: target.relativePath,
           context: target.content,
-          callbacks
+          callbacks,
+          useSemanticContext: options.useSemanticContext
         });
         updatedContent = result.text;
       }
@@ -417,5 +430,18 @@ export class FillService {
 
   private ensureTrailingNewline(content: string): string {
     return content.endsWith('\n') ? content : `${content}\n`;
+  }
+
+  private parseLanguages(input?: string | string[]): string[] {
+    if (!input) {
+      return ['typescript', 'javascript', 'python', 'go']; // Default languages
+    }
+
+    if (Array.isArray(input)) {
+      return input.map(lang => lang.trim().toLowerCase()).filter(Boolean);
+    }
+
+    // Parse comma-separated string
+    return input.split(',').map(lang => lang.trim().toLowerCase()).filter(Boolean);
   }
 }

@@ -6,7 +6,8 @@ import { DocumentationOutputSchema } from '../schemas';
 import type { LLMConfig } from '../../../types';
 import type { DocumentationOutput } from '../schemas';
 import type { AgentEventCallbacks } from '../agentEvents';
-import { summarizeToolArgs, summarizeToolResult } from '../agentEvents';
+import { summarizeToolResult } from '../agentEvents';
+import { SemanticContextBuilder } from '../../semantic';
 
 export interface DocumentationAgentOptions {
   repoPath: string;
@@ -15,6 +16,8 @@ export interface DocumentationAgentOptions {
   maxSteps?: number;
   maxOutputTokens?: number;
   callbacks?: AgentEventCallbacks;
+  /** Use pre-computed semantic context instead of tool-based exploration (more token efficient) */
+  useSemanticContext?: boolean;
 }
 
 export interface DocumentationAgentResult {
@@ -50,22 +53,99 @@ export class DocumentationAgent {
   private config: LLMConfig;
   private providerResult: ReturnType<typeof createProvider>;
   private tools: ToolSet;
+  private semanticContextBuilder: SemanticContextBuilder;
 
   constructor(config: LLMConfig) {
     this.config = config;
     this.providerResult = createProvider(config);
     this.tools = getCodeAnalysisTools();
+    this.semanticContextBuilder = new SemanticContextBuilder();
   }
 
   /**
    * Generate documentation using tools for context gathering
    */
   async generateDocumentation(options: DocumentationAgentOptions): Promise<DocumentationAgentResult> {
-    const { repoPath, targetFile, context, maxSteps = 15, maxOutputTokens = 8000, callbacks } = options;
+    const { repoPath, targetFile, context, maxSteps = 15, maxOutputTokens = 8000, callbacks, useSemanticContext = true } = options;
 
     // Emit agent start event
     callbacks?.onAgentStart?.({ agent: 'documentation', target: targetFile });
 
+    // Use semantic context mode for token efficiency
+    if (useSemanticContext) {
+      return this.generateWithSemanticContext(repoPath, targetFile, context, maxOutputTokens, callbacks);
+    }
+
+    // Tool-based mode for thorough analysis
+    return this.generateWithTools(repoPath, targetFile, context, maxSteps, maxOutputTokens, callbacks);
+  }
+
+  /**
+   * Generate documentation using pre-computed semantic context (more token efficient)
+   */
+  private async generateWithSemanticContext(
+    repoPath: string,
+    targetFile: string,
+    context: string | undefined,
+    maxOutputTokens: number,
+    callbacks?: AgentEventCallbacks
+  ): Promise<DocumentationAgentResult> {
+    callbacks?.onToolCall?.({
+      agent: 'documentation',
+      toolName: 'semanticAnalysis',
+      args: { repoPath, targetFile }
+    });
+
+    // Pre-compute semantic context
+    const semanticContext = await this.semanticContextBuilder.buildDocumentationContext(repoPath, targetFile);
+
+    callbacks?.onToolResult?.({
+      agent: 'documentation',
+      toolName: 'semanticAnalysis',
+      success: true,
+      summary: `Analyzed codebase: ${semanticContext.length} chars of context`
+    });
+
+    const userPrompt = `Generate comprehensive documentation for: ${targetFile}
+
+Repository root: ${repoPath}
+
+${semanticContext}
+
+${context ? `Additional context:\n${context}` : ''}
+
+Generate clear, practical documentation that is helpful for developers.`;
+
+    const { provider, modelId } = this.providerResult;
+
+    const result = await generateText({
+      model: provider(modelId),
+      system: SYSTEM_PROMPT,
+      prompt: userPrompt,
+      maxOutputTokens
+    });
+
+    // Emit agent complete event
+    callbacks?.onAgentComplete?.({ agent: 'documentation', toolsUsed: ['semanticAnalysis'], steps: 1 });
+
+    return {
+      text: result.text,
+      toolsUsed: ['semanticAnalysis'],
+      steps: 1
+    };
+  }
+
+  /**
+   * Generate documentation using multi-step tool-based exploration (more thorough)
+   */
+  private async generateWithTools(
+    repoPath: string,
+    targetFile: string,
+    context: string | undefined,
+    maxSteps: number,
+    maxOutputTokens: number,
+    callbacks?: AgentEventCallbacks
+  ): Promise<DocumentationAgentResult> {
     const userPrompt = `Generate comprehensive documentation for: ${targetFile}
 
 Repository root: ${repoPath}

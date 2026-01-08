@@ -8,5 +8,10 @@
 export { CodebaseAnalyzer } from './codebaseAnalyzer';
 export { TreeSitterLayer } from './treeSitter';
 export { LSPLayer } from './lsp';
+export {
+  SemanticContextBuilder,
+  type ContextBuilderOptions,
+  type ContextFormat
+} from './contextBuilder';
 
 export * from './types';

@@ -115,6 +115,8 @@ program
   .option('--exclude <patterns...>', t('commands.fill.options.exclude'))
   .option('--include <patterns...>', t('commands.fill.options.include'))
   .option('-v, --verbose', t('commands.fill.options.verbose'))
+  .option('--no-semantic', t('commands.fill.options.noSemantic'))
+  .option('--languages <langs>', t('commands.fill.options.languages'))
   .action(async (repoPath: string, options: any) => {
     try {
       await fillService.run(repoPath, options);
@@ -463,6 +465,39 @@ async function runInteractiveLlmFill(): Promise<void> {
     }
   ]);
 
+  const { useSemantic } = await inquirer.prompt<{ useSemantic: boolean }>([
+    {
+      type: 'confirm',
+      name: 'useSemantic',
+      message: t('prompts.fill.semantic'),
+      default: true
+    }
+  ]);
+
+  let languages: string[] | undefined;
+  if (useSemantic) {
+    const { selectedLanguages } = await inquirer.prompt<{ selectedLanguages: string[] }>([
+      {
+        type: 'checkbox',
+        name: 'selectedLanguages',
+        message: t('prompts.fill.languages'),
+        choices: [
+          { name: 'TypeScript', value: 'typescript', checked: true },
+          { name: 'JavaScript', value: 'javascript', checked: true },
+          { name: 'Python', value: 'python', checked: false },
+          { name: 'Go', value: 'go', checked: false },
+          { name: 'Rust', value: 'rust', checked: false },
+          { name: 'Java', value: 'java', checked: false },
+          { name: 'C/C++', value: 'cpp', checked: false },
+          { name: 'C#', value: 'c_sharp', checked: false },
+          { name: 'Ruby', value: 'ruby', checked: false },
+          { name: 'PHP', value: 'php', checked: false }
+        ]
+      }
+    ]);
+    languages = selectedLanguages.length > 0 ? selectedLanguages : undefined;
+  }
+
   await fillService.run(resolvedRepo, {
     output: outputDir,
     prompt: promptPath,
@@ -470,7 +505,9 @@ async function runInteractiveLlmFill(): Promise<void> {
     model,
     provider,
     apiKey,
-    verbose
+    verbose,
+    semantic: useSemantic,
+    languages
   });
 }
 

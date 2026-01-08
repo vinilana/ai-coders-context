@@ -20,6 +20,9 @@ A lightweight CLI that scaffolds living documentation and AI-agent playbooks for
 - 🔁 Repeatable scaffolding that you can re-run as the project evolves
 - 🧭 Repository-aware templates that highlight top-level directories for quick orientation
 - 🧠 AI-ready templates that assistants can update using the `fill` command
+- 🌐 **Multi-provider support** for OpenAI, Anthropic, Google, and OpenRouter
+- ⚡ **Semantic context mode** using Tree-sitter for token-efficient LLM calls
+- 📊 **Real-time progress** showing agent activity and tool usage
 
 ## 📦 Installation
 
@@ -54,6 +57,15 @@ npx @ai-coders/context init ./my-repo agents --output ./knowledge-base
 # Fill docs and agents with the repo context (preview the first 3 updates)
 npx @ai-coders/context fill ./my-repo --output ./.context --limit 3
 
+# Use a specific provider (OpenAI, Anthropic, Google, or OpenRouter)
+npx @ai-coders/context fill ./my-repo --provider anthropic --model claude-sonnet-4-20250514
+
+# Disable semantic mode for more thorough tool-based exploration
+npx @ai-coders/context fill ./my-repo --no-semantic
+
+# Specify languages for semantic analysis
+npx @ai-coders/context fill ./my-repo --languages typescript,python,go
+
 # Draft a collaboration plan seeded with agent and doc touchpoints
 npx @ai-coders/context plan release-readiness --output ./.context
 
@@ -77,7 +89,55 @@ After running the command, inspect the generated structure:
     └── ...
 ```
 
-Customize the Markdown files to reflect your project’s specifics and commit them alongside the code.
+Customize the Markdown files to reflect your project's specifics and commit them alongside the code.
+
+## 🌐 Multi-Provider Support
+
+The `fill` and `plan` commands support multiple LLM providers:
+
+| Provider | Models | Environment Variable |
+|----------|--------|---------------------|
+| OpenRouter | `x-ai/grok-4-fast`, `anthropic/claude-sonnet-4`, etc. | `OPENROUTER_API_KEY` |
+| OpenAI | `gpt-4o`, `gpt-4-turbo`, etc. | `OPENAI_API_KEY` |
+| Anthropic | `claude-sonnet-4-20250514`, `claude-opus-4-20250514`, etc. | `ANTHROPIC_API_KEY` |
+| Google | `gemini-2.0-flash`, `gemini-1.5-pro`, etc. | `GOOGLE_API_KEY` |
+
+The CLI auto-detects available API keys from environment variables. Override with `--provider` and `--model`:
+
+```bash
+# Use Anthropic's Claude
+ANTHROPIC_API_KEY=sk-... npx @ai-coders/context fill . --provider anthropic
+
+# Use OpenAI's GPT-4
+OPENAI_API_KEY=sk-... npx @ai-coders/context fill . --provider openai --model gpt-4o
+```
+
+## ⚡ Semantic Context Mode
+
+By default, the `fill` command uses **semantic context mode** which pre-computes codebase analysis using Tree-sitter before calling the LLM. This is:
+
+- **Faster**: Single LLM call instead of multi-step tool exploration
+- **Token-efficient**: Pre-computed context instead of back-and-forth tool calls
+- **Consistent**: Same analysis applied to all files
+
+To use the more thorough tool-based exploration (where the LLM explores the codebase step by step), use `--no-semantic`:
+
+```bash
+npx @ai-coders/context fill . --no-semantic
+```
+
+### Language Selection
+
+Specify which programming languages to analyze for semantic context:
+
+```bash
+# Analyze only TypeScript and Python
+npx @ai-coders/context fill . --languages typescript,python
+
+# Default languages: typescript, javascript, python, go
+```
+
+Supported languages: `typescript`, `javascript`, `python`, `go`, `rust`, `java`, `cpp`, `c_sharp`, `ruby`, `php`
 
 ## 🧠 Guided Updates for AI Assistants
 
@@ -106,6 +166,7 @@ Options:
   -o, --output <dir>      Output directory (default: ./.context)
   --exclude <patterns...> Glob patterns to skip during the scan
   --include <patterns...> Glob patterns to explicitly include
+  --no-semantic           Disable semantic code analysis
   -v, --verbose           Print detailed progress information
   -h, --help              Display help for command
 ```
@@ -120,14 +181,19 @@ Options:
   -o, --output <dir>      Scaffold directory containing docs/ and agents/ (default: ./.context)
   -k, --api-key <key>     API key for the selected LLM provider
   -m, --model <model>     LLM model to use (default: x-ai/grok-4-fast)
-  -p, --provider <name>   Provider (openrouter only)
-      --base-url <url>    Custom base URL for OpenRouter
+  -p, --provider <name>   Provider: openrouter, openai, anthropic, or google
+      --base-url <url>    Custom base URL for provider APIs
       --prompt <file>     Instruction prompt to follow (optional; uses bundled instructions when omitted)
       --limit <number>    Maximum number of files to update in one run
+      --no-semantic       Disable semantic context mode (use tool-based exploration)
+      --languages <langs> Programming languages to analyze (e.g., typescript,python,go)
+      --exclude <patterns...> Glob patterns to exclude from repository analysis
+      --include <patterns...> Glob patterns to include during analysis
+  -v, --verbose           Print detailed progress information
   -h, --help              Display help for command
 ```
 
-Under the hood, the command loads the prompt above, iterates over every Markdown file in `.context/docs` and `.context/agents`, and asks the LLM to produce the fully updated content.
+Under the hood, the command uses specialized agents (DocumentationAgent, PlaybookAgent) that analyze your codebase and generate context-aware documentation. Real-time progress is displayed showing which agent is working and what tools are being used.
 
 ### `plan`
 Create a collaboration plan that links documentation guides and agent playbooks, or fill an existing plan with LLM assistance.
@@ -144,12 +210,14 @@ Options:
   -r, --repo <path>       Repository root to summarize for additional context (fill mode)
   -k, --api-key <key>     API key for the selected LLM provider (fill mode)
   -m, --model <model>     LLM model to use (default: x-ai/grok-4-fast)
-  -p, --provider <name>   Provider (openrouter only)
-      --base-url <url>    Custom base URL for OpenRouter
+  -p, --provider <name>   Provider: openrouter, openai, anthropic, or google
+      --base-url <url>    Custom base URL for provider APIs
       --prompt <file>     Instruction prompt to follow (optional; uses bundled instructions when omitted)
       --dry-run           Preview changes without writing files
+      --no-semantic       Disable semantic context mode
       --include <patterns...>  Glob patterns to include during repository analysis
       --exclude <patterns...>  Glob patterns to exclude from repository analysis
+  -v, --verbose           Print detailed progress information
   -h, --help              Display help for command
 ```
 
@@ -157,7 +225,30 @@ In scaffold mode the command creates `.context/plans/<plan-name>.md`, keeps a `p
 
 💡 Tip: run `npx @ai-coders/context` with no arguments to enter an interactive mode that guides you through scaffold and LLM-fill options.
 
-Prefer driving the update elsewhere? Just grab [`prompts/update_scaffold_prompt.md`](./prompts/update_scaffold_prompt.md) and run it in your favorite playground or agent host. When you’re ready to automate, drop your API key in `.env` (for example `OPENROUTER_API_KEY` and `OPENROUTER_MODEL`) and let `fill` handle the edits inline.
+Prefer driving the update elsewhere? Just grab [`prompts/update_scaffold_prompt.md`](./prompts/update_scaffold_prompt.md) and run it in your favorite playground or agent host. When you're ready to automate, drop your API key in `.env` (for example `OPENROUTER_API_KEY` and `OPENROUTER_MODEL`) and let `fill` handle the edits inline.
+
+## 🔧 Environment Variables
+
+```bash
+# Provider selection (auto-detected from available keys)
+AI_CONTEXT_PROVIDER=openrouter|openai|anthropic|google
+
+# API Keys (at least one required for fill/plan --fill)
+OPENROUTER_API_KEY=...
+OPENAI_API_KEY=...
+ANTHROPIC_API_KEY=...
+GOOGLE_API_KEY=...
+
+# Optional model override per provider
+OPENROUTER_MODEL=x-ai/grok-4-fast
+OPENAI_MODEL=gpt-4o
+ANTHROPIC_MODEL=claude-sonnet-4-20250514
+GOOGLE_MODEL=gemini-2.0-flash
+
+# CLI settings
+AI_CONTEXT_LANG=en|pt-BR
+AI_CONTEXT_DISABLE_UPDATE_CHECK=true
+```
 
 ## 🧰 Local Development
 

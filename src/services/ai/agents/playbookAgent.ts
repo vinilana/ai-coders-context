@@ -8,6 +8,7 @@ import type { AgentType as GeneratorAgentType } from '../../../generators/agents
 import type { AgentPlaybook } from '../schemas';
 import type { AgentEventCallbacks } from '../agentEvents';
 import { summarizeToolResult } from '../agentEvents';
+import { SemanticContextBuilder } from '../../semantic';
 
 export interface PlaybookAgentOptions {
   repoPath: string;
@@ -16,6 +17,8 @@ export interface PlaybookAgentOptions {
   maxSteps?: number;
   maxOutputTokens?: number;
   callbacks?: AgentEventCallbacks;
+  /** Use pre-computed semantic context instead of tool-based exploration (more token efficient) */
+  useSemanticContext?: boolean;
 }
 
 export interface PlaybookAgentResult {
@@ -63,22 +66,103 @@ export class PlaybookAgent {
   private config: LLMConfig;
   private providerResult: ReturnType<typeof createProvider>;
   private tools: ToolSet;
+  private semanticContextBuilder: SemanticContextBuilder;
 
   constructor(config: LLMConfig) {
     this.config = config;
     this.providerResult = createProvider(config);
     this.tools = getCodeAnalysisTools();
+    this.semanticContextBuilder = new SemanticContextBuilder();
   }
 
   /**
    * Generate a playbook using tools for context gathering
    */
   async generatePlaybook(options: PlaybookAgentOptions): Promise<PlaybookAgentResult> {
-    const { repoPath, agentType, existingContext, maxSteps = 12, maxOutputTokens = 8000, callbacks } = options;
+    const { repoPath, agentType, existingContext, maxSteps = 12, maxOutputTokens = 8000, callbacks, useSemanticContext = true } = options;
 
     // Emit agent start event
     callbacks?.onAgentStart?.({ agent: 'playbook', target: agentType });
 
+    // Use semantic context mode for token efficiency
+    if (useSemanticContext) {
+      return this.generateWithSemanticContext(repoPath, agentType, existingContext, maxOutputTokens, callbacks);
+    }
+
+    // Tool-based mode for thorough analysis
+    return this.generateWithTools(repoPath, agentType, existingContext, maxSteps, maxOutputTokens, callbacks);
+  }
+
+  /**
+   * Generate playbook using pre-computed semantic context (more token efficient)
+   */
+  private async generateWithSemanticContext(
+    repoPath: string,
+    agentType: GeneratorAgentType,
+    existingContext: string | undefined,
+    maxOutputTokens: number,
+    callbacks?: AgentEventCallbacks
+  ): Promise<PlaybookAgentResult> {
+    callbacks?.onToolCall?.({
+      agent: 'playbook',
+      toolName: 'semanticAnalysis',
+      args: { repoPath, agentType }
+    });
+
+    // Pre-compute semantic context
+    const semanticContext = await this.semanticContextBuilder.buildPlaybookContext(repoPath, agentType);
+
+    callbacks?.onToolResult?.({
+      agent: 'playbook',
+      toolName: 'semanticAnalysis',
+      success: true,
+      summary: `Analyzed codebase for ${agentType}: ${semanticContext.length} chars of context`
+    });
+
+    const userPrompt = `Generate a comprehensive playbook for a ${agentType} agent.
+
+Repository: ${repoPath}
+
+${semanticContext}
+
+${existingContext ? `Existing context:\n${existingContext}` : ''}
+
+Generate a detailed, actionable playbook with:
+1. Clear understanding of what files/areas the agent should focus on
+2. Specific workflows and steps for common tasks
+3. Best practices derived from the actual codebase
+4. Key files and their purposes`;
+
+    const { provider, modelId } = this.providerResult;
+
+    const result = await generateText({
+      model: provider(modelId),
+      system: SYSTEM_PROMPT,
+      prompt: userPrompt,
+      maxOutputTokens
+    });
+
+    // Emit agent complete event
+    callbacks?.onAgentComplete?.({ agent: 'playbook', toolsUsed: ['semanticAnalysis'], steps: 1 });
+
+    return {
+      text: result.text,
+      toolsUsed: ['semanticAnalysis'],
+      steps: 1
+    };
+  }
+
+  /**
+   * Generate playbook using multi-step tool-based exploration (more thorough)
+   */
+  private async generateWithTools(
+    repoPath: string,
+    agentType: GeneratorAgentType,
+    existingContext: string | undefined,
+    maxSteps: number,
+    maxOutputTokens: number,
+    callbacks?: AgentEventCallbacks
+  ): Promise<PlaybookAgentResult> {
     const focusPatterns = AGENT_TYPE_FOCUS[agentType] || ['src/**/*'];
 
     const userPrompt = `Generate a comprehensive playbook for a ${agentType} agent.
