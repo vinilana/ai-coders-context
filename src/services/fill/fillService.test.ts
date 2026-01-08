@@ -125,22 +125,37 @@ describe('FillService', () => {
   });
 
   describe('run', () => {
-    it('should throw error when docs directory does not exist', async () => {
-      // Create only agents dir
-      await fs.ensureDir(path.join(outputDir, 'agents'));
-
+    it('should throw error when neither docs nor agents directory exists', async () => {
+      // Don't create any dirs
       await expect(
         service.run(tempDir, { output: outputDir })
-      ).rejects.toThrow('errors.fill.missingDocsScaffold');
+      ).rejects.toThrow('errors.fill.missingScaffold');
     });
 
-    it('should throw error when agents directory does not exist', async () => {
-      // Create only docs dir
+    it('should work when only docs directory exists', async () => {
+      // Create only docs dir with a file
       await fs.ensureDir(path.join(outputDir, 'docs'));
+      await fs.writeFile(
+        path.join(outputDir, 'docs', 'test.md'),
+        '# Test'
+      );
 
-      await expect(
-        service.run(tempDir, { output: outputDir })
-      ).rejects.toThrow('errors.fill.missingAgentsScaffold');
+      await service.run(tempDir, { output: outputDir });
+
+      expect(mockUI.displaySuccess).toHaveBeenCalled();
+    });
+
+    it('should work when only agents directory exists', async () => {
+      // Create only agents dir with a file
+      await fs.ensureDir(path.join(outputDir, 'agents'));
+      await fs.writeFile(
+        path.join(outputDir, 'agents', 'code-reviewer.md'),
+        '# Code Reviewer'
+      );
+
+      await service.run(tempDir, { output: outputDir });
+
+      expect(mockUI.displaySuccess).toHaveBeenCalled();
     });
 
     it('should display warning when no target files exist', async () => {

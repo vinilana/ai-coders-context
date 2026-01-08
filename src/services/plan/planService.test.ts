@@ -177,20 +177,29 @@ describe('PlanService', () => {
       ).rejects.toThrow('errors.plan.missingPlansDir');
     });
 
-    it('should throw error when docs directory does not exist', async () => {
+    it('should throw error when neither docs nor agents directory exists', async () => {
       await fs.remove(path.join(outputDir, 'docs'));
-
-      await expect(
-        service.fillPlan('test-plan', { output: outputDir, repo: tempDir })
-      ).rejects.toThrow('errors.fill.missingDocsScaffold');
-    });
-
-    it('should throw error when agents directory does not exist', async () => {
       await fs.remove(path.join(outputDir, 'agents'));
 
       await expect(
         service.fillPlan('test-plan', { output: outputDir, repo: tempDir })
-      ).rejects.toThrow('errors.fill.missingAgentsScaffold');
+      ).rejects.toThrow('errors.fill.missingScaffold');
+    });
+
+    it('should work when only docs directory exists', async () => {
+      await fs.remove(path.join(outputDir, 'agents'));
+
+      await service.fillPlan('test-plan', { output: outputDir, repo: tempDir });
+
+      expect(mockUI.displaySuccess).toHaveBeenCalled();
+    });
+
+    it('should work when only agents directory exists', async () => {
+      await fs.remove(path.join(outputDir, 'docs'));
+
+      await service.fillPlan('test-plan', { output: outputDir, repo: tempDir });
+
+      expect(mockUI.displaySuccess).toHaveBeenCalled();
     });
 
     it('should throw error when plan file does not exist', async () => {

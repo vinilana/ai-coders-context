@@ -96,8 +96,13 @@ export class FillService {
     const docsDir = path.join(outputDir, 'docs');
     const agentsDir = path.join(outputDir, 'agents');
 
-    await this.ensureDirectoryExists(docsDir, this.t('errors.fill.missingDocsScaffold'));
-    await this.ensureDirectoryExists(agentsDir, this.t('errors.fill.missingAgentsScaffold'));
+    // At least one of docs or agents must exist
+    const docsExists = await fs.pathExists(docsDir);
+    const agentsExists = await fs.pathExists(agentsDir);
+
+    if (!docsExists && !agentsExists) {
+      throw new Error(this.t('errors.fill.missingScaffold'));
+    }
 
     const llmConfig = await resolveLlmConfig({
       rawOptions: {
@@ -314,8 +319,13 @@ export class FillService {
   }
 
   private async collectTargets(options: ResolvedFillOptions): Promise<TargetFile[]> {
-    const docFiles = await glob('**/*.md', { cwd: options.docsDir, absolute: true });
-    const agentFiles = await glob('**/*.md', { cwd: options.agentsDir, absolute: true });
+    // Only glob directories that exist
+    const docFiles = (await fs.pathExists(options.docsDir))
+      ? await glob('**/*.md', { cwd: options.docsDir, absolute: true })
+      : [];
+    const agentFiles = (await fs.pathExists(options.agentsDir))
+      ? await glob('**/*.md', { cwd: options.agentsDir, absolute: true })
+      : [];
     const candidates = [...docFiles, ...agentFiles];
 
     const targets: TargetFile[] = [];
