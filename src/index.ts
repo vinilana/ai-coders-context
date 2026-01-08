@@ -16,6 +16,7 @@ import { InitService } from './services/init/initService';
 import { FillService } from './services/fill/fillService';
 import { PlanService } from './services/plan/planService';
 import { SyncService } from './services/sync/syncService';
+import { ServeService } from './services/serve';
 import { DEFAULT_MODELS } from './services/ai/providerFactory';
 import {
   detectSmartDefaults,
@@ -226,6 +227,29 @@ program
       await syncService.run(options);
     } catch (error) {
       ui.displayError(t('errors.sync.failed'), error as Error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('serve')
+  .description('Start passthrough server for external AI agents (stdin/stdout JSON)')
+  .option('-r, --repo-path <path>', 'Default repository path for tools')
+  .option('-f, --format <format>', 'Output format: json or jsonl', 'jsonl')
+  .option('-v, --verbose', 'Enable verbose logging to stderr')
+  .action(async (options: any) => {
+    const service = new ServeService({
+      repoPath: options.repoPath,
+      format: options.format,
+      verbose: options.verbose
+    });
+
+    try {
+      await service.run();
+    } catch (error) {
+      if (options.verbose) {
+        process.stderr.write(`[serve] Error: ${error}\n`);
+      }
       process.exit(1);
     }
   });
