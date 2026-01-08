@@ -44,6 +44,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `buildPlanContext()` - Context for development plan generation
   - Caches analysis results for efficiency
 
+- **LSP integration for semantic analysis**: Optional deep semantic analysis via Language Server Protocol
+  - New `--lsp` flag for `fill` command to enable LSP-enhanced analysis
+  - Enabled by default for `plan fill` (use `--no-lsp` to disable)
+  - Adds type information, implementations, and references to symbol analysis
+  - Supports TypeScript, JavaScript, Python, Go, and Rust language servers
+  - Graceful fallback when LSP servers are unavailable
+
+- **CodebaseAnalyzer**: New orchestrator for hybrid Tree-sitter + LSP analysis
+  - Combines fast syntactic analysis with deep semantic understanding
+  - Architecture layer detection (Services, Controllers, Models, Utils, etc.)
+  - Design pattern detection (Factory, Repository, Service Layer, Observer, etc.)
+  - Entry point and public API identification
+  - Dependency graph construction
+
+- **Unit tests for services**: Comprehensive test coverage for core services
+  - `PlanService` tests (13 tests) - scaffolding, plan fill, error handling, LSP options
+  - `FillService` tests (17 tests) - directory validation, agent processing, options handling
+  - `CodebaseAnalyzer` tests (24 tests) - LSP integration, architecture detection, pattern detection
+
 - **Agent event callback system**: Infrastructure for tracking agent progress
   - `onAgentStart`, `onAgentStep`, `onToolCall`, `onToolResult`, `onAgentComplete` callbacks
   - Integrated with CLI UI for real-time display
@@ -103,6 +122,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `src/services/ai/agents/*.ts` - Specialized agents (DocumentationAgent, PlaybookAgent, PlanAgent)
 - `src/services/ai/agentEvents.ts` - Agent event callback types
 - `src/services/semantic/contextBuilder.ts` - SemanticContextBuilder for pre-computed context
+- `src/services/semantic/codebaseAnalyzer.ts` - Main orchestrator for hybrid analysis
+- `src/services/semantic/lsp/lspLayer.ts` - LSP client for semantic queries
+- `src/services/semantic/treeSitter/treeSitterLayer.ts` - Tree-sitter based parsing
+- `src/services/semantic/types.ts` - Shared types for semantic analysis
+- `src/services/plan/planService.test.ts` - PlanService unit tests
+- `src/services/fill/fillService.test.ts` - FillService unit tests
+- `src/services/semantic/codebaseAnalyzer.test.ts` - CodebaseAnalyzer unit tests
 
 #### Environment Variables
 ```bash
