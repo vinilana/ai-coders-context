@@ -10,10 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **MCP Server**: New `mcp` command for Claude Code integration via Model Context Protocol
-  - Exposes 6 code analysis tools: `readFile`, `listFiles`, `analyzeSymbols`, `getFileStructure`, `searchCode`, `buildSemanticContext`
+  - Exposes 9 code analysis tools: `readFile`, `listFiles`, `analyzeSymbols`, `getFileStructure`, `searchCode`, `buildSemanticContext`, `checkScaffolding`, `initializeContext`, `scaffoldPlan`
   - Exposes 2 resource templates: `context://codebase/{contextType}` for semantic context, `file://{path}` for file contents
   - Uses stdio transport for seamless Claude Code integration
   - Configure in `~/.claude/settings.json` with `npx @ai-coders/context mcp`
+
+- **MCP Scaffolding Tools**: New tools for AI agents to manage `.context` scaffolding
+  - `checkScaffolding` - Check if scaffolding exists with granular status (docs, agents, plans separately)
+  - `initializeContext` - Initialize `.context` scaffolding non-interactively (supports type, semantic analysis, include/exclude patterns)
+  - `scaffoldPlan` - Create plan templates in `.context/plans/` with optional semantic analysis
 
 - **Passthrough Server**: New `serve` command for external AI agent integration
   - JSON-RPC style communication via stdin/stdout
@@ -132,7 +137,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `src/services/ai/aiSdkClient.ts` - Main AI SDK client
 - `src/services/ai/providerFactory.ts` - Provider creation factory
 - `src/services/ai/schemas.ts` - Zod schemas for tools and outputs
-- `src/services/ai/tools/*.ts` - Code analysis tools (readFile, listFiles, analyzeSymbols, etc.)
+- `src/services/ai/tools/*.ts` - Code analysis tools (readFile, listFiles, analyzeSymbols, checkScaffolding, initializeContext, scaffoldPlan, etc.)
 - `src/services/ai/agents/*.ts` - Specialized agents (DocumentationAgent, PlaybookAgent, PlanAgent)
 - `src/services/ai/agentEvents.ts` - Agent event callback types
 - `src/services/semantic/contextBuilder.ts` - SemanticContextBuilder for pre-computed context

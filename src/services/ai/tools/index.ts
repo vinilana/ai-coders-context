@@ -4,12 +4,18 @@ import { listFilesTool } from './listFilesTool';
 import { analyzeSymbolsTool } from './analyzeSymbolsTool';
 import { getFileStructureTool } from './getFileStructureTool';
 import { searchCodeTool } from './searchCodeTool';
+import { checkScaffoldingTool } from './checkScaffoldingTool';
+import { initializeContextTool } from './initializeContextTool';
+import { scaffoldPlanTool } from './scaffoldPlanTool';
 
 export { readFileTool } from './readFileTool';
 export { listFilesTool } from './listFilesTool';
 export { analyzeSymbolsTool } from './analyzeSymbolsTool';
 export { getFileStructureTool } from './getFileStructureTool';
 export { searchCodeTool } from './searchCodeTool';
+export { checkScaffoldingTool } from './checkScaffoldingTool';
+export { initializeContextTool } from './initializeContextTool';
+export { scaffoldPlanTool } from './scaffoldPlanTool';
 
 /**
  * Returns all code analysis tools as a ToolSet for use with AI SDK
@@ -20,7 +26,10 @@ export function getCodeAnalysisTools(): ToolSet {
     listFiles: listFilesTool,
     analyzeSymbols: analyzeSymbolsTool,
     getFileStructure: getFileStructureTool,
-    searchCode: searchCodeTool
+    searchCode: searchCodeTool,
+    checkScaffolding: checkScaffoldingTool,
+    initializeContext: initializeContextTool,
+    scaffoldPlan: scaffoldPlanTool
   };
 }
 
@@ -32,7 +41,10 @@ export const TOOL_NAMES = [
   'listFiles',
   'analyzeSymbols',
   'getFileStructure',
-  'searchCode'
+  'searchCode',
+  'checkScaffolding',
+  'initializeContext',
+  'scaffoldPlan'
 ] as const;
 
 export type ToolName = (typeof TOOL_NAMES)[number];

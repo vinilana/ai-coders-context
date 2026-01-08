@@ -248,6 +248,9 @@ Options:
 - `getFileStructure` - Get the directory structure of a repository
 - `searchCode` - Search for code patterns using regex
 - `buildSemanticContext` - Build optimized semantic context for LLM prompts
+- `checkScaffolding` - Check if `.context` scaffolding exists (returns granular status for docs, agents, plans)
+- `initializeContext` - Initialize `.context` scaffolding (create docs/agents directories and files)
+- `scaffoldPlan` - Create a plan template in `.context/plans/`
 
 **Available MCP Resources:**
 - `context://codebase/{contextType}` - Semantic context (documentation, playbook, plan, compact)
@@ -298,6 +301,9 @@ Once configured, Claude Code will have access to all code analysis tools:
 - analyzeSymbols: Extract code structure with Tree-sitter
 - searchCode: Search for patterns across the codebase
 - buildSemanticContext: Get optimized context for any task
+- checkScaffolding: Check if .context scaffolding exists
+- initializeContext: Initialize .context scaffolding
+- scaffoldPlan: Create plan templates
 ```
 
 ### Example MCP Usage in Claude Code

@@ -13,7 +13,10 @@ import {
   listFilesTool,
   analyzeSymbolsTool,
   getFileStructureTool,
-  searchCodeTool
+  searchCodeTool,
+  checkScaffoldingTool,
+  initializeContextTool,
+  scaffoldPlanTool
 } from '../ai/tools';
 import { SemanticContextBuilder, type ContextFormat } from '../semantic/contextBuilder';
 
@@ -220,7 +223,93 @@ export class AIContextMCPServer {
       };
     });
 
-    this.log('Registered 6 tools');
+    // checkScaffolding tool
+    this.server.registerTool('checkScaffolding', {
+      description: 'Check if .context scaffolding exists and return granular status',
+      inputSchema: {
+        repoPath: z.string().optional().describe('Repository path to check (defaults to cwd)')
+      }
+    }, async ({ repoPath }) => {
+      const result = await checkScaffoldingTool.execute!(
+        { repoPath: repoPath || this.options.repoPath },
+        { toolCallId: '', messages: [] }
+      );
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify(result, null, 2)
+        }]
+      };
+    });
+
+    // initializeContext tool
+    this.server.registerTool('initializeContext', {
+      description: 'Initialize .context scaffolding (create docs/agents directories and files)',
+      inputSchema: {
+        repoPath: z.string().describe('Repository path to initialize'),
+        type: z.enum(['docs', 'agents', 'both']).default('both').optional()
+          .describe('Type of scaffolding to create'),
+        outputDir: z.string().optional().describe('Output directory (default: ./.context)'),
+        semantic: z.boolean().default(true).optional()
+          .describe('Enable semantic analysis'),
+        include: z.array(z.string()).optional().describe('Include patterns'),
+        exclude: z.array(z.string()).optional().describe('Exclude patterns')
+      }
+    }, async ({ repoPath, type, outputDir, semantic, include, exclude }) => {
+      const result = await initializeContextTool.execute!(
+        {
+          repoPath: repoPath || this.options.repoPath || process.cwd(),
+          type,
+          outputDir,
+          semantic,
+          include,
+          exclude
+        },
+        { toolCallId: '', messages: [] }
+      );
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify(result, null, 2)
+        }]
+      };
+    });
+
+    // scaffoldPlan tool
+    this.server.registerTool('scaffoldPlan', {
+      description: 'Create a plan template in .context/plans/',
+      inputSchema: {
+        planName: z.string().describe('Name of the plan (will be slugified)'),
+        repoPath: z.string().optional().describe('Repository path'),
+        outputDir: z.string().optional().describe('Output directory'),
+        title: z.string().optional().describe('Plan title (defaults to formatted planName)'),
+        summary: z.string().optional().describe('Plan summary/goal'),
+        semantic: z.boolean().default(true).optional().describe('Enable semantic analysis')
+      }
+    }, async ({ planName, repoPath, outputDir, title, summary, semantic }) => {
+      const result = await scaffoldPlanTool.execute!(
+        {
+          planName,
+          repoPath: repoPath || this.options.repoPath || process.cwd(),
+          outputDir,
+          title,
+          summary,
+          semantic
+        },
+        { toolCallId: '', messages: [] }
+      );
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify(result, null, 2)
+        }]
+      };
+    });
+
+    this.log('Registered 9 tools');
   }
 
   /**

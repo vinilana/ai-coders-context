@@ -221,9 +221,66 @@ export const DevelopmentPlanSchema = z.object({
 });
 
 // =============================================================================
+// MCP Scaffolding Tool Schemas
+// =============================================================================
+
+export const CheckScaffoldingInputSchema = z.object({
+  repoPath: z.string().optional().describe('Repository path to check (defaults to cwd)')
+});
+
+export const CheckScaffoldingOutputSchema = z.object({
+  initialized: z.boolean().describe('Whether .context directory exists'),
+  docs: z.boolean().describe('Whether docs scaffolding exists with content'),
+  agents: z.boolean().describe('Whether agents scaffolding exists with content'),
+  plans: z.boolean().describe('Whether plans scaffolding exists with content'),
+  outputDir: z.string().describe('Resolved output directory path')
+});
+
+export const InitializeContextInputSchema = z.object({
+  repoPath: z.string().describe('Repository path to initialize'),
+  type: z.enum(['docs', 'agents', 'both']).default('both').optional()
+    .describe('Type of scaffolding to create'),
+  outputDir: z.string().optional().describe('Output directory (default: ./.context)'),
+  semantic: z.boolean().default(true).optional()
+    .describe('Enable semantic analysis'),
+  include: z.array(z.string()).optional().describe('Include patterns'),
+  exclude: z.array(z.string()).optional().describe('Exclude patterns')
+});
+
+export const InitializeContextOutputSchema = z.object({
+  success: z.boolean(),
+  docsGenerated: z.number().optional(),
+  agentsGenerated: z.number().optional(),
+  outputDir: z.string(),
+  error: z.string().optional()
+});
+
+export const ScaffoldPlanInputSchema = z.object({
+  planName: z.string().describe('Name of the plan (will be slugified)'),
+  repoPath: z.string().optional().describe('Repository path'),
+  outputDir: z.string().optional().describe('Output directory'),
+  title: z.string().optional().describe('Plan title (defaults to formatted planName)'),
+  summary: z.string().optional().describe('Plan summary/goal'),
+  semantic: z.boolean().default(true).optional().describe('Enable semantic analysis')
+});
+
+export const ScaffoldPlanOutputSchema = z.object({
+  success: z.boolean(),
+  planPath: z.string().optional(),
+  planContent: z.string().optional(),
+  error: z.string().optional()
+});
+
+// =============================================================================
 // Type Exports
 // =============================================================================
 
+export type CheckScaffoldingInput = z.infer<typeof CheckScaffoldingInputSchema>;
+export type CheckScaffoldingOutput = z.infer<typeof CheckScaffoldingOutputSchema>;
+export type InitializeContextInput = z.infer<typeof InitializeContextInputSchema>;
+export type InitializeContextOutput = z.infer<typeof InitializeContextOutputSchema>;
+export type ScaffoldPlanInput = z.infer<typeof ScaffoldPlanInputSchema>;
+export type ScaffoldPlanOutput = z.infer<typeof ScaffoldPlanOutputSchema>;
 export type ReadFileInput = z.infer<typeof ReadFileInputSchema>;
 export type ReadFileOutput = z.infer<typeof ReadFileOutputSchema>;
 export type ListFilesInput = z.infer<typeof ListFilesInputSchema>;
