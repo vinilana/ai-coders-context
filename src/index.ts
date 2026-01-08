@@ -866,9 +866,41 @@ async function main(): Promise<void> {
   await program.parseAsync(process.argv);
 }
 
+/**
+ * Check if an error is from user interrupt (Ctrl+C)
+ */
+function isUserInterrupt(error: unknown): boolean {
+  if (error instanceof Error) {
+    // Inquirer's ExitPromptError when user presses Ctrl+C
+    if (error.name === 'ExitPromptError') return true;
+    // Check message patterns
+    if (error.message.includes('force closed')) return true;
+    if (error.message.includes('User force closed')) return true;
+  }
+  return false;
+}
+
+/**
+ * Handle graceful exit
+ */
+function handleGracefulExit(): void {
+  console.log('');
+  ui.displaySuccess(t('success.interactive.goodbye'));
+  process.exit(0);
+}
+
+// Handle SIGINT (Ctrl+C) at process level
+process.on('SIGINT', () => {
+  handleGracefulExit();
+});
+
 if (require.main === module) {
   main().catch(error => {
-    ui.displayError(t('errors.cli.executionFailed'), error as Error);
-    process.exit(1);
+    if (isUserInterrupt(error)) {
+      handleGracefulExit();
+    } else {
+      ui.displayError(t('errors.cli.executionFailed'), error as Error);
+      process.exit(1);
+    }
   });
 }
