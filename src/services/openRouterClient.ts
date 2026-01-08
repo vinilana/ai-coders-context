@@ -31,7 +31,7 @@ export class OpenRouterClient extends BaseLLMClient {
       messages.push({ role: 'user', content: prompt });
 
       const response = await this.client.post('/chat/completions', {
-        model: this.config.model || 'x-ai/grok-4-fast',
+        model: this.config.model || 'x-ai/grok-4.1-fast',
         messages,
         max_tokens: 4000,
         temperature: 0.7

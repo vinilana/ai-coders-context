@@ -45,7 +45,7 @@ const program = new Command();
 const ui = new CLIInterface(t);
 const VERSION = '0.4.0';
 const PACKAGE_NAME = '@ai-coders/context';
-const DEFAULT_MODEL = 'x-ai/grok-4-fast';
+const DEFAULT_MODEL = 'gemini-3-flash-preview';	
 
 const initService = new InitService({
   ui,
