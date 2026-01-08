@@ -23,14 +23,12 @@ function renderKeyExportsSection(context: DocumentationTemplateContext): string 
 
   const repoRoot = repoStructure.rootPath;
 
-  // Get top exported classes and interfaces
+  // Get exported classes and interfaces
   const classes = semantics.symbols.classes
-    .filter(s => s.exported)
-    .slice(0, 5);
+    .filter(s => s.exported);
 
   const interfaces = semantics.symbols.interfaces
-    .filter(s => s.exported)
-    .slice(0, 5);
+    .filter(s => s.exported);
 
   const lines: string[] = [];
 

@@ -16,8 +16,7 @@ function renderTypeDefinitions(context: DocumentationTemplateContext): string {
     ...semantics.symbols.interfaces,
   ]
     .filter(s => s.exported)
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .slice(0, 30); // Limit to 30
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   if (typeSymbols.length === 0) {
     return '- *No exported type definitions found.*';

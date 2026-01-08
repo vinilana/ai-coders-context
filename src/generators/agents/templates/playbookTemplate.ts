@@ -29,7 +29,6 @@ function renderKeySymbols(symbols: KeySymbolInfo[] | undefined, repoRoot: string
   }
 
   return symbols
-    .slice(0, 10)
     .map(s => {
       const ref = formatSymbolLink(s, repoRoot);
       return `- ${ref} (${s.kind})`;
@@ -43,7 +42,7 @@ function renderArchitectureLayers(semantics: SemanticContext | undefined, repoRo
   }
 
   const lines = ['## Architecture Context', ''];
-  for (const layer of semantics.architecture.layers.slice(0, 5)) {
+  for (const layer of semantics.architecture.layers) {
     const symbolCount = layer.symbols.length;
     const dirs = layer.directories.map(d => `\`${d}\``).join(', ');
     lines.push(`### ${layer.name}`);
@@ -53,8 +52,7 @@ function renderArchitectureLayers(semantics: SemanticContext | undefined, repoRo
 
     // Add key exported symbols with links
     const keySymbols = layer.symbols
-      .filter(s => s.exported)
-      .slice(0, 3);
+      .filter(s => s.exported);
 
     if (keySymbols.length > 0) {
       const symbolRefs = keySymbols.map(s => {
@@ -78,7 +76,7 @@ function renderKeyFiles(semantics: SemanticContext | undefined, repoRoot: string
   // Entry points
   if (semantics.architecture.entryPoints.length > 0) {
     lines.push('**Entry Points:**');
-    for (const ep of semantics.architecture.entryPoints.slice(0, 5)) {
+    for (const ep of semantics.architecture.entryPoints) {
       lines.push(`- ${formatFileLink(ep, repoRoot)}`);
     }
   }
@@ -87,8 +85,8 @@ function renderKeyFiles(semantics: SemanticContext | undefined, repoRoot: string
   if (semantics.architecture.patterns.length > 0) {
     if (lines.length > 0) lines.push('');
     lines.push('**Pattern Implementations:**');
-    for (const pattern of semantics.architecture.patterns.slice(0, 3)) {
-      const locations = pattern.locations.slice(0, 2).map(loc => {
+    for (const pattern of semantics.architecture.patterns) {
+      const locations = pattern.locations.map(loc => {
         const relPath = path.relative(repoRoot, loc.file);
         return `[\`${loc.symbol}\`](${relPath})`;
       });
@@ -98,8 +96,7 @@ function renderKeyFiles(semantics: SemanticContext | undefined, repoRoot: string
 
   // Key service files (classes ending in Service)
   const services = semantics.symbols.classes
-    .filter(c => c.name.endsWith('Service') && c.exported)
-    .slice(0, 5);
+    .filter(c => c.name.endsWith('Service') && c.exported);
 
   if (services.length > 0) {
     if (lines.length > 0) lines.push('');

@@ -19,10 +19,9 @@ function renderSemanticLayers(context: DocumentationTemplateContext): string {
     lines.push(`- **Directories**: ${layer.directories.map(d => `\`${d}\``).join(', ')}`);
     lines.push(`- **Symbols**: ${symbolCount} total, ${exportedCount} exported${deps}`);
 
-    // List top exported symbols
+    // List exported symbols
     const topSymbols = layer.symbols
-      .filter(s => s.exported)
-      .slice(0, 5);
+      .filter(s => s.exported);
 
     if (topSymbols.length > 0) {
       lines.push(`- **Key exports**:`);
@@ -51,12 +50,11 @@ function renderDetectedPatterns(context: DocumentationTemplateContext): string {
   for (const pattern of semantics.architecture.patterns) {
     const confidence = Math.round(pattern.confidence * 100);
     // Format locations with file refs
-    const locationRefs = pattern.locations.slice(0, 3).map(l => {
+    const locationRefs = pattern.locations.map(l => {
       const relPath = path.relative(repoRoot, l.file);
       return `\`${l.symbol}\` ([${path.basename(l.file)}](${relPath}))`;
     });
-    const more = pattern.locations.length > 3 ? ` +${pattern.locations.length - 3} more` : '';
-    lines.push(`| ${pattern.name} | ${confidence}% | ${locationRefs.join(', ')}${more} | ${pattern.description} |`);
+    lines.push(`| ${pattern.name} | ${confidence}% | ${locationRefs.join(', ')} | ${pattern.description} |`);
   }
 
   return lines.join('\n');
@@ -69,16 +67,9 @@ function renderPublicAPI(context: DocumentationTemplateContext): string {
   }
 
   const repoRoot = context.repoStructure.rootPath;
-  const topAPI = semantics.architecture.publicAPI.slice(0, 20);
 
   // Use buildSymbolTable for consistent formatting
-  const table = buildSymbolTable(topAPI, repoRoot, ['name', 'kind', 'location']);
-
-  if (semantics.architecture.publicAPI.length > 20) {
-    return table + `\n\n*...and ${semantics.architecture.publicAPI.length - 20} more exported symbols*`;
-  }
-
-  return table;
+  return buildSymbolTable(semantics.architecture.publicAPI, repoRoot, ['name', 'kind', 'location']);
 }
 
 function renderEntryPoints(context: DocumentationTemplateContext): string {

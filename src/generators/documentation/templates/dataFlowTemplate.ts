@@ -58,8 +58,7 @@ function renderServiceLayer(context: DocumentationTemplateContext): string {
 
   // Find service classes (classes ending in Service)
   const services = semantics.symbols.classes
-    .filter(s => s.name.endsWith('Service') && s.exported)
-    .slice(0, 10);
+    .filter(s => s.name.endsWith('Service') && s.exported);
 
   if (services.length === 0) {
     return '- *No service classes detected.*';
