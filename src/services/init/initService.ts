@@ -1,8 +1,8 @@
 import * as path from 'path';
 import * as fs from 'fs-extra';
 import inquirer from 'inquirer';
-import chalk from 'chalk';
 
+import { colors } from '../../utils/theme';
 import { FileMapper } from '../../utils/fileMapper';
 import { DocumentationGenerator } from '../../generators/documentation/documentationGenerator';
 import { AgentGenerator } from '../../generators/agents/agentGenerator';
@@ -99,7 +99,7 @@ export class InitService {
     const { docsGenerated, agentsGenerated } = await this.generateScaffolds(options, repoStructure);
 
     this.ui.displayGenerationSummary(docsGenerated, agentsGenerated);
-    this.ui.displaySuccess(this.t('success.scaffold.ready', { path: chalk.cyan(options.outputDir) }));
+    this.ui.displaySuccess(this.t('success.scaffold.ready', { path: colors.accent(options.outputDir) }));
   }
 
   private async confirmOverwriteIfNeeded(options: InitOptions): Promise<void> {

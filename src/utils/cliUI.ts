@@ -1,10 +1,8 @@
-import chalk from 'chalk';
 import ora, { Ora } from 'ora';
 import * as cliProgress from 'cli-progress';
-import boxen from 'boxen';
-import figures from 'figures';
 
 import { TranslateFn, TranslationKey, TranslateParams } from './i18n';
+import { colors, symbols, typography } from './theme';
 import type {
   AgentType,
   AgentStartEvent,
@@ -22,77 +20,31 @@ export class CLIInterface {
   constructor(private readonly translate: TranslateFn) {}
 
   displayWelcome(version: string): void {
-    const asciiArtLines = [
-      '  ___  _____   _____ ___________ ___________  _____ ',
-      ' / _ \\|_   _| /  __ \\  _  |  _  \\  ___| ___ \\ /  ___|',
-      '/ /_\\ \\ | |   | /  \\/ | | | | | | |__ | |_/ /\\ `--. ',
-      '|  _  | | |   | |   | | | | | | |  __||    /  `--. \\',
-      '| | | |_| |_  | \\__/\\ \\_/ / |/ /| |___| |\\ \\ /\\__/ /',
-      '\\_| |_/\\___/   \\____/\\___/|___/ \\____/\\_| \\_|\\____/ '
-    ];
+    const name = this.t('cli.name');
+    const tagline = this.t('cli.tagline');
 
-    const palette = [
-      chalk.cyanBright,
-      chalk.cyan,
-      chalk.blueBright,
-      chalk.blue,
-      chalk.magentaBright,
-      chalk.magenta
-    ];
-
-    const banner = asciiArtLines
-      .map((line, index) => palette[index % palette.length](`  ${line}`))
-      .join('\n');
-
-    console.log('\n' + banner + '\n');
-
-    const nameLabel = this.t('cli.name');
-    const versionLabel = this.t('ui.version', { version });
-    const taglineLabel = this.t('cli.tagline');
-
-    const infoEntries = [
-      {
-        icon: '◉',
-        raw: nameLabel,
-        colored: chalk.whiteBright.bold(nameLabel)
-      },
-      {
-        icon: '⌁',
-        raw: versionLabel,
-        colored: chalk.cyanBright(versionLabel)
-      },
-      {
-        icon: '⋰',
-        raw: taglineLabel,
-        colored: chalk.gray(taglineLabel)
-      }
-    ];
-
-    const maxWidth = infoEntries.reduce((width, entry) => Math.max(width, entry.raw.length), 0);
-    const accent = chalk.cyanBright('╺' + '━'.repeat(maxWidth + 8) + '╸');
-
-    console.log(accent);
-    infoEntries.forEach(entry => {
-      const padding = ' '.repeat(Math.max(0, maxWidth - entry.raw.length));
-      console.log(`${chalk.cyanBright(entry.icon)}  ${entry.colored}${padding}`);
-    });
+    console.log('');
+    console.log(typography.header(name));
+    console.log(colors.secondary(symbols.dash.repeat(name.length)));
+    console.log(colors.secondary(`v${version}`));
+    console.log(colors.secondaryDim(tagline));
     console.log('');
   }
 
   displayProjectInfo(repoPath: string, outputDir: string, mode: string): void {
-    console.log(chalk.bold(`\n${this.t('ui.projectConfiguration.title')}`));
-    console.log(chalk.gray('─'.repeat(50)));
-    console.log(`${chalk.blue(figures.pointer)} ${this.t('ui.projectConfiguration.repository')} ${chalk.white(repoPath)}`);
-    console.log(`${chalk.blue(figures.pointer)} ${this.t('ui.projectConfiguration.output')} ${chalk.white(outputDir)}`);
-    console.log(`${chalk.blue(figures.pointer)} ${this.t('ui.projectConfiguration.mode')} ${chalk.white(mode)}`);
-    console.log(chalk.gray('─'.repeat(50)) + '\n');
+    console.log(typography.header(this.t('ui.projectConfiguration.title')));
+    console.log('');
+    console.log(typography.labeledValue(this.t('ui.projectConfiguration.repository'), repoPath, 14));
+    console.log(typography.labeledValue(this.t('ui.projectConfiguration.output'), outputDir, 14));
+    console.log(typography.labeledValue(this.t('ui.projectConfiguration.mode'), mode, 14));
+    console.log('');
   }
 
   startSpinner(text: string): void {
     this.spinner = ora({
-      text,
+      text: colors.secondary(text),
       spinner: 'dots',
-      color: 'cyan'
+      color: 'white'
     }).start();
   }
 
@@ -101,25 +53,37 @@ export class CLIInterface {
 
     switch (type) {
       case 'success':
-        this.spinner.succeed(chalk.green(text));
+        this.spinner.stopAndPersist({
+          symbol: colors.success(symbols.success),
+          text: colors.primary(text)
+        });
         break;
       case 'fail':
-        this.spinner.fail(chalk.red(text));
+        this.spinner.stopAndPersist({
+          symbol: colors.error(symbols.error),
+          text: colors.primary(text)
+        });
         break;
       case 'warn':
-        this.spinner.warn(chalk.yellow(text));
+        this.spinner.stopAndPersist({
+          symbol: colors.warning(symbols.warning),
+          text: colors.primary(text)
+        });
         break;
       case 'info':
-        this.spinner.info(chalk.blue(text));
+        this.spinner.stopAndPersist({
+          symbol: colors.accent(symbols.info),
+          text: colors.primary(text)
+        });
         break;
       default:
-        this.spinner.text = text;
+        this.spinner.text = colors.secondary(text);
     }
   }
 
   stopSpinner(success: boolean = true): void {
     if (!this.spinner) return;
-    
+
     if (success) {
       this.spinner.stop();
     } else {
@@ -130,13 +94,13 @@ export class CLIInterface {
 
   createProgressBar(total: number, title: string): void {
     this.progressBar = new cliProgress.SingleBar({
-      format: `${chalk.cyan(title)} |${chalk.cyan('{bar}')}| {percentage}% | {value}/{total} | {task}`,
+      format: `${colors.secondary(title)} {bar} {percentage}% ${colors.secondaryDim('{value}/{total}')} ${colors.secondaryDim('{task}')}`,
       barCompleteChar: '\u2588',
       barIncompleteChar: '\u2591',
       hideCursor: true,
       stopOnComplete: true,
       clearOnComplete: false
-    }, cliProgress.Presets.shades_classic);
+    }, cliProgress.Presets.rect);
 
     this.progressBar.start(total, 0, {
       task: this.t('ui.progress.starting')
@@ -155,25 +119,19 @@ export class CLIInterface {
   }
 
   displayAnalysisResults(totalFiles: number, totalDirs: number, totalSize: string): void {
-    const results = boxen(
-      chalk.bold.green(`${this.t('ui.analysis.complete.title')}\n\n`) +
-      `${chalk.blue(`${this.t('ui.analysis.files')}:`)} ${chalk.white(totalFiles.toString())}\n` +
-      `${chalk.blue(`${this.t('ui.analysis.directories')}:`)} ${chalk.white(totalDirs.toString())}\n` +
-      `${chalk.blue(`${this.t('ui.analysis.totalSize')}:`)} ${chalk.white(totalSize)}`,
-      {
-        padding: 1,
-        borderStyle: 'round',
-        borderColor: 'green',
-        align: 'left'
-      }
-    );
-    console.log('\n' + results);
+    console.log('');
+    console.log(typography.header(this.t('ui.analysis.complete.title')));
+    console.log('');
+    console.log(typography.labeledValue(this.t('ui.analysis.files'), totalFiles.toString()));
+    console.log(typography.labeledValue(this.t('ui.analysis.directories'), totalDirs.toString()));
+    console.log(typography.labeledValue(this.t('ui.analysis.totalSize'), totalSize));
+    console.log('');
   }
 
   displayFileTypeDistribution(distribution: Map<string, number>, totalFiles: number): void {
-    console.log(chalk.bold(`\n${this.t('ui.fileTypeDistribution.title')}`));
-    console.log(chalk.gray('─'.repeat(50)));
-    
+    console.log(typography.header(this.t('ui.fileTypeDistribution.title')));
+    console.log('');
+
     const sorted = Array.from(distribution.entries())
       .sort((a, b) => b[1] - a[1])
       .slice(0, 10);
@@ -181,68 +139,62 @@ export class CLIInterface {
     sorted.forEach(([ext, count]) => {
       const percentage = ((count / totalFiles) * 100).toFixed(1);
       const barLength = Math.round((count / totalFiles) * 30);
-      const bar = '█'.repeat(barLength) + '░'.repeat(30 - barLength);
-      
+      const bar = '\u2588'.repeat(barLength) + '\u2591'.repeat(30 - barLength);
+
       console.log(
-        `${chalk.yellow(ext.padEnd(15))} ${chalk.gray(bar)} ${chalk.white(count.toString().padStart(4))} (${percentage}%)`
+        `  ${colors.primary(ext.padEnd(12))} ${colors.secondaryDim(bar)} ${colors.secondary(count.toString().padStart(4))} ${colors.secondaryDim(`(${percentage}%)`)}`
       );
     });
+    console.log('');
   }
 
   displayGenerationSummary(docsGenerated: number, agentsGenerated: number): void {
     const elapsed = ((Date.now() - this.startTime) / 1000).toFixed(1);
-    const summaryText = chalk.bold.green(`${this.t('ui.generationSummary.title')}\n\n`) +
-      `${chalk.blue(`${this.t('ui.generationSummary.documentation')}:`)} ${chalk.white(docsGenerated.toString())}\n` +
-      `${chalk.blue(`${this.t('ui.generationSummary.agents')}:`)} ${chalk.white(agentsGenerated.toString())}\n` +
-      `${chalk.blue(`${this.t('ui.generationSummary.timeElapsed')}:`)} ${chalk.white(`${elapsed}s`)}\n\n` +
-      chalk.dim(this.t('ui.generationSummary.nextStep'));
 
-    const summary = boxen(summaryText, {
-      padding: 1,
-      borderStyle: 'double',
-      borderColor: 'green',
-      align: 'center'
-    });
-    
-    console.log('\n' + summary);
+    console.log('');
+    console.log(typography.separator());
+    console.log(typography.header(this.t('ui.generationSummary.title')));
+    console.log('');
+    console.log(typography.labeledValue(this.t('ui.generationSummary.documentation'), `${docsGenerated} files`));
+    console.log(typography.labeledValue(this.t('ui.generationSummary.agents'), `${agentsGenerated} playbooks`));
+    console.log(typography.labeledValue(this.t('ui.generationSummary.timeElapsed'), `${elapsed}s`));
+    console.log('');
+    console.log(colors.secondaryDim(this.t('ui.generationSummary.nextStep')));
+    console.log('');
   }
 
   displayError(message: string, error?: Error): void {
-    const errorBox = boxen(
-      chalk.bold.red(`${this.t('ui.error.title')}\n\n`) +
-      chalk.white(message) +
-      (error ? '\n\n' + chalk.gray(error.stack || error.message) : ''),
-      {
-        padding: 1,
-        borderStyle: 'round',
-        borderColor: 'red',
-        align: 'left'
-      }
-    );
-    
-    console.error('\n' + errorBox);
+    console.log('');
+    console.log(`${colors.error(symbols.error)} ${colors.primaryBold(this.t('ui.error.title'))}`);
+    console.log('');
+    console.log(`  ${colors.primary(message)}`);
+    if (error?.stack) {
+      console.log('');
+      console.log(colors.secondaryDim(error.stack));
+    }
+    console.log('');
   }
 
   displayInfo(title: string, message: string): void {
-    console.log(
-      '\n' + chalk.bold.blue(`ℹ️  ${title}`) + '\n' +
-      chalk.gray('─'.repeat(50)) + '\n' +
-      chalk.white(message) + '\n'
-    );
+    console.log('');
+    console.log(`${colors.accent(symbols.info)} ${typography.header(title)}`);
+    console.log('');
+    console.log(`  ${colors.primary(message)}`);
+    console.log('');
   }
 
   displaySuccess(message: string): void {
-    console.log(chalk.green(`${figures.tick} ${message}`));
+    console.log(typography.success(message));
   }
 
   displayWarning(message: string): void {
-    console.log(chalk.yellow(`${figures.warning} ${message}`));
+    console.log(typography.warning(message));
   }
 
   displayStep(step: number, total: number, description: string): void {
     console.log(
-      chalk.dim(`[${step}/${total}]`) + ' ' +
-      chalk.bold(description)
+      colors.secondaryDim(`[${step}/${total}]`) + ' ' +
+      colors.primary(description)
     );
   }
 
@@ -261,26 +213,19 @@ export class CLIInterface {
    */
   private getAgentIcon(agent: AgentType): string {
     const icons: Record<AgentType, string> = {
-      documentation: '📝',
-      playbook: '📋',
-      plan: '🗺️',
-      fill: '✨'
+      documentation: symbols.documentation,
+      playbook: symbols.playbook,
+      plan: symbols.plan,
+      fill: symbols.fill
     };
-    return icons[agent] || '🤖';
+    return icons[agent] || symbols.tool;
   }
 
   /**
-   * Get the icon for a tool
+   * Get the icon for a tool - consistent bullet for all tools
    */
-  private getToolIcon(toolName: string): string {
-    const icons: Record<string, string> = {
-      readFile: '📄',
-      listFiles: '📁',
-      analyzeSymbols: '🔍',
-      getFileStructure: '🌳',
-      searchCode: '🔎'
-    };
-    return icons[toolName] || '🔧';
+  private getToolIcon(_toolName: string): string {
+    return symbols.bullet;
   }
 
   /**
@@ -289,12 +234,10 @@ export class CLIInterface {
   displayAgentStart(event: AgentStartEvent): void {
     const icon = this.getAgentIcon(event.agent);
     const agentLabel = this.t(`agent.type.${event.agent}` as TranslationKey) || event.agent;
-    const targetInfo = event.target ? chalk.gray(` → ${event.target}`) : '';
+    const targetInfo = event.target ? colors.secondary(` ${symbols.pointer} ${event.target}`) : '';
 
     console.log(
-      chalk.cyan(`${icon} ${this.t('agent.starting' as TranslationKey)} `) +
-      chalk.bold.white(agentLabel) +
-      targetInfo
+      `${colors.accent(icon)} ${colors.primary(agentLabel)}${targetInfo}`
     );
   }
 
@@ -302,13 +245,10 @@ export class CLIInterface {
    * Display tool call event
    */
   displayToolCall(event: ToolCallEvent): void {
-    const icon = this.getToolIcon(event.toolName);
-    const argsStr = event.args ? chalk.gray(` (${this.formatToolArgs(event.args)})`) : '';
+    const argsStr = event.args ? colors.secondaryDim(` ${this.formatToolArgs(event.args)}`) : '';
 
     console.log(
-      chalk.dim('  │ ') +
-      chalk.yellow(`${icon} ${event.toolName}`) +
-      argsStr
+      typography.treeItem(`${event.toolName}${argsStr}`)
     );
   }
 
@@ -316,12 +256,13 @@ export class CLIInterface {
    * Display tool result event
    */
   displayToolResult(event: ToolResultEvent): void {
-    const statusIcon = event.success ? chalk.green(figures.tick) : chalk.red(figures.cross);
-    const summary = event.summary ? chalk.gray(` ${event.summary}`) : '';
+    const statusIcon = event.success
+      ? colors.success(symbols.success)
+      : colors.error(symbols.error);
+    const summary = event.summary ? colors.secondaryDim(` ${event.summary}`) : '';
 
     console.log(
-      chalk.dim('  │ ') +
-      `${statusIcon}${summary}`
+      typography.treeLastItem(`${statusIcon}${summary}`)
     );
   }
 
@@ -329,16 +270,14 @@ export class CLIInterface {
    * Display agent complete event
    */
   displayAgentComplete(event: AgentCompleteEvent): void {
-    const icon = this.getAgentIcon(event.agent);
     const toolsSummary = event.toolsUsed.length > 0
-      ? chalk.gray(` (${event.toolsUsed.join(', ')})`)
+      ? colors.secondaryDim(` (${event.toolsUsed.join(', ')})`)
       : '';
 
     console.log(
-      chalk.green(`${icon} ${this.t('agent.complete' as TranslationKey)} `) +
-      chalk.dim(`${event.steps} ${this.t('agent.steps' as TranslationKey)}`) +
-      toolsSummary
+      `${colors.success(symbols.success)} ${colors.secondary(`${event.steps} ${this.t('agent.steps' as TranslationKey)}`)}${toolsSummary}`
     );
+    console.log('');
   }
 
   /**

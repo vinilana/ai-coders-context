@@ -1,7 +1,8 @@
 import * as path from 'path';
 import * as fs from 'fs-extra';
-import chalk from 'chalk';
 import { glob } from 'glob';
+
+import { colors, symbols, typography } from '../../utils/theme';
 
 import type { CLIInterface } from '../../utils/cliUI';
 import type { TranslateFn } from '../../utils/i18n';
@@ -419,19 +420,25 @@ export class FillService {
     const skipped = results.filter(result => result.status === 'skipped').length;
     const failed = results.filter(result => result.status === 'failed');
 
-    console.log('\n' + chalk.bold('📄 LLM Fill Summary'));
-    console.log(chalk.gray('─'.repeat(50)));
-    console.log(`${chalk.blue('Updated files:')} ${chalk.white(updated.toString())}`);
-    console.log(`${chalk.blue('Skipped files:')} ${chalk.white(skipped.toString())}`);
-    console.log(`${chalk.blue('Failures:')} ${failed.length}`);
-    console.log(`${chalk.blue('Model:')} ${model}`);
+    console.log('');
+    console.log(typography.separator());
+    console.log(typography.header('LLM Fill Summary'));
+    console.log('');
+    console.log(typography.labeledValue('Updated', updated.toString()));
+    console.log(typography.labeledValue('Skipped', skipped.toString()));
+    console.log(typography.labeledValue('Failed', failed.length.toString()));
+    console.log(typography.labeledValue('Model', model));
 
     if (failed.length > 0) {
-      console.log(chalk.gray('─'.repeat(50)));
+      console.log('');
       failed.forEach(item => {
-        console.log(`${chalk.red('✖')} ${chalk.white(item.file)} — ${chalk.gray(item.message || 'Unknown error')}`);
+        console.log(`  ${colors.error(symbols.error)} ${colors.primary(item.file)}`);
+        if (item.message) {
+          console.log(`    ${colors.secondaryDim(item.message)}`);
+        }
       });
     }
+    console.log('');
   }
 
   private ensureTrailingNewline(content: string): string {

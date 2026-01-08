@@ -3,9 +3,9 @@
 import { Command } from 'commander';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
-import chalk from 'chalk';
 import inquirer from 'inquirer';
 
+import { colors } from './utils/theme';
 import { PlanGenerator } from './generators/plans/planGenerator';
 import { CLIInterface } from './utils/cliUI';
 import { checkForUpdates } from './utils/versionChecker';
@@ -192,7 +192,7 @@ program
       });
 
       ui.updateSpinner(t('spinner.plan.created'), 'success');
-      ui.displaySuccess(t('success.plan.createdAt', { path: chalk.cyan(result.relativePath) }));
+      ui.displaySuccess(t('success.plan.createdAt', { path: colors.accent(result.relativePath) }));
     } catch (error) {
       ui.updateSpinner(t('spinner.plan.creationFailed'), 'fail');
       ui.displayError(t('errors.plan.creationFailed'), error as Error);
@@ -731,7 +731,7 @@ async function runInteractivePlan(): Promise<void> {
     });
 
     ui.updateSpinner(t('spinner.plan.created'), 'success');
-    ui.displaySuccess(t('success.plan.createdAt', { path: chalk.cyan(result.relativePath) }));
+    ui.displaySuccess(t('success.plan.createdAt', { path: colors.accent(result.relativePath) }));
   } catch (error) {
     ui.updateSpinner(t('spinner.plan.creationFailed'), 'fail');
     ui.displayError(t('errors.plan.creationFailed'), error as Error);

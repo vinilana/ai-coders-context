@@ -1,7 +1,7 @@
 import * as path from 'path';
 import * as fs from 'fs-extra';
-import chalk from 'chalk';
 
+import { colors, symbols, typography } from '../../utils/theme';
 import type { CLIInterface } from '../../utils/cliUI';
 import type { TranslateFn } from '../../utils/i18n';
 import type {
@@ -200,22 +200,27 @@ export class SyncService {
   }
 
   private displayConfig(options: SyncOptions): void {
-    console.log(chalk.cyan('\n📋 Sync Configuration:'));
-    console.log(`  ${chalk.gray('Source:')} ${options.sourcePath}`);
-    console.log(`  ${chalk.gray('Mode:')} ${options.mode}`);
-    console.log(`  ${chalk.gray('Targets:')}`);
+    console.log('');
+    console.log(typography.header('Sync Configuration'));
+    console.log('');
+    console.log(typography.labeledValue('Source', options.sourcePath));
+    console.log(typography.labeledValue('Mode', options.mode));
+    console.log(`  ${colors.secondary('Targets')}`);
     options.targetPaths.forEach(t => {
-      console.log(`    - ${t}`);
+      console.log(`    ${colors.secondaryDim(symbols.pointer)} ${colors.primary(t)}`);
     });
     if (options.dryRun) {
-      console.log(chalk.yellow('  [DRY RUN - No changes will be made]'));
+      console.log('');
+      console.log(typography.warning('DRY RUN - No changes will be made'));
     }
     console.log('');
   }
 
   private displaySummary(results: SyncResult[], dryRun: boolean): void {
-    console.log('\n' + chalk.bold('📊 Sync Summary'));
-    console.log(chalk.gray('─'.repeat(50)));
+    console.log('');
+    console.log(typography.separator());
+    console.log(typography.header('Sync Summary'));
+    console.log('');
 
     let totalCreated = 0;
     let totalSkipped = 0;
@@ -226,23 +231,26 @@ export class SyncService {
       totalSkipped += result.filesSkipped;
       totalFailed += result.filesFailed;
 
-      const status = result.filesFailed > 0 ? chalk.red('✖') : chalk.green('✔');
+      const status = result.filesFailed > 0
+        ? colors.error(symbols.error)
+        : colors.success(symbols.success);
 
-      console.log(`${status} ${result.targetPath}`);
+      console.log(`${status} ${colors.primary(result.targetPath)}`);
       console.log(
-        `    Created: ${result.filesCreated}, Skipped: ${result.filesSkipped}, Failed: ${result.filesFailed}`
+        `    ${colors.secondary(`Created: ${result.filesCreated}, Skipped: ${result.filesSkipped}, Failed: ${result.filesFailed}`)}`
       );
 
       if (result.errors.length > 0) {
         result.errors.forEach(err => {
-          console.log(`    ${chalk.red('Error:')} ${err.file} - ${err.error}`);
+          console.log(`    ${colors.error(symbols.error)} ${colors.secondaryDim(`${err.file} - ${err.error}`)}`);
         });
       }
     }
 
-    console.log(chalk.gray('─'.repeat(50)));
-    console.log(`${chalk.blue('Total created:')} ${totalCreated}${dryRun ? ' (dry run)' : ''}`);
-    console.log(`${chalk.blue('Total skipped:')} ${totalSkipped}`);
-    console.log(`${chalk.blue('Total failed:')} ${totalFailed}`);
+    console.log('');
+    console.log(typography.labeledValue('Created', `${totalCreated}${dryRun ? ' (dry run)' : ''}`));
+    console.log(typography.labeledValue('Skipped', totalSkipped.toString()));
+    console.log(typography.labeledValue('Failed', totalFailed.toString()));
+    console.log('');
   }
 }

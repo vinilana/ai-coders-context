@@ -1,7 +1,7 @@
 import * as path from 'path';
 import * as fs from 'fs-extra';
-import chalk from 'chalk';
 
+import { colors, symbols, typography } from '../../utils/theme';
 import type { CLIInterface } from '../../utils/cliUI';
 import type { TranslateFn } from '../../utils/i18n';
 import { PlanGenerator } from '../../generators/plans/planGenerator';
@@ -204,9 +204,9 @@ export class PlanService {
       } else if (rawOptions.dryRun) {
         console.log(''); // Spacing after agent output
         this.ui.displayInfo(this.t('spinner.planFill.dryRun'), '');
-        console.log(chalk.gray(`\n${this.t('messages.fill.previewStart')}`));
+        console.log(colors.secondaryDim(`\n${this.t('messages.fill.previewStart')}`));
         console.log(updatedContent.trim());
-        console.log(chalk.gray(`${this.t('messages.fill.previewEnd')}\n`));
+        console.log(colors.secondaryDim(`${this.t('messages.fill.previewEnd')}\n`));
         results.push({ file: planRelativePath, status: 'skipped', message: 'dry-run' });
       } else {
         await fs.writeFile(planPath, this.ensureTrailingNewline(updatedContent));
@@ -411,18 +411,24 @@ export class PlanService {
     const skipped = results.filter(result => result.status === 'skipped').length;
     const failed = results.filter(result => result.status === 'failed');
 
-    console.log('\n' + chalk.bold('🗺️ Plan Fill Summary'));
-    console.log(chalk.gray('─'.repeat(50)));
-    console.log(`${chalk.blue('Updated plans:')} ${chalk.white(updated.toString())}`);
-    console.log(`${chalk.blue('Skipped plans:')} ${chalk.white(skipped.toString())}${dryRun ? chalk.gray(' (dry run)') : ''}`);
-    console.log(`${chalk.blue('Failures:')} ${failed.length}`);
-    console.log(`${chalk.blue('Model:')} ${model}`);
+    console.log('');
+    console.log(typography.separator());
+    console.log(typography.header('Plan Fill Summary'));
+    console.log('');
+    console.log(typography.labeledValue('Updated', updated.toString()));
+    console.log(typography.labeledValue('Skipped', `${skipped}${dryRun ? ' (dry run)' : ''}`));
+    console.log(typography.labeledValue('Failed', failed.length.toString()));
+    console.log(typography.labeledValue('Model', model));
 
     if (failed.length > 0) {
-      console.log(chalk.gray('─'.repeat(50)));
+      console.log('');
       failed.forEach(item => {
-        console.log(`${chalk.red('✖')} ${chalk.white(item.file)} — ${chalk.gray(item.message || 'Unknown error')}`);
+        console.log(`  ${colors.error(symbols.error)} ${colors.primary(item.file)}`);
+        if (item.message) {
+          console.log(`    ${colors.secondaryDim(item.message)}`);
+        }
       });
     }
+    console.log('');
   }
 }

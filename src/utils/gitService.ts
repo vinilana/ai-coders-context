@@ -1,7 +1,8 @@
 import { execSync } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs-extra';
-import chalk from 'chalk';
+
+import { colors, symbols, typography } from './theme';
 
 export interface GitChanges {
   added: string[];
@@ -427,37 +428,38 @@ export class GitService {
   displayCommitTrackingInfo(verbose: boolean = false): void {
     const lastProcessed = this.getLastProcessedCommit();
     const current = this.getCurrentCommit();
-    
+
     if (verbose) {
-      console.log(chalk.bold('\n🔍 Commit Tracking Information:'));
-      console.log(chalk.gray('─'.repeat(50)));
-      
+      console.log('');
+      console.log(typography.header('Commit Tracking'));
+      console.log(typography.separator());
+
       if (lastProcessed) {
         const lastInfo = this.getCommitInfo(lastProcessed);
         if (lastInfo) {
-          console.log(`${chalk.green('Last documented:')} ${lastInfo.shortHash} - ${lastInfo.message}`);
-          console.log(`${chalk.gray('                  ')} ${lastInfo.date}`);
+          console.log(typography.labeledValue('Last documented', `${lastInfo.shortHash} - ${lastInfo.message}`));
+          console.log(`                  ${colors.secondaryDim(lastInfo.date)}`);
         } else {
-          console.log(`${chalk.yellow('Last documented:')} ${lastProcessed.substring(0, 8)} (commit no longer exists)`);
+          console.log(typography.labeledValue('Last documented', `${lastProcessed.substring(0, 8)} (commit no longer exists)`));
         }
       } else {
-        console.log(`${chalk.yellow('Last documented:')} None (first run)`);
+        console.log(typography.labeledValue('Last documented', 'None (first run)'));
       }
-      
+
       const currentInfo = this.getCommitInfo(current);
       if (currentInfo) {
-        console.log(`${chalk.blue('Current commit: ')} ${currentInfo.shortHash} - ${currentInfo.message}`);
-        console.log(`${chalk.gray('                  ')} ${currentInfo.date}`);
+        console.log(typography.labeledValue('Current commit', `${currentInfo.shortHash} - ${currentInfo.message}`));
+        console.log(`                  ${colors.secondaryDim(currentInfo.date)}`);
       }
-      
+
       if (lastProcessed && lastProcessed !== current) {
         const commitsBetween = this.getCommitsBetween(lastProcessed, current);
         if (commitsBetween.length > 0) {
-          console.log(`${chalk.cyan('Commits to process:')} ${commitsBetween.length}`);
+          console.log(typography.labeledValue('Commits to process', commitsBetween.length.toString()));
         }
       }
-      
-      console.log(chalk.gray('─'.repeat(50)));
+
+      console.log(typography.separator());
     }
   }
 
