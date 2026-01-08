@@ -35,8 +35,7 @@ import {
   SearchCodeInputSchema
 } from '../ai/schemas';
 import { type ZodType, type ZodObject, type ZodRawShape } from 'zod';
-
-const VERSION = '0.4.0';
+import { VERSION } from '../../version';
 
 /**
  * Convert a Zod schema to a simplified JSON schema representation

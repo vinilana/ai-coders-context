@@ -142,10 +142,11 @@ export class TreeSitterLayer {
         case 'import_statement':
           imports.push(this.extractImportFromTree(currentNode));
           break;
-        case 'export_statement':
+        case 'export_statement': {
           const exportInfo = this.extractExportFromTree(currentNode);
           if (exportInfo) exports.push(exportInfo);
           break;
+        }
       }
 
       if (cursor.gotoFirstChild()) {

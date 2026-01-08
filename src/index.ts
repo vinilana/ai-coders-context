@@ -28,6 +28,7 @@ import {
   displayConfigSummary,
   type ConfigSummary
 } from './utils/prompts';
+import { VERSION, PACKAGE_NAME } from './version';
 
 dotenv.config();
 
@@ -43,8 +44,6 @@ const localeLabelKeys: Record<Locale, TranslationKey> = {
 
 const program = new Command();
 const ui = new CLIInterface(t);
-const VERSION = '0.4.0';
-const PACKAGE_NAME = '@ai-coders/context';
 const DEFAULT_MODEL = 'gemini-3-flash-preview';	
 
 const initService = new InitService({
@@ -864,14 +863,11 @@ async function runInteractiveSync(): Promise<void> {
     sourcePath = answers.sourcePath;
     target = [answers.customPath];
   } else if (quickTarget === 'common') {
-    // Common: Claude + GitHub
-    preset = 'all';
-    // For 'common', we'll sync to claude and github only
+    // Common: Claude + GitHub - use explicit target paths instead of preset
     target = [
       path.resolve(defaults.repoPath, '.claude/agents'),
       path.resolve(defaults.repoPath, '.github/agents')
     ];
-    preset = undefined; // Use target instead
   } else {
     preset = quickTarget;
   }

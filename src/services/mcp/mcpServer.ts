@@ -20,8 +20,7 @@ import {
   fillScaffoldingTool
 } from '../ai/tools';
 import { SemanticContextBuilder, type ContextFormat } from '../semantic/contextBuilder';
-
-const VERSION = '0.4.0';
+import { VERSION } from '../../version';
 
 export interface MCPServerOptions {
   /** Default repository path for tools */
