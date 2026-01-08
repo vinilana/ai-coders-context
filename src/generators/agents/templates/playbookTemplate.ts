@@ -1,12 +1,40 @@
 import { AGENT_RESPONSIBILITIES, AGENT_BEST_PRACTICES } from '../agentConfig';
 import { AgentType } from '../agentTypes';
 import { formatDirectoryList } from '../../shared/directoryTemplateHelpers';
-import { DocTouchpoint } from './types';
+import { DocTouchpoint, KeySymbolInfo, AgentTemplateContext } from './types';
+import { SemanticContext } from '../../../services/semantic';
+import * as path from 'path';
+
+function renderKeySymbols(symbols?: KeySymbolInfo[]): string {
+  if (!symbols || symbols.length === 0) {
+    return '- *Run with `--semantic` flag to discover relevant symbols.*';
+  }
+
+  return symbols
+    .slice(0, 10)
+    .map(s => `- \`${s.name}\` (${s.kind}) — ${path.basename(s.file)}:${s.line}`)
+    .join('\n');
+}
+
+function renderArchitectureLayers(semantics?: SemanticContext): string {
+  if (!semantics || !semantics.architecture.layers.length) {
+    return '';
+  }
+
+  const lines = ['## Architecture Context', ''];
+  for (const layer of semantics.architecture.layers.slice(0, 5)) {
+    const symbolCount = layer.symbols.length;
+    lines.push(`- **${layer.name}**: ${layer.description} (${symbolCount} symbols)`);
+  }
+  return lines.join('\n') + '\n';
+}
 
 export function renderAgentPlaybook(
   agentType: AgentType,
   topLevelDirectories: string[],
-  touchpoints: DocTouchpoint[]
+  touchpoints: DocTouchpoint[],
+  semantics?: SemanticContext,
+  relevantSymbols?: KeySymbolInfo[]
 ): string {
   const title = formatTitle(agentType);
   const responsibilities = AGENT_RESPONSIBILITIES[agentType] || ['Clarify this agent\'s responsibilities.'];
@@ -17,6 +45,9 @@ export function renderAgentPlaybook(
   const touchpointList = touchpoints
     .map(tp => `- [${tp.title}](${tp.path}) — ${tp.marker}`)
     .join('\n');
+
+  const keySymbolsSection = renderKeySymbols(relevantSymbols);
+  const architectureSection = renderArchitectureLayers(semantics);
 
   return `<!-- agent-update:start:${markerId} -->
 # ${title} Agent Playbook
@@ -38,6 +69,9 @@ ${formatList(bestPractices)}
 
 ## Repository Starting Points
 ${directoryList || '- Add directory highlights relevant to this agent.'}
+
+${architectureSection}## Key Symbols for This Agent
+${keySymbolsSection}
 
 ## Documentation Touchpoints
 ${touchpointList}

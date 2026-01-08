@@ -1,4 +1,5 @@
 import { RepoStructure } from '../../../types';
+import { SemanticContext } from '../../../services/semantic';
 
 export interface GuideMeta {
   key: string;
@@ -19,4 +20,5 @@ export interface DocumentationTemplateContext {
   primaryLanguages: Array<{ extension: string; count: number }>;
   directoryStats: DirectoryStat[];
   guides: GuideMeta[];
+  semantics?: SemanticContext;
 }

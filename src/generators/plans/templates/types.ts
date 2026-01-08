@@ -1,10 +1,19 @@
 import { AgentType } from '../../agents/agentTypes';
 import { GuideMeta } from '../../documentation/templates/types';
+import { SemanticContext } from '../../../services/semantic';
 
 export interface PlanAgentSummary {
   type: AgentType;
   title: string;
   responsibility: string;
+}
+
+export interface CodebaseSnapshot {
+  totalFiles: number;
+  totalSymbols: number;
+  layers: string[];
+  patterns: string[];
+  entryPoints: string[];
 }
 
 export interface PlanTemplateContext {
@@ -13,6 +22,8 @@ export interface PlanTemplateContext {
   summary?: string;
   agents: PlanAgentSummary[];
   docs: GuideMeta[];
+  semantics?: SemanticContext;
+  codebaseSnapshot?: CodebaseSnapshot;
 }
 
 export interface PlanIndexEntry {

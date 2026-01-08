@@ -1,7 +1,65 @@
-import { PlanTemplateContext } from './types';
+import { PlanTemplateContext, CodebaseSnapshot } from './types';
+import { SemanticContext } from '../../../services/semantic';
+
+function renderCodebaseSnapshot(snapshot?: CodebaseSnapshot): string {
+  if (!snapshot) {
+    return `- **Codebase analysis:** *Run with \`--semantic\` flag for codebase insights.*`;
+  }
+
+  const lines = [
+    `- **Total files analyzed:** ${snapshot.totalFiles}`,
+    `- **Total symbols discovered:** ${snapshot.totalSymbols}`
+  ];
+
+  if (snapshot.layers.length > 0) {
+    lines.push(`- **Architecture layers:** ${snapshot.layers.join(', ')}`);
+  }
+
+  if (snapshot.patterns.length > 0) {
+    lines.push(`- **Detected patterns:** ${snapshot.patterns.join(', ')}`);
+  }
+
+  if (snapshot.entryPoints.length > 0) {
+    lines.push(`- **Entry points:** ${snapshot.entryPoints.slice(0, 3).join(', ')}${snapshot.entryPoints.length > 3 ? ` (+${snapshot.entryPoints.length - 3} more)` : ''}`);
+  }
+
+  return lines.join('\n');
+}
+
+function renderKeyComponents(semantics?: SemanticContext): string {
+  if (!semantics) {
+    return '';
+  }
+
+  const { symbols } = semantics;
+  const keyClasses = symbols.classes.filter(s => s.exported).slice(0, 5);
+  const keyInterfaces = symbols.interfaces.filter(s => s.exported).slice(0, 5);
+
+  if (keyClasses.length === 0 && keyInterfaces.length === 0) {
+    return '';
+  }
+
+  const lines = ['### Key Components'];
+
+  if (keyClasses.length > 0) {
+    lines.push('**Core Classes:**');
+    keyClasses.forEach(cls => {
+      lines.push(`- \`${cls.name}\` — ${cls.location.file}:${cls.location.line}`);
+    });
+  }
+
+  if (keyInterfaces.length > 0) {
+    lines.push('', '**Key Interfaces:**');
+    keyInterfaces.forEach(iface => {
+      lines.push(`- \`${iface.name}\` — ${iface.location.file}:${iface.location.line}`);
+    });
+  }
+
+  return lines.join('\n') + '\n';
+}
 
 export function renderPlanTemplate(context: PlanTemplateContext): string {
-  const { title, slug, summary, agents, docs } = context;
+  const { title, slug, summary, agents, docs, semantics, codebaseSnapshot } = context;
 
   const relatedAgents = agents.length
     ? agents.map(agent => `  - "${agent.type}"`).join('\n')
@@ -47,7 +105,10 @@ ${relatedAgents}
   - [Agent Handbook](../agents/README.md)
   - [Plans Index](./README.md)
 
-## Agent Lineup
+## Codebase Context
+${renderCodebaseSnapshot(codebaseSnapshot)}
+
+${renderKeyComponents(semantics)}## Agent Lineup
 | Agent | Role in this plan | Playbook | First responsibility focus |
 | --- | --- | --- | --- |
 ${agentTableRows}

@@ -90,6 +90,7 @@ program
   .option('--exclude <patterns...>', t('commands.init.options.exclude'))
   .option('--include <patterns...>', t('commands.init.options.include'))
   .option('-v, --verbose', t('commands.init.options.verbose'))
+  .option('--semantic', t('commands.init.options.semantic'))
   .action(async (repoPath: string, type: string, options: any) => {
     try {
       await initService.run(repoPath, type, options);
@@ -141,6 +142,7 @@ program
   .option('--include <patterns...>', t('commands.plan.options.include'))
   .option('--exclude <patterns...>', t('commands.plan.options.exclude'))
   .option('-v, --verbose', t('commands.plan.options.verbose'))
+  .option('--semantic', t('commands.plan.options.semantic'))
   .action(async (planName: string, rawOptions: any) => {
     const outputDir = path.resolve(rawOptions.output || './.context');
 
@@ -172,7 +174,9 @@ program
         title: rawOptions.title,
         summary: rawOptions.summary,
         force: Boolean(rawOptions.force),
-        verbose: Boolean(rawOptions.verbose)
+        verbose: Boolean(rawOptions.verbose),
+        semantic: Boolean(rawOptions.semantic),
+        projectPath: rawOptions.repo ? path.resolve(rawOptions.repo) : path.resolve(rawOptions.output || './.context', '..')
       });
 
       ui.updateSpinner(t('spinner.plan.created'), 'success');

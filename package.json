@@ -20,6 +20,8 @@
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
     "test": "jest",
+    "test:semantic": "tsx src/index.ts init . --semantic -o .context-test -v",
+    "test:plan-semantic": "tsx src/index.ts plan test-plan --semantic -r . -o .context-test -v -f",
     "prepublishOnly": "npm run build",
     "version": "npm run build",
     "release": "npm version patch && npm publish --access public",
@@ -71,5 +73,9 @@
     "ts-jest": "^29.4.4",
     "tsx": "^4.20.6",
     "typescript": "^5.9.2"
+  },
+  "optionalDependencies": {
+    "tree-sitter": "^0.21.0",
+    "tree-sitter-typescript": "^0.23.2"
   }
 }

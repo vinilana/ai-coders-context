@@ -17,6 +17,7 @@ export interface InitCommandFlags {
   verbose?: boolean;
   docsOnly?: boolean;
   agentsOnly?: boolean;
+  semantic?: boolean;
 }
 
 export interface InitServiceDependencies {
@@ -36,6 +37,7 @@ interface InitOptions {
   verbose: boolean;
   scaffoldDocs: boolean;
   scaffoldAgents: boolean;
+  semantic: boolean;
 }
 
 export class InitService {
@@ -65,7 +67,8 @@ export class InitService {
       exclude: rawOptions.exclude || [],
       verbose: Boolean(rawOptions.verbose),
       scaffoldDocs: resolvedType === 'docs' || resolvedType === 'both',
-      scaffoldAgents: resolvedType === 'agents' || resolvedType === 'both'
+      scaffoldAgents: resolvedType === 'agents' || resolvedType === 'both',
+      semantic: Boolean(rawOptions.semantic)
     };
 
     if (!options.scaffoldDocs && !options.scaffoldAgents) {
@@ -152,11 +155,14 @@ export class InitService {
 
     if (options.scaffoldDocs) {
       this.ui.displayStep(2, 3, this.t('steps.init.docs'));
-      this.ui.startSpinner(this.t('spinner.docs.creating'));
+      this.ui.startSpinner(options.semantic
+        ? this.t('spinner.docs.creatingWithSemantic')
+        : this.t('spinner.docs.creating')
+      );
       docsGenerated = await this.documentationGenerator.generateDocumentation(
         repoStructure,
         options.outputDir,
-        undefined,
+        { semantic: options.semantic },
         options.verbose
       );
       this.ui.updateSpinner(this.t('spinner.docs.created', { count: docsGenerated }), 'success');
@@ -164,11 +170,14 @@ export class InitService {
 
     if (options.scaffoldAgents) {
       this.ui.displayStep(3, options.scaffoldDocs ? 3 : 2, this.t('steps.init.agents'));
-      this.ui.startSpinner(this.t('spinner.agents.creating'));
+      this.ui.startSpinner(options.semantic
+        ? this.t('spinner.agents.creatingWithSemantic')
+        : this.t('spinner.agents.creating')
+      );
       agentsGenerated = await this.agentGenerator.generateAgentPrompts(
         repoStructure,
         options.outputDir,
-        undefined,
+        { semantic: options.semantic },
         options.verbose
       );
       this.ui.updateSpinner(this.t('spinner.agents.created', { count: agentsGenerated }), 'success');
