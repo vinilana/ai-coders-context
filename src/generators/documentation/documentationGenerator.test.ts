@@ -75,7 +75,7 @@ describe('DocumentationGenerator', () => {
     }
   });
 
-  it('generates all guides with agent-update markers by default', async () => {
+  it('generates all guides by default', async () => {
     const repoStructure = createRepoStructure(path.join(tempDir, 'repo'));
 
     const created = await generator.generateDocumentation(repoStructure, outputDir);
@@ -88,11 +88,9 @@ describe('DocumentationGenerator', () => {
     expect(files).toEqual(expectedFiles);
 
     const indexContent = await fs.readFile(path.join(docsDir, 'README.md'), 'utf8');
-    expect(indexContent).toContain('<!-- agent-update:start:docs-index -->');
     expect(indexContent).toContain('# Documentation Index');
 
     const overviewContent = await fs.readFile(path.join(docsDir, 'project-overview.md'), 'utf8');
-    expect(overviewContent).toContain('<!-- agent-update:start:project-overview -->');
     expect(overviewContent).toContain('# Project Overview');
     expect(overviewContent).toContain('Root path:');
   });

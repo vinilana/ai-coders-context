@@ -1,9 +1,5 @@
-
 export function renderTroubleshooting(): string {
-
-  return `
-<!-- agent-update:start:troubleshooting-guide -->
-# Troubleshooting Guide
+  return `# Troubleshooting Guide
 
 **Purpose:** Enable AI agents to diagnose and resolve issues using automated diagnostics and decision trees.
 
@@ -266,25 +262,5 @@ EOF
 
 echo "Escalation created. Agent awaiting human intervention."
 \`\`\`
-
-<!-- agent-readonly:guidance -->
-## AI Update Checklist
-1. Review recent incident reports and add new common issues
-2. Update diagnostic commands to match current tooling
-3. Verify contact information and escalation paths are current
-4. Add workarounds for newly discovered issues
-5. Update log locations and monitoring tool links
-6. Validate that debugging workflows match current setup
-7. Add new error patterns from support tickets
-
-<!-- agent-readonly:sources -->
-## Acceptable Sources
-- Post-mortem and incident reports
-- Support ticket patterns and resolutions
-- Production logs and error tracking systems
-- Team knowledge base and runbooks
-- Infrastructure and monitoring configurations
-
-<!-- agent-update:end -->
 `;
 }

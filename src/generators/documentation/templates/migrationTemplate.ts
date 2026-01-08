@@ -1,9 +1,5 @@
-
 export function renderMigration(): string {
-
-  return `
-<!-- agent-update:start:migration-guide -->
-# Migration Guide
+  return `# Migration Guide
 
 Complete guide for upgrading between versions, handling breaking changes, and migrating data.
 
@@ -396,25 +392,5 @@ When reporting migration problems, include:
 3. Migration log output
 4. Database type and version
 5. Steps to reproduce
-
-<!-- agent-readonly:guidance -->
-## AI Update Checklist
-1. Update version numbers and release dates when new versions are published
-2. Document new breaking changes with clear before/after examples
-3. Add migration paths for each new major version
-4. Update deprecation timeline as features are removed
-5. Include actual migration scripts and examples from the codebase
-6. Verify rollback procedures are tested and accurate
-7. Update system requirements for new versions
-
-<!-- agent-readonly:sources -->
-## Acceptable Sources
-- CHANGELOG.md and release notes
-- Migration scripts in migrations/ or db/migrate/ directory
-- Upgrade guides from official documentation
-- Post-mortem reports from previous migrations
-- Breaking changes documented in commit messages or PRs
-
-<!-- agent-update:end -->
 `;
 }

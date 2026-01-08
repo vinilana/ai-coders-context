@@ -1,9 +1,5 @@
-
 export function renderTestingStrategy(): string {
-
-  return `
-<!-- agent-update:start:testing-strategy -->
-# Testing Strategy
+  return `# Testing Strategy
 
 Document how quality is maintained across the codebase.
 
@@ -23,21 +19,5 @@ Document how quality is maintained across the codebase.
 
 ## Troubleshooting
 - Document flaky suites, long-running tests, or environment quirks.
-
-<!-- agent-readonly:guidance -->
-## AI Update Checklist
-1. Review test scripts and CI workflows to confirm command accuracy.
-2. Update Quality Gates with current thresholds (coverage %, lint rules, required checks).
-3. Document new test categories or suites introduced since the last update.
-4. Record known flaky areas and link to open issues for visibility.
-5. Confirm troubleshooting steps remain valid with current tooling.
-
-<!-- agent-readonly:sources -->
-## Acceptable Sources
-- \`package.json\` scripts and testing configuration files.
-- CI job definitions (GitHub Actions, CircleCI, etc.).
-- Issue tracker items labelled “testing” or “flaky” with maintainer confirmation.
-
-<!-- agent-update:end -->
 `;
 }

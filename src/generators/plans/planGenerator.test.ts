@@ -37,9 +37,8 @@ describe('PlanGenerator', () => {
     expect(await fs.pathExists(planPath)).toBe(true);
 
     const content = await fs.readFile(planPath, 'utf8');
-    expect(content).toContain('id: plan-new-initiative');
-    expect(content).toContain('<!-- agent-update:start:plan-new-initiative -->');
     expect(content).toContain('# New Initiative Plan');
+    expect(content).toContain('## Task Snapshot');
     expect(content).toContain('## Working Phases');
     expect(content).toContain('**Commit Checkpoint**');
 
@@ -59,8 +58,6 @@ describe('PlanGenerator', () => {
     const planPath = path.join(outputDir, 'plans', 'release-readiness.md');
     const content = await fs.readFile(planPath, 'utf8');
 
-    expect(content).toContain('related_agents:');
-    expect(content).toContain('  - "test-writer"');
     expect(content).toContain('[Test Writer](../agents/test-writer.md)');
     expect(content).toContain('[testing-strategy.md](../docs/testing-strategy.md)');
 

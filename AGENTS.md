@@ -12,19 +12,8 @@ The project relies on strict TypeScript; keep new files inside `src` and leave c
 ## Testing Guidelines
 Place Jest specs alongside the files they cover with the `*.test.ts` suffix. Validate CLI behaviours against the compiled binary (`dist/index.js`) to mirror how end-users invoke the tool. Run `npm run build && npm run test` before sending a PR, and include `npm run test -- --coverage` when you touch critical flows or generators.
 
-## Documentation Markers & AI Tags
-Scaffolded guides now include:
-- YAML front matter describing the AI task (`id`, `ai_update_goal`, `required_inputs`, `success_criteria`).
-- Update wrappers such as `<!-- agent-update:start:project-overview -->` ... `<!-- agent-update:end -->` that bound sections an agent may rewrite.
-- Placeholders like `<!-- agent-fill:directory-src -->` signalling content that still needs human-provided context.
-- Guard rails such as `<!-- agent-readonly:guidance -->` marking sections that should remain instructional unless a maintainer says otherwise.
-
-When editing docs or adding new ones, preserve existing markers and introduce new ones where agents should focus future updates. Reference these markers from agent playbooks when you create specialised workflows.
-
-### LLM-assisted Updates
-- Use `ai-context fill <repo>` to apply the shared prompt (`prompts/update_scaffold_prompt.md`) across the scaffold.
-- Use a small `--limit` while validating new instructions.
-- Always review the generated Markdown before committing; adjust the prompt if the model misinterprets success criteria.
+## LLM-assisted Updates
+Use `ai-context fill <repo>` to apply the shared prompt (`prompts/update_scaffold_prompt.md`) across the scaffold. Use a small `--limit` while validating new instructions. Always review the generated Markdown before committing.
 
 ## Commit & Pull Request Guidelines
 Stick to Conventional Commits (`feat(scaffolding): ...`, `fix(cli): ...`, `chore:`). Keep messages imperative and scope names aligned with folder structure. In pull requests, describe the user impact, link related issues, and attach sample output from the new scaffolds (`docs/README.md`, `agents/README.md`) whenever behaviour changes. Confirm CI status and call out any manual follow-up for reviewers.

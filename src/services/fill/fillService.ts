@@ -265,14 +265,12 @@ export class FillService {
 
   private buildUserPrompt(relativePath: string, currentContent: string, contextSummary: string, isAgent: boolean): string {
     const guidance: string[] = [
-      '- Preserve YAML front matter and existing `agent-update` sections.',
-      '- Replace TODOs and resolve `agent-fill` placeholders with concrete information.',
-      '- Ensure success criteria in the front matter are satisfied.',
+      '- Replace TODOs with concrete information based on the repository context.',
       '- Return only the full updated Markdown for this file.'
     ];
 
     if (isAgent) {
-      guidance.push('- Keep agent responsibilities, best practices, and documentation touchpoints aligned with the latest docs.');
+      guidance.push('- Keep agent responsibilities and best practices aligned with the latest docs.');
     } else {
       guidance.push('- Maintain accurate cross-links between docs and referenced resources.');
     }

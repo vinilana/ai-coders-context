@@ -17,23 +17,15 @@ interface AgentGenerationConfig {
   semantic?: boolean;
 }
 
-interface DocTouchpoint {
-  title: string;
-  path: string;
-  marker: string;
-}
-
 export class AgentGenerator {
-  private readonly docTouchpoints: DocTouchpoint[] = [
+  private readonly docTouchpoints = [
     {
       title: 'Documentation Index',
-      path: '../docs/README.md',
-      marker: 'agent-update:docs-index'
+      path: '../docs/README.md'
     },
     ...DOCUMENT_GUIDES.map(guide => ({
       title: guide.title,
-      path: `../docs/${guide.file}`,
-      marker: guide.marker
+      path: `../docs/${guide.file}`
     }))
   ];
 

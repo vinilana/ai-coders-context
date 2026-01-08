@@ -4,7 +4,6 @@ import { SemanticContext } from '../../../services/semantic';
 export interface DocTouchpoint {
   title: string;
   path: string;
-  marker: string;
 }
 
 export interface KeySymbolInfo {
