@@ -7,7 +7,11 @@ import { DocumentationGenerator } from '../../../generators/documentation/docume
 import { AgentGenerator } from '../../../generators/agents/agentGenerator';
 
 export const initializeContextTool = tool({
-  description: 'Initialize .context scaffolding (create docs/agents directories and files)',
+  description: `Initialize .context scaffolding and create template files.
+IMPORTANT: After scaffolding, you MUST fill the generated files with actual content by:
+1. Use buildSemanticContext to understand the codebase
+2. Read each generated template file
+3. Write filled content to each file based on the codebase analysis`,
   inputSchema: InitializeContextInputSchema,
   execute: async (input: InitializeContextInput) => {
     const {
@@ -69,11 +73,30 @@ export const initializeContextTool = tool({
         );
       }
 
+      // Build list of generated files for the agent to fill
+      const generatedFiles: string[] = [];
+      if (scaffoldDocs) {
+        const docsDir = path.join(outputDir, 'docs');
+        const docFiles = await fs.readdir(docsDir);
+        generatedFiles.push(...docFiles.map(f => path.join(docsDir, f)));
+      }
+      if (scaffoldAgents) {
+        const agentsDir = path.join(outputDir, 'agents');
+        const agentFiles = await fs.readdir(agentsDir);
+        generatedFiles.push(...agentFiles.map(f => path.join(agentsDir, f)));
+      }
+
       return {
         success: true,
         docsGenerated,
         agentsGenerated,
-        outputDir
+        outputDir,
+        generatedFiles,
+        nextSteps: [
+          'Call fillScaffolding tool to get codebase-aware content for each file',
+          'Write the suggestedContent to each file path returned',
+          'Focus on architecture.md, project-overview.md, and agent playbooks first'
+        ]
       };
     } catch (error) {
       return {

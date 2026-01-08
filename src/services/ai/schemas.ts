@@ -242,7 +242,7 @@ export const InitializeContextInputSchema = z.object({
     .describe('Type of scaffolding to create'),
   outputDir: z.string().optional().describe('Output directory (default: ./.context)'),
   semantic: z.boolean().default(true).optional()
-    .describe('Enable semantic analysis'),
+    .describe('Enable semantic analysis for richer templates'),
   include: z.array(z.string()).optional().describe('Include patterns'),
   exclude: z.array(z.string()).optional().describe('Exclude patterns')
 });
@@ -252,6 +252,8 @@ export const InitializeContextOutputSchema = z.object({
   docsGenerated: z.number().optional(),
   agentsGenerated: z.number().optional(),
   outputDir: z.string(),
+  generatedFiles: z.array(z.string()).optional().describe('List of generated template files that need to be filled'),
+  nextSteps: z.array(z.string()).optional().describe('Instructions for the AI agent to fill the templates'),
   error: z.string().optional()
 });
 

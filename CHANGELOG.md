@@ -10,14 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **MCP Server**: New `mcp` command for Claude Code integration via Model Context Protocol
-  - Exposes 9 code analysis tools: `readFile`, `listFiles`, `analyzeSymbols`, `getFileStructure`, `searchCode`, `buildSemanticContext`, `checkScaffolding`, `initializeContext`, `scaffoldPlan`
+  - Exposes 10 code analysis tools: `readFile`, `listFiles`, `analyzeSymbols`, `getFileStructure`, `searchCode`, `buildSemanticContext`, `checkScaffolding`, `initializeContext`, `fillScaffolding`, `scaffoldPlan`
   - Exposes 2 resource templates: `context://codebase/{contextType}` for semantic context, `file://{path}` for file contents
   - Uses stdio transport for seamless Claude Code integration
   - Configure in `~/.claude/settings.json` with `npx @ai-coders/context mcp`
 
 - **MCP Scaffolding Tools**: New tools for AI agents to manage `.context` scaffolding
   - `checkScaffolding` - Check if scaffolding exists with granular status (docs, agents, plans separately)
-  - `initializeContext` - Initialize `.context` scaffolding non-interactively (supports type, semantic analysis, include/exclude patterns)
+  - `initializeContext` - Initialize `.context` scaffolding with template files
+  - `fillScaffolding` - Analyze codebase and generate content for each template (AI agent writes the suggestedContent to each file)
   - `scaffoldPlan` - Create plan templates in `.context/plans/` with optional semantic analysis
 
 - **Passthrough Server**: New `serve` command for external AI agent integration

@@ -249,7 +249,8 @@ Options:
 - `searchCode` - Search for code patterns using regex
 - `buildSemanticContext` - Build optimized semantic context for LLM prompts
 - `checkScaffolding` - Check if `.context` scaffolding exists (returns granular status for docs, agents, plans)
-- `initializeContext` - Initialize `.context` scaffolding (create docs/agents directories and files)
+- `initializeContext` - Initialize `.context` scaffolding (create template files)
+- `fillScaffolding` - Analyze codebase and generate content for each template file (AI agent writes the content)
 - `scaffoldPlan` - Create a plan template in `.context/plans/`
 
 **Available MCP Resources:**
@@ -302,7 +303,8 @@ Once configured, Claude Code will have access to all code analysis tools:
 - searchCode: Search for patterns across the codebase
 - buildSemanticContext: Get optimized context for any task
 - checkScaffolding: Check if .context scaffolding exists
-- initializeContext: Initialize .context scaffolding
+- initializeContext: Create scaffolding templates
+- fillScaffolding: Generate content for templates
 - scaffoldPlan: Create plan templates
 ```
 

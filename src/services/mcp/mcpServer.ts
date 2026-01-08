@@ -16,7 +16,8 @@ import {
   searchCodeTool,
   checkScaffoldingTool,
   initializeContextTool,
-  scaffoldPlanTool
+  scaffoldPlanTool,
+  fillScaffoldingTool
 } from '../ai/tools';
 import { SemanticContextBuilder, type ContextFormat } from '../semantic/contextBuilder';
 
@@ -245,14 +246,18 @@ export class AIContextMCPServer {
 
     // initializeContext tool
     this.server.registerTool('initializeContext', {
-      description: 'Initialize .context scaffolding (create docs/agents directories and files)',
+      description: `Initialize .context scaffolding and create template files.
+IMPORTANT: After this tool completes, you MUST fill the generated files:
+1. Use buildSemanticContext to analyze the codebase
+2. Read each generated template file
+3. Write filled content to each file based on the analysis`,
       inputSchema: {
         repoPath: z.string().describe('Repository path to initialize'),
         type: z.enum(['docs', 'agents', 'both']).default('both').optional()
           .describe('Type of scaffolding to create'),
         outputDir: z.string().optional().describe('Output directory (default: ./.context)'),
         semantic: z.boolean().default(true).optional()
-          .describe('Enable semantic analysis'),
+          .describe('Enable semantic analysis for richer templates'),
         include: z.array(z.string()).optional().describe('Include patterns'),
         exclude: z.array(z.string()).optional().describe('Exclude patterns')
       }
@@ -309,7 +314,36 @@ export class AIContextMCPServer {
       };
     });
 
-    this.log('Registered 9 tools');
+    // fillScaffolding tool
+    this.server.registerTool('fillScaffolding', {
+      description: `Analyze codebase and generate filled content for scaffolding templates.
+Returns suggestedContent for each file that you should write to the file path.
+IMPORTANT: After calling this, write each suggestedContent to its corresponding file path.`,
+      inputSchema: {
+        repoPath: z.string().describe('Repository path'),
+        outputDir: z.string().optional().describe('Scaffold directory (default: ./.context)'),
+        target: z.enum(['docs', 'agents', 'plans', 'all']).default('all').optional()
+          .describe('Which scaffolding to fill')
+      }
+    }, async ({ repoPath, outputDir, target }) => {
+      const result = await fillScaffoldingTool.execute!(
+        {
+          repoPath: repoPath || this.options.repoPath || process.cwd(),
+          outputDir,
+          target
+        },
+        { toolCallId: '', messages: [] }
+      );
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify(result, null, 2)
+        }]
+      };
+    });
+
+    this.log('Registered 10 tools');
   }
 
   /**
