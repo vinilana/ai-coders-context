@@ -3,7 +3,7 @@ import { SemanticContext } from '../../../services/semantic';
 
 function renderCodebaseSnapshot(snapshot?: CodebaseSnapshot): string {
   if (!snapshot) {
-    return `- **Codebase analysis:** *Run with \`--semantic\` flag for codebase insights.*`;
+    return `- **Codebase analysis:** *No codebase insights available.*`;
   }
 
   const lines = [

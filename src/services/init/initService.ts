@@ -68,7 +68,7 @@ export class InitService {
       verbose: Boolean(rawOptions.verbose),
       scaffoldDocs: resolvedType === 'docs' || resolvedType === 'both',
       scaffoldAgents: resolvedType === 'agents' || resolvedType === 'both',
-      semantic: Boolean(rawOptions.semantic)
+      semantic: rawOptions.semantic !== false
     };
 
     if (!options.scaffoldDocs && !options.scaffoldAgents) {

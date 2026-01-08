@@ -82,7 +82,8 @@ export class AgentGenerator {
         context.topLevelDirectories,
         this.docTouchpoints,
         semantics,
-        relevantSymbols
+        relevantSymbols,
+        repoStructure.rootPath
       );
       const filePath = path.join(agentsDir, `${agentType}.md`);
       await GeneratorUtils.writeFileWithLogging(filePath, content, verbose, `Created ${agentType}.md`);

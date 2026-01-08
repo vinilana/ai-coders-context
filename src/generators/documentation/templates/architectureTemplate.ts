@@ -1,11 +1,11 @@
 import { DocumentationTemplateContext } from './types';
-import { formatDirectoryStats } from './common';
+import { formatDirectoryStats, formatSymbolRef, buildSymbolTable, formatCodeLocation } from './common';
 import * as path from 'path';
 
 function renderSemanticLayers(context: DocumentationTemplateContext): string {
   const { semantics } = context;
   if (!semantics || !semantics.architecture.layers.length) {
-    return '- *No architectural layers detected. Add analysis with `--semantic` flag.*';
+    return '- *No architectural layers detected.*';
   }
 
   const lines: string[] = [];
@@ -26,9 +26,11 @@ function renderSemanticLayers(context: DocumentationTemplateContext): string {
 
     if (topSymbols.length > 0) {
       lines.push(`- **Key exports**:`);
+      const repoRoot = context.repoStructure.rootPath;
       for (const sym of topSymbols) {
-        const relPath = path.basename(sym.location.file);
-        lines.push(`  - \`${sym.name}\` (${sym.kind}) - ${relPath}:${sym.location.line}`);
+        const ref = formatSymbolRef(sym, repoRoot);
+        const doc = sym.documentation ? ` — ${sym.documentation}` : '';
+        lines.push(`  - ${ref} (${sym.kind})${doc}`);
       }
     }
     lines.push('');
@@ -43,13 +45,18 @@ function renderDetectedPatterns(context: DocumentationTemplateContext): string {
     return '- *No design patterns detected yet.*';
   }
 
-  const lines: string[] = ['| Pattern | Confidence | Occurrences | Description |', '|---------|------------|-------------|-------------|'];
+  const repoRoot = context.repoStructure.rootPath;
+  const lines: string[] = ['| Pattern | Confidence | Locations | Description |', '|---------|------------|-----------|-------------|'];
 
   for (const pattern of semantics.architecture.patterns) {
     const confidence = Math.round(pattern.confidence * 100);
-    const symbols = pattern.locations.map(l => l.symbol).slice(0, 3).join(', ');
-    const more = pattern.locations.length > 3 ? ` (+${pattern.locations.length - 3} more)` : '';
-    lines.push(`| ${pattern.name} | ${confidence}% | ${symbols}${more} | ${pattern.description} |`);
+    // Format locations with file refs
+    const locationRefs = pattern.locations.slice(0, 3).map(l => {
+      const relPath = path.relative(repoRoot, l.file);
+      return `\`${l.symbol}\` ([${path.basename(l.file)}](${relPath}))`;
+    });
+    const more = pattern.locations.length > 3 ? ` +${pattern.locations.length - 3} more` : '';
+    lines.push(`| ${pattern.name} | ${confidence}% | ${locationRefs.join(', ')}${more} | ${pattern.description} |`);
   }
 
   return lines.join('\n');
@@ -61,19 +68,17 @@ function renderPublicAPI(context: DocumentationTemplateContext): string {
     return '- *No public API detected.*';
   }
 
-  const lines: string[] = ['| Symbol | Kind | Location |', '|--------|------|----------|'];
-
+  const repoRoot = context.repoStructure.rootPath;
   const topAPI = semantics.architecture.publicAPI.slice(0, 20);
-  for (const sym of topAPI) {
-    const relPath = path.basename(sym.location.file);
-    lines.push(`| \`${sym.name}\` | ${sym.kind} | ${relPath}:${sym.location.line} |`);
-  }
+
+  // Use buildSymbolTable for consistent formatting
+  const table = buildSymbolTable(topAPI, repoRoot, ['name', 'kind', 'location']);
 
   if (semantics.architecture.publicAPI.length > 20) {
-    lines.push(`| ... | | +${semantics.architecture.publicAPI.length - 20} more |`);
+    return table + `\n\n*...and ${semantics.architecture.publicAPI.length - 20} more exported symbols*`;
   }
 
-  return lines.join('\n');
+  return table;
 }
 
 function renderEntryPoints(context: DocumentationTemplateContext): string {
@@ -82,7 +87,11 @@ function renderEntryPoints(context: DocumentationTemplateContext): string {
     return '- *No entry points detected.*';
   }
 
-  return semantics.architecture.entryPoints.map(ep => `- \`${ep}\``).join('\n');
+  const repoRoot = context.repoStructure.rootPath;
+  return semantics.architecture.entryPoints.map(ep => {
+    const relPath = path.relative(repoRoot, ep);
+    return `- [\`${relPath}\`](${relPath})`;
+  }).join('\n');
 }
 
 function renderSemanticStats(context: DocumentationTemplateContext): string {
@@ -124,11 +133,11 @@ export function renderArchitectureNotes(context: DocumentationTemplateContext): 
 
   const patternsSection = hasSemantics
     ? renderDetectedPatterns(context)
-    : '- *Run with `--semantic` flag to detect design patterns.*';
+    : '- *No design patterns detected.*';
 
   const publicAPISection = hasSemantics
     ? renderPublicAPI(context)
-    : '- *Run with `--semantic` flag to discover public API.*';
+    : '- *No public API detected.*';
 
   const entryPointsSection = hasSemantics
     ? renderEntryPoints(context)

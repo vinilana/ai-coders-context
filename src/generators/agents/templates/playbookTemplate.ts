@@ -5,18 +5,39 @@ import { DocTouchpoint, KeySymbolInfo, AgentTemplateContext } from './types';
 import { SemanticContext } from '../../../services/semantic';
 import * as path from 'path';
 
-function renderKeySymbols(symbols?: KeySymbolInfo[]): string {
+/**
+ * Format a symbol as a markdown link with line number
+ * Output: [`SymbolName`](src/path/file.ts#L42)
+ */
+function formatSymbolLink(symbol: KeySymbolInfo, repoRoot: string): string {
+  const relPath = path.relative(repoRoot, symbol.file);
+  return `[\`${symbol.name}\`](${relPath}#L${symbol.line})`;
+}
+
+/**
+ * Format a file path as a markdown link
+ * Output: [`file.ts`](src/path/file.ts)
+ */
+function formatFileLink(filePath: string, repoRoot: string): string {
+  const relPath = path.relative(repoRoot, filePath);
+  return `[\`${relPath}\`](${relPath})`;
+}
+
+function renderKeySymbols(symbols: KeySymbolInfo[] | undefined, repoRoot: string): string {
   if (!symbols || symbols.length === 0) {
-    return '- *Run with `--semantic` flag to discover relevant symbols.*';
+    return '- *No relevant symbols detected.*';
   }
 
   return symbols
     .slice(0, 10)
-    .map(s => `- \`${s.name}\` (${s.kind}) — ${path.basename(s.file)}:${s.line}`)
+    .map(s => {
+      const ref = formatSymbolLink(s, repoRoot);
+      return `- ${ref} (${s.kind})`;
+    })
     .join('\n');
 }
 
-function renderArchitectureLayers(semantics?: SemanticContext): string {
+function renderArchitectureLayers(semantics: SemanticContext | undefined, repoRoot: string): string {
   if (!semantics || !semantics.architecture.layers.length) {
     return '';
   }
@@ -24,9 +45,76 @@ function renderArchitectureLayers(semantics?: SemanticContext): string {
   const lines = ['## Architecture Context', ''];
   for (const layer of semantics.architecture.layers.slice(0, 5)) {
     const symbolCount = layer.symbols.length;
-    lines.push(`- **${layer.name}**: ${layer.description} (${symbolCount} symbols)`);
+    const dirs = layer.directories.map(d => `\`${d}\``).join(', ');
+    lines.push(`### ${layer.name}`);
+    lines.push(`${layer.description}`);
+    lines.push(`- **Directories**: ${dirs}`);
+    lines.push(`- **Symbols**: ${symbolCount} total`);
+
+    // Add key exported symbols with links
+    const keySymbols = layer.symbols
+      .filter(s => s.exported)
+      .slice(0, 3);
+
+    if (keySymbols.length > 0) {
+      const symbolRefs = keySymbols.map(s => {
+        const relPath = path.relative(repoRoot, s.location.file);
+        return `[\`${s.name}\`](${relPath}#L${s.location.line})`;
+      });
+      lines.push(`- **Key exports**: ${symbolRefs.join(', ')}`);
+    }
+    lines.push('');
   }
-  return lines.join('\n') + '\n';
+  return lines.join('\n');
+}
+
+function renderKeyFiles(semantics: SemanticContext | undefined, repoRoot: string): string {
+  if (!semantics) {
+    return '- *No key files detected.*';
+  }
+
+  const lines: string[] = [];
+
+  // Entry points
+  if (semantics.architecture.entryPoints.length > 0) {
+    lines.push('**Entry Points:**');
+    for (const ep of semantics.architecture.entryPoints.slice(0, 5)) {
+      lines.push(`- ${formatFileLink(ep, repoRoot)}`);
+    }
+  }
+
+  // Pattern locations
+  if (semantics.architecture.patterns.length > 0) {
+    if (lines.length > 0) lines.push('');
+    lines.push('**Pattern Implementations:**');
+    for (const pattern of semantics.architecture.patterns.slice(0, 3)) {
+      const locations = pattern.locations.slice(0, 2).map(loc => {
+        const relPath = path.relative(repoRoot, loc.file);
+        return `[\`${loc.symbol}\`](${relPath})`;
+      });
+      lines.push(`- ${pattern.name}: ${locations.join(', ')}`);
+    }
+  }
+
+  // Key service files (classes ending in Service)
+  const services = semantics.symbols.classes
+    .filter(c => c.name.endsWith('Service') && c.exported)
+    .slice(0, 5);
+
+  if (services.length > 0) {
+    if (lines.length > 0) lines.push('');
+    lines.push('**Service Files:**');
+    for (const svc of services) {
+      const relPath = path.relative(repoRoot, svc.location.file);
+      lines.push(`- [\`${svc.name}\`](${relPath}#L${svc.location.line})`);
+    }
+  }
+
+  if (lines.length === 0) {
+    return '- *No key files detected.*';
+  }
+
+  return lines.join('\n');
 }
 
 export function renderAgentPlaybook(
@@ -34,7 +122,8 @@ export function renderAgentPlaybook(
   topLevelDirectories: string[],
   touchpoints: DocTouchpoint[],
   semantics?: SemanticContext,
-  relevantSymbols?: KeySymbolInfo[]
+  relevantSymbols?: KeySymbolInfo[],
+  repoRoot: string = process.cwd()
 ): string {
   const title = formatTitle(agentType);
   const responsibilities = AGENT_RESPONSIBILITIES[agentType] || ['Clarify this agent\'s responsibilities.'];
@@ -46,8 +135,9 @@ export function renderAgentPlaybook(
     .map(tp => `- [${tp.title}](${tp.path}) — ${tp.marker}`)
     .join('\n');
 
-  const keySymbolsSection = renderKeySymbols(relevantSymbols);
-  const architectureSection = renderArchitectureLayers(semantics);
+  const keySymbolsSection = renderKeySymbols(relevantSymbols, repoRoot);
+  const keyFilesSection = renderKeyFiles(semantics, repoRoot);
+  const architectureSection = renderArchitectureLayers(semantics, repoRoot);
 
   return `<!-- agent-update:start:${markerId} -->
 # ${title} Agent Playbook
@@ -69,6 +159,9 @@ ${formatList(bestPractices)}
 
 ## Repository Starting Points
 ${directoryList || '- Add directory highlights relevant to this agent.'}
+
+## Key Files
+${keyFilesSection}
 
 ${architectureSection}## Key Symbols for This Agent
 ${keySymbolsSection}

@@ -1,5 +1,56 @@
+import * as path from 'path';
 import { DocumentationTemplateContext } from './types';
-import { formatDirectoryList } from './common';
+import { formatDirectoryList, formatSymbolRef, buildSymbolList } from './common';
+
+function renderEntryPointsSection(context: DocumentationTemplateContext): string {
+  const { semantics, repoStructure } = context;
+  if (!semantics || !semantics.architecture.entryPoints.length) {
+    return '- *No entry points detected.*';
+  }
+
+  const repoRoot = repoStructure.rootPath;
+  return semantics.architecture.entryPoints.map(ep => {
+    const relPath = path.relative(repoRoot, ep);
+    return `- [\`${relPath}\`](${relPath})`;
+  }).join('\n');
+}
+
+function renderKeyExportsSection(context: DocumentationTemplateContext): string {
+  const { semantics, repoStructure } = context;
+  if (!semantics) {
+    return '- *No key exports detected.*';
+  }
+
+  const repoRoot = repoStructure.rootPath;
+
+  // Get top exported classes and interfaces
+  const classes = semantics.symbols.classes
+    .filter(s => s.exported)
+    .slice(0, 5);
+
+  const interfaces = semantics.symbols.interfaces
+    .filter(s => s.exported)
+    .slice(0, 5);
+
+  const lines: string[] = [];
+
+  if (classes.length > 0) {
+    lines.push('**Classes:**');
+    lines.push(buildSymbolList(classes, repoRoot, false));
+  }
+
+  if (interfaces.length > 0) {
+    if (lines.length > 0) lines.push('');
+    lines.push('**Interfaces:**');
+    lines.push(buildSymbolList(interfaces, repoRoot, false));
+  }
+
+  if (lines.length === 0) {
+    return '- *No major exports detected.*';
+  }
+
+  return lines.join('\n');
+}
 
 export function renderProjectOverview(context: DocumentationTemplateContext): string {
 
@@ -7,6 +58,9 @@ export function renderProjectOverview(context: DocumentationTemplateContext): st
   const languageSummary = context.primaryLanguages.length > 0
     ? context.primaryLanguages.map(lang => `- ${lang.extension} (${lang.count} files)`).join('\n')
     : '- Language mix pending analysis.';
+
+  const entryPointsSection = renderEntryPointsSection(context);
+  const keyExportsSection = renderKeyExportsSection(context);
 
   return `
 <!-- agent-update:start:project-overview -->
@@ -18,6 +72,12 @@ export function renderProjectOverview(context: DocumentationTemplateContext): st
 - Root path: \`${context.repoStructure.rootPath}\`
 - Primary languages detected:
 ${languageSummary}
+
+## Entry Points
+${entryPointsSection}
+
+## Key Exports
+${keyExportsSection}
 
 ## File Structure & Code Organization
 ${directoryList || '*Add a short description for each relevant directory.*'}
