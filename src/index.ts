@@ -15,6 +15,7 @@ import { LLMConfig, AIProvider } from './types';
 import { InitService } from './services/init/initService';
 import { FillService } from './services/fill/fillService';
 import { PlanService } from './services/plan/planService';
+import { SyncService } from './services/sync/syncService';
 import { DEFAULT_MODELS } from './services/ai/providerFactory';
 
 dotenv.config();
@@ -53,6 +54,12 @@ const planService = new PlanService({
   t,
   version: VERSION,
   defaultModel: DEFAULT_MODEL
+});
+
+const syncService = new SyncService({
+  ui,
+  t,
+  version: VERSION
 });
 
 program
@@ -193,6 +200,25 @@ program
     }
   });
 
+program
+  .command('sync-agents')
+  .description(t('commands.sync.description'))
+  .option('-s, --source <dir>', t('commands.sync.options.source'), './.context/agents')
+  .option('-t, --target <paths...>', t('commands.sync.options.target'))
+  .option('-m, --mode <type>', t('commands.sync.options.mode'), 'symlink')
+  .option('-p, --preset <name>', t('commands.sync.options.preset'))
+  .option('--force', t('commands.sync.options.force'))
+  .option('--dry-run', t('commands.sync.options.dryRun'))
+  .option('-v, --verbose', t('commands.sync.options.verbose'))
+  .action(async (options: any) => {
+    try {
+      await syncService.run(options);
+    } catch (error) {
+      ui.displayError(t('errors.sync.failed'), error as Error);
+      process.exit(1);
+    }
+  });
+
 export async function runInit(repoPath: string, type: string, rawOptions: any): Promise<void> {
   await initService.run(repoPath, type, rawOptions);
 }
@@ -253,7 +279,7 @@ async function selectLocale(showWelcome: boolean): Promise<void> {
   }
 }
 
-type InteractiveAction = 'scaffold' | 'fill' | 'plan' | 'changeLanguage' | 'exit';
+type InteractiveAction = 'scaffold' | 'fill' | 'plan' | 'syncAgents' | 'changeLanguage' | 'exit';
 
 async function runInteractive(): Promise<void> {
   await selectLocale(true);
@@ -269,6 +295,7 @@ async function runInteractive(): Promise<void> {
           { name: t('prompts.main.choice.scaffold'), value: 'scaffold' },
           { name: t('prompts.main.choice.fill'), value: 'fill' },
           { name: t('prompts.main.choice.plan'), value: 'plan' },
+          { name: t('prompts.main.choice.syncAgents'), value: 'syncAgents' },
           { name: t('prompts.main.choice.changeLanguage'), value: 'changeLanguage' },
           { name: t('prompts.main.choice.exit'), value: 'exit' }
         ]
@@ -289,8 +316,10 @@ async function runInteractive(): Promise<void> {
       await runInteractiveScaffold();
     } else if (action === 'fill') {
       await runInteractiveLlmFill();
-    } else {
+    } else if (action === 'plan') {
       await runInteractivePlan();
+    } else if (action === 'syncAgents') {
+      await runInteractiveSync();
     }
 
     ui.displayInfo(
@@ -684,6 +713,104 @@ async function runInteractivePlan(): Promise<void> {
     ui.displayError(t('errors.plan.creationFailed'), error as Error);
   } finally {
     ui.stopSpinner();
+  }
+}
+
+async function runInteractiveSync(): Promise<void> {
+  const defaultSource = path.resolve(process.cwd(), '.context/agents');
+
+  const { sourcePath } = await inquirer.prompt<{ sourcePath: string }>([
+    {
+      type: 'input',
+      name: 'sourcePath',
+      message: t('prompts.sync.source'),
+      default: defaultSource
+    }
+  ]);
+
+  const { mode } = await inquirer.prompt<{ mode: 'symlink' | 'markdown' }>([
+    {
+      type: 'list',
+      name: 'mode',
+      message: t('prompts.sync.mode'),
+      choices: [
+        { name: t('prompts.sync.modeSymlink'), value: 'symlink' },
+        { name: t('prompts.sync.modeMarkdown'), value: 'markdown' }
+      ],
+      default: 'symlink'
+    }
+  ]);
+
+  const { targetType } = await inquirer.prompt<{ targetType: 'preset' | 'custom' }>([
+    {
+      type: 'list',
+      name: 'targetType',
+      message: t('prompts.sync.targetType'),
+      choices: [
+        { name: t('prompts.sync.targetPreset'), value: 'preset' },
+        { name: t('prompts.sync.targetCustom'), value: 'custom' }
+      ]
+    }
+  ]);
+
+  let preset: string | undefined;
+  let target: string[] | undefined;
+
+  if (targetType === 'preset') {
+    const { selectedPreset } = await inquirer.prompt<{ selectedPreset: string }>([
+      {
+        type: 'list',
+        name: 'selectedPreset',
+        message: t('prompts.sync.selectPreset'),
+        choices: [
+          { name: t('prompts.sync.preset.claude'), value: 'claude' },
+          { name: t('prompts.sync.preset.github'), value: 'github' },
+          { name: t('prompts.sync.preset.cursor'), value: 'cursor' },
+          { name: t('prompts.sync.preset.all'), value: 'all' }
+        ]
+      }
+    ]);
+    preset = selectedPreset;
+  } else {
+    const { customPath } = await inquirer.prompt<{ customPath: string }>([
+      {
+        type: 'input',
+        name: 'customPath',
+        message: t('prompts.sync.customPath')
+      }
+    ]);
+    target = [customPath];
+  }
+
+  const { dryRun } = await inquirer.prompt<{ dryRun: boolean }>([
+    {
+      type: 'confirm',
+      name: 'dryRun',
+      message: t('prompts.sync.dryRun'),
+      default: true
+    }
+  ]);
+
+  const { force } = await inquirer.prompt<{ force: boolean }>([
+    {
+      type: 'confirm',
+      name: 'force',
+      message: t('prompts.sync.force'),
+      default: false
+    }
+  ]);
+
+  try {
+    await syncService.run({
+      source: sourcePath,
+      mode,
+      preset: preset as any,
+      target,
+      force,
+      dryRun
+    });
+  } catch (error) {
+    ui.displayError(t('errors.sync.failed'), error as Error);
   }
 }
 

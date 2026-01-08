@@ -1,0 +1,248 @@
+import * as path from 'path';
+import * as fs from 'fs-extra';
+import chalk from 'chalk';
+
+import type { CLIInterface } from '../../utils/cliUI';
+import type { TranslateFn } from '../../utils/i18n';
+import type {
+  SyncCommandFlags,
+  SyncServiceDependencies,
+  SyncOptions,
+  SyncResult,
+  SyncMode,
+  AgentFileInfo
+} from './types';
+import { resolvePresets } from './presets';
+import { createSymlinks } from './symlinkHandler';
+import { createMarkdownReferences } from './markdownReferenceHandler';
+
+export class SyncService {
+  private readonly ui: CLIInterface;
+  private readonly t: TranslateFn;
+  private readonly version: string;
+
+  constructor(dependencies: SyncServiceDependencies) {
+    this.ui = dependencies.ui;
+    this.t = dependencies.t;
+    this.version = dependencies.version;
+  }
+
+  async run(rawOptions: SyncCommandFlags): Promise<void> {
+    const options = await this.resolveOptions(rawOptions);
+
+    await this.validateSource(options.sourcePath);
+
+    this.ui.displayWelcome(this.version);
+    this.displayConfig(options);
+
+    const agentFiles = await this.discoverAgentFiles(options.sourcePath);
+
+    if (agentFiles.length === 0) {
+      this.ui.displayWarning(this.t('warnings.sync.noAgentsFound'));
+      return;
+    }
+
+    this.ui.displayInfo(
+      this.t('info.sync.foundAgents'),
+      this.t('info.sync.foundAgentsDetail', { count: agentFiles.length })
+    );
+
+    const results: SyncResult[] = [];
+    let step = 1;
+    const totalSteps = options.targetPaths.length + 1;
+
+    for (const targetPath of options.targetPaths) {
+      this.ui.displayStep(
+        step,
+        totalSteps,
+        this.t('steps.sync.processingTarget', { path: targetPath })
+      );
+
+      const result = await this.syncToTarget(agentFiles, targetPath, options);
+
+      results.push(result);
+      step++;
+    }
+
+    this.ui.displayStep(totalSteps, totalSteps, this.t('steps.sync.summary'));
+    this.displaySummary(results, options.dryRun);
+
+    if (!options.dryRun) {
+      this.ui.displaySuccess(this.t('success.sync.completed'));
+    }
+  }
+
+  private async resolveOptions(rawOptions: SyncCommandFlags): Promise<SyncOptions> {
+    const sourcePath = path.resolve(rawOptions.source || './.context/agents');
+
+    let targetPaths: string[] = [];
+
+    if (rawOptions.preset) {
+      const presets = resolvePresets(rawOptions.preset);
+      targetPaths = presets.map(p => path.resolve(p.path));
+    }
+
+    if (rawOptions.target && rawOptions.target.length > 0) {
+      const customTargets = rawOptions.target.map(t => path.resolve(t));
+      targetPaths = [...new Set([...targetPaths, ...customTargets])];
+    }
+
+    if (targetPaths.length === 0) {
+      throw new Error(this.t('errors.sync.noTargetsSpecified'));
+    }
+
+    const mode: SyncMode = rawOptions.mode || 'symlink';
+
+    return {
+      sourcePath,
+      targetPaths,
+      mode,
+      force: Boolean(rawOptions.force),
+      dryRun: Boolean(rawOptions.dryRun),
+      verbose: Boolean(rawOptions.verbose)
+    };
+  }
+
+  private async validateSource(sourcePath: string): Promise<void> {
+    const exists = await fs.pathExists(sourcePath);
+    if (!exists) {
+      throw new Error(this.t('errors.sync.sourceMissing', { path: sourcePath }));
+    }
+
+    const stat = await fs.stat(sourcePath);
+    if (!stat.isDirectory()) {
+      throw new Error(this.t('errors.sync.sourceNotDirectory', { path: sourcePath }));
+    }
+  }
+
+  private async discoverAgentFiles(sourcePath: string): Promise<AgentFileInfo[]> {
+    const files = await fs.readdir(sourcePath);
+    const agentFiles: AgentFileInfo[] = [];
+
+    for (const filename of files) {
+      if (!filename.endsWith('.md')) continue;
+
+      const fullPath = path.join(sourcePath, filename);
+      const stat = await fs.stat(fullPath);
+
+      if (!stat.isFile()) continue;
+
+      const name = filename.replace('.md', '');
+
+      agentFiles.push({
+        name,
+        sourcePath: fullPath,
+        relativePath: filename,
+        filename
+      });
+    }
+
+    return agentFiles.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  private async syncToTarget(
+    agentFiles: AgentFileInfo[],
+    targetPath: string,
+    options: SyncOptions
+  ): Promise<SyncResult> {
+    const result: SyncResult = {
+      targetPath,
+      filesCreated: 0,
+      filesSkipped: 0,
+      filesFailed: 0,
+      errors: []
+    };
+
+    if (!options.dryRun) {
+      await fs.ensureDir(targetPath);
+    }
+
+    this.ui.startSpinner(this.t('spinner.sync.processing', { path: targetPath }));
+
+    try {
+      const handlerResult =
+        options.mode === 'symlink'
+          ? await createSymlinks(agentFiles, targetPath, options.sourcePath, {
+              force: options.force,
+              dryRun: options.dryRun,
+              verbose: options.verbose
+            })
+          : await createMarkdownReferences(agentFiles, targetPath, options.sourcePath, {
+              force: options.force,
+              dryRun: options.dryRun,
+              verbose: options.verbose
+            });
+
+      result.filesCreated = handlerResult.filesCreated;
+      result.filesSkipped = handlerResult.filesSkipped;
+      result.filesFailed = handlerResult.filesFailed;
+      result.errors = handlerResult.errors;
+
+      this.ui.updateSpinner(
+        this.t('spinner.sync.complete', {
+          path: targetPath,
+          count: result.filesCreated
+        }),
+        'success'
+      );
+    } catch (error) {
+      this.ui.updateSpinner(this.t('spinner.sync.failed', { path: targetPath }), 'fail');
+      result.filesFailed = agentFiles.length;
+      result.errors.push({
+        file: targetPath,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    } finally {
+      this.ui.stopSpinner();
+    }
+
+    return result;
+  }
+
+  private displayConfig(options: SyncOptions): void {
+    console.log(chalk.cyan('\n📋 Sync Configuration:'));
+    console.log(`  ${chalk.gray('Source:')} ${options.sourcePath}`);
+    console.log(`  ${chalk.gray('Mode:')} ${options.mode}`);
+    console.log(`  ${chalk.gray('Targets:')}`);
+    options.targetPaths.forEach(t => {
+      console.log(`    - ${t}`);
+    });
+    if (options.dryRun) {
+      console.log(chalk.yellow('  [DRY RUN - No changes will be made]'));
+    }
+    console.log('');
+  }
+
+  private displaySummary(results: SyncResult[], dryRun: boolean): void {
+    console.log('\n' + chalk.bold('📊 Sync Summary'));
+    console.log(chalk.gray('─'.repeat(50)));
+
+    let totalCreated = 0;
+    let totalSkipped = 0;
+    let totalFailed = 0;
+
+    for (const result of results) {
+      totalCreated += result.filesCreated;
+      totalSkipped += result.filesSkipped;
+      totalFailed += result.filesFailed;
+
+      const status = result.filesFailed > 0 ? chalk.red('✖') : chalk.green('✔');
+
+      console.log(`${status} ${result.targetPath}`);
+      console.log(
+        `    Created: ${result.filesCreated}, Skipped: ${result.filesSkipped}, Failed: ${result.filesFailed}`
+      );
+
+      if (result.errors.length > 0) {
+        result.errors.forEach(err => {
+          console.log(`    ${chalk.red('Error:')} ${err.file} - ${err.error}`);
+        });
+      }
+    }
+
+    console.log(chalk.gray('─'.repeat(50)));
+    console.log(`${chalk.blue('Total created:')} ${totalCreated}${dryRun ? ' (dry run)' : ''}`);
+    console.log(`${chalk.blue('Total skipped:')} ${totalSkipped}`);
+    console.log(`${chalk.blue('Total failed:')} ${totalFailed}`);
+  }
+}
