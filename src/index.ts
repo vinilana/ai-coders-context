@@ -555,8 +555,8 @@ async function runFullMenu(daysBehind?: number): Promise<void> {
   let exitRequested = false;
   while (!exitRequested) {
     const choices = [
-      { name: daysBehind ? `Update documentation (${daysBehind} days behind)` : 'Update documentation', value: 'fill' as InteractiveAction },
       { name: 'Create a work plan', value: 'plan' as InteractiveAction },
+      { name: daysBehind ? `Update documentation (${daysBehind} days behind)` : 'Update documentation', value: 'fill' as InteractiveAction },
       { name: 'Sync agent playbooks', value: 'syncAgents' as InteractiveAction },
       { name: 'Re-scaffold (overwrite)', value: 'scaffold' as InteractiveAction },
       { name: 'Change language', value: 'changeLanguage' as InteractiveAction },
