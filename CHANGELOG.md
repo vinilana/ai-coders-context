@@ -5,6 +5,64 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-01-09
+
+### Added
+
+- **Update command**: New `update` command for selective documentation updates
+  - Target specific files or sections without regenerating everything
+  - Supports `--files` flag to update specific documentation files
+  - Preserves manual edits in other files
+
+- **StateDetector service**: Wizard-based project state detection
+  - Automatically detects scaffolding completeness (docs, agents, plans)
+  - Parses YAML front matter for instant status detection
+  - Provides actionable recommendations based on project state
+
+- **YAML front matter utilities**: Instant status detection for generated files
+  - `parseFrontMatter()` - Extract metadata from markdown files
+  - `updateFrontMatter()` - Update metadata while preserving content
+  - `hasFrontMatter()` - Quick check for front matter presence
+  - Status tracking: `generated`, `filled`, `customized`
+
+- **Documentation guides**: Extracted detailed guides from README
+  - `docs/GUIDE.md` - Comprehensive usage guide
+  - `docs/MCP.md` - MCP server setup and configuration
+  - `docs/PROVIDERS.md` - Multi-provider configuration guide
+
+- **Tests for new utilities**:
+  - `frontMatter.test.ts` - 12 tests for YAML front matter parsing/updating
+  - `stateDetector.test.ts` - 8 tests for project state detection
+
+### Changed
+
+- **Simplified README**: Streamlined to essentials with links to detailed guides
+- **Interactive mode improvements**:
+  - Menu reordered to prioritize plan creation over docs update
+  - Plan creation now asks for goal/summary instead of just name
+- **Quick setup fix**: Uses correct `both` value instead of `all` for scaffold type
+
+### Removed
+
+- **Direct OpenRouter client**: Removed `OpenRouterClient` class and `OpenRouterConfig` type
+  - OpenRouter is now used exclusively through AI SDK via OpenAI-compatible provider
+  - Simplifies provider architecture with single unified approach
+
+### Technical Details
+
+#### New Files
+- `src/services/state/stateDetector.ts` - StateDetector service
+- `src/services/state/stateDetector.test.ts` - StateDetector tests
+- `src/services/update/updateService.ts` - Update command service
+- `src/utils/frontMatter.ts` - YAML front matter utilities
+- `src/utils/frontMatter.test.ts` - Front matter tests
+- `docs/GUIDE.md` - Usage guide
+- `docs/MCP.md` - MCP documentation
+- `docs/PROVIDERS.md` - Provider configuration
+
+#### Removed Files
+- `src/services/openRouterClient.ts` - Legacy direct OpenRouter client
+
 ## [0.5.0] - 2026-01-08
 
 ### Added
