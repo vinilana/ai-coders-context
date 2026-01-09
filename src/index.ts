@@ -514,7 +514,7 @@ async function runQuickSetup(projectPath: string): Promise<void> {
   ui.startSpinner('Creating documentation structure...');
   try {
     const initService = new InitService({ ui, t, version: VERSION });
-    await initService.run(projectPath, 'all', {
+    await initService.run(projectPath, 'both', {
       semantic: true
     });
     ui.stopSpinner();
