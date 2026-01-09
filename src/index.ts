@@ -19,6 +19,7 @@ import { SyncService } from './services/sync/syncService';
 import { ServeService } from './services/serve';
 import { startMCPServer } from './services/mcp';
 import { StateDetector } from './services/state';
+import { UpdateService } from './services/update';
 import { DEFAULT_MODELS } from './services/ai/providerFactory';
 import {
   detectSmartDefaults,
@@ -71,6 +72,11 @@ const syncService = new SyncService({
   ui,
   t,
   version: VERSION
+});
+
+const updateService = new UpdateService({
+  ui,
+  t
 });
 
 program
@@ -141,6 +147,70 @@ program
       await fillService.run(repoPath, options);
     } catch (error) {
       ui.displayError(t('errors.fill.failed'), error as Error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('update')
+  .description('Analyze code changes and update affected documentation')
+  .argument('[repo-path]', 'Repository path to analyze', '.')
+  .option('-o, --output <dir>', 'Output directory', './.context')
+  .option('--days <number>', 'Days to look back for changes', (v: string) => parseInt(v, 10), 30)
+  .option('--dry-run', 'Show what would be updated without making changes')
+  .option('--no-git', 'Use mtime instead of git for change detection')
+  .option('-k, --api-key <key>', 'API key for LLM provider')
+  .option('-m, --model <model>', 'Model to use', DEFAULT_MODEL)
+  .option('-p, --provider <provider>', 'LLM provider')
+  .option('--base-url <url>', 'Custom base URL for API')
+  .option('-v, --verbose', 'Verbose output')
+  .action(async (repoPath: string, options: any) => {
+    try {
+      const analysis = await updateService.analyze(repoPath, {
+        output: options.output,
+        days: options.days,
+        useGit: options.git !== false,
+        verbose: options.verbose
+      });
+
+      updateService.displayAnalysis(analysis);
+
+      if (options.dryRun) {
+        return;
+      }
+
+      const filesToUpdate = updateService.getFilesToUpdate(analysis);
+
+      if (filesToUpdate.length === 0) {
+        return;
+      }
+
+      const { proceed } = await inquirer.prompt([{
+        type: 'confirm',
+        name: 'proceed',
+        message: `Update ${filesToUpdate.length} document(s)?`,
+        default: true
+      }]);
+
+      if (!proceed) {
+        return;
+      }
+
+      // Run fill on affected docs
+      await fillService.run(repoPath, {
+        output: options.output,
+        include: filesToUpdate.map(f => f.replace(/.*\.context\//, '')),
+        model: options.model,
+        provider: options.provider,
+        apiKey: options.apiKey,
+        baseUrl: options.baseUrl,
+        verbose: options.verbose,
+        semantic: true
+      });
+
+      ui.displaySuccess('Documentation updated!');
+    } catch (error) {
+      ui.displayError('Failed to update documentation', error as Error);
       process.exit(1);
     }
   });
