@@ -1,5 +1,7 @@
+import { wrapWithFrontMatter } from './common';
+
 export function renderApiReference(): string {
-  return `# API Reference
+  const content = `# API Reference
 
 **Purpose:** Enable AI agents to programmatically interact with all API endpoints.
 
@@ -462,4 +464,6 @@ Document webhook registration process if applicable.
 - Link to Postman collection for easy testing
 - Link to OpenAPI/Swagger specification if available
 `;
+
+  return wrapWithFrontMatter(content);
 }

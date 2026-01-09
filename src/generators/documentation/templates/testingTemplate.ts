@@ -1,5 +1,7 @@
+import { wrapWithFrontMatter } from './common';
+
 export function renderTestingStrategy(): string {
-  return `# Testing Strategy
+  const content = `# Testing Strategy
 
 Document how quality is maintained across the codebase.
 
@@ -18,6 +20,9 @@ Document how quality is maintained across the codebase.
 - Capture linting or formatting requirements before merging.
 
 ## Troubleshooting
-- Document flaky suites, long-running tests, or environment quirks.
+
+Document flaky suites, long-running tests, or environment quirks.
 `;
+
+  return wrapWithFrontMatter(content);
 }

@@ -3,6 +3,7 @@ import * as fs from 'fs-extra';
 import { glob } from 'glob';
 
 import { colors, symbols, typography } from '../../utils/theme';
+import { removeFrontMatter } from '../../utils/frontMatter';
 
 import type { CLIInterface } from '../../utils/cliUI';
 import type { TranslateFn } from '../../utils/i18n';
@@ -223,7 +224,9 @@ export class FillService {
         return { file: target.relativePath, status: 'skipped', message: this.t('messages.fill.emptyResponse') };
       }
 
-      await fs.writeFile(target.fullPath, this.ensureTrailingNewline(updatedContent));
+      // Remove front matter from filled content (status: unfilled marker)
+      const cleanContent = removeFrontMatter(updatedContent);
+      await fs.writeFile(target.fullPath, this.ensureTrailingNewline(cleanContent));
       this.ui.updateSpinner(this.t('spinner.fill.updated', { path: target.relativePath }), 'success');
       return { file: target.relativePath, status: 'updated' };
     } catch (error) {
@@ -280,7 +283,9 @@ export class FillService {
         return { file: target.relativePath, status: 'skipped', message: this.t('messages.fill.emptyResponse') };
       }
 
-      await fs.writeFile(target.fullPath, this.ensureTrailingNewline(updatedContent));
+      // Remove front matter from filled content (status: unfilled marker)
+      const cleanContent = removeFrontMatter(updatedContent);
+      await fs.writeFile(target.fullPath, this.ensureTrailingNewline(cleanContent));
       console.log(''); // Spacing after agent output
       this.ui.displaySuccess(this.t('spinner.fill.updated', { path: target.relativePath }));
       return { file: target.relativePath, status: 'updated' };

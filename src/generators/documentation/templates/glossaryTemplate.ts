@@ -1,6 +1,6 @@
 import * as path from 'path';
 import { DocumentationTemplateContext } from './types';
-import { formatSymbolRef } from './common';
+import { formatSymbolRef, wrapWithFrontMatter } from './common';
 
 function renderTypeDefinitions(context: DocumentationTemplateContext): string {
   const { semantics, repoStructure } = context;
@@ -51,7 +51,7 @@ export function renderGlossary(context: DocumentationTemplateContext): string {
   const typeDefinitions = renderTypeDefinitions(context);
   const enumDefinitions = renderEnumDefinitions(context);
 
-  return `# Glossary & Domain Concepts
+  const content = `# Glossary & Domain Concepts
 
 List project-specific terminology, acronyms, domain entities, and user personas.
 
@@ -62,16 +62,21 @@ ${typeDefinitions}
 ${enumDefinitions}
 
 ## Core Terms
-- **Term** — Definition, relevance, and where it surfaces in the codebase.
+
+Define key terms, their relevance, and where they surface in the codebase.
 
 ## Acronyms & Abbreviations
-- **ABC** — Expanded form; why we use it; associated services or APIs.
+
+Expand abbreviations and note associated services or APIs.
 
 ## Personas / Actors
-- **Persona Name** — Goals, key workflows, pain points addressed by the system.
+
+Describe user goals, key workflows, and pain points addressed by the system.
 
 ## Domain Rules & Invariants
-- Capture business rules, validation constraints, or compliance requirements that the code enforces.
-- Note any region, localization, or regulatory nuances.
+
+Capture business rules, validation constraints, or compliance requirements. Note any region, localization, or regulatory nuances.
 `;
+
+  return wrapWithFrontMatter(content);
 }
