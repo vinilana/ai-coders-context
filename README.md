@@ -146,6 +146,16 @@ Configure in Cline settings (VS Code → Settings → Cline → MCP Servers):
 }
 ```
 
+### Codex CLI
+
+Add to your Codex CLI config (`~/.codex/config.toml`):
+
+```toml
+[mcp_servers.ai-context]
+command = "npx"
+args = ["--yes", "@ai-coders/context@latest", "mcp"]
+```
+
 ### Available MCP Tools
 
 Once configured, your AI assistant will have access to:
