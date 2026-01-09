@@ -166,6 +166,8 @@ program
   .option('-v, --verbose', 'Verbose output')
   .action(async (repoPath: string, options: any) => {
     try {
+      const outputDir = path.resolve(options.output || './.context');
+
       const analysis = await updateService.analyze(repoPath, {
         output: options.output,
         days: options.days,
@@ -197,9 +199,10 @@ program
       }
 
       // Run fill on affected docs
+      // Convert absolute paths to relative paths from the output directory
       await fillService.run(repoPath, {
         output: options.output,
-        include: filesToUpdate.map(f => f.replace(/.*\.context\//, '')),
+        include: filesToUpdate.map(f => path.relative(outputDir, f)),
         model: options.model,
         provider: options.provider,
         apiKey: options.apiKey,
@@ -454,10 +457,10 @@ async function runInteractive(): Promise<void> {
       {
         type: 'list',
         name: 'action',
-        message: 'What would you like to do?',
+        message: t('prompts.main.action'),
         choices: [
-          { name: 'Create documentation for this project', value: 'create' },
-          { name: 'Exit', value: 'exit' }
+          { name: t('prompts.main.choice.create'), value: 'create' },
+          { name: t('prompts.main.choice.exit'), value: 'exit' }
         ]
       }
     ]);
@@ -474,11 +477,11 @@ async function runInteractive(): Promise<void> {
       {
         type: 'list',
         name: 'action',
-        message: `${result.details.unfilledFiles} files need to be filled. What would you like to do?`,
+        message: t('prompts.main.unfilledPrompt', { count: result.details.unfilledFiles }),
         choices: [
-          { name: 'Fill documentation with AI', value: 'fill' },
-          { name: 'More options...', value: 'menu' },
-          { name: 'Exit', value: 'exit' }
+          { name: t('prompts.main.choice.fill'), value: 'fill' },
+          { name: t('prompts.main.choice.moreOptions'), value: 'menu' },
+          { name: t('prompts.main.choice.exit'), value: 'exit' }
         ]
       }
     ]);
@@ -501,7 +504,7 @@ async function runQuickSetup(projectPath: string): Promise<void> {
     {
       type: 'confirm',
       name: 'confirm',
-      message: 'This will create and fill documentation. Continue?',
+      message: t('prompts.setup.confirmContinue'),
       default: true
     }
   ]);
@@ -511,7 +514,7 @@ async function runQuickSetup(projectPath: string): Promise<void> {
   }
 
   // Run init
-  ui.startSpinner('Creating documentation structure...');
+  ui.startSpinner(t('spinner.setup.creatingStructure'));
   try {
     const initService = new InitService({ ui, t, version: VERSION });
     await initService.run(projectPath, 'both', {
@@ -527,11 +530,11 @@ async function runQuickSetup(projectPath: string): Promise<void> {
   // Prompt for LLM config and run fill
   const llmConfig = await promptLLMConfig(t);
   if (!llmConfig) {
-    ui.displayInfo('Setup incomplete', 'Run `npx @ai-coders/context fill .` to fill documentation later.');
+    ui.displayInfo(t('info.setup.incomplete.title'), t('info.setup.incomplete.detail'));
     return;
   }
 
-  ui.startSpinner('Filling documentation with AI...');
+  ui.startSpinner(t('spinner.setup.fillingDocs'));
   try {
     const fillService = new FillService({ ui, t, version: VERSION, defaultModel: DEFAULT_MODEL });
     await fillService.run(projectPath, {
@@ -543,8 +546,8 @@ async function runQuickSetup(projectPath: string): Promise<void> {
       semantic: true
     });
     ui.stopSpinner();
-    ui.displaySuccess('Documentation created!');
-    console.log(colors.secondaryDim('  Review the files in .context/ and commit them.'));
+    ui.displaySuccess(t('success.setup.docsCreated'));
+    console.log(colors.secondaryDim(`  ${t('info.setup.reviewFiles')}`));
   } catch (error) {
     ui.stopSpinner();
     ui.displayError('Failed to fill documentation', error as Error);
@@ -554,20 +557,24 @@ async function runQuickSetup(projectPath: string): Promise<void> {
 async function runFullMenu(daysBehind?: number): Promise<void> {
   let exitRequested = false;
   while (!exitRequested) {
+    const updateLabel = daysBehind
+      ? t('prompts.main.choice.updateDocsBehind', { daysBehind })
+      : t('prompts.main.choice.updateDocs');
+
     const choices = [
-      { name: 'Create a work plan', value: 'plan' as InteractiveAction },
-      { name: daysBehind ? `Update documentation (${daysBehind} days behind)` : 'Update documentation', value: 'fill' as InteractiveAction },
-      { name: 'Sync agent playbooks', value: 'syncAgents' as InteractiveAction },
-      { name: 'Re-scaffold (overwrite)', value: 'scaffold' as InteractiveAction },
-      { name: 'Change language', value: 'changeLanguage' as InteractiveAction },
-      { name: 'Exit', value: 'exit' as InteractiveAction }
+      { name: t('prompts.main.choice.plan'), value: 'plan' as InteractiveAction },
+      { name: updateLabel, value: 'fill' as InteractiveAction },
+      { name: t('prompts.main.choice.syncAgents'), value: 'syncAgents' as InteractiveAction },
+      { name: t('prompts.main.choice.rescaffold'), value: 'scaffold' as InteractiveAction },
+      { name: t('prompts.main.choice.changeLanguage'), value: 'changeLanguage' as InteractiveAction },
+      { name: t('prompts.main.choice.exit'), value: 'exit' as InteractiveAction }
     ];
 
     const { action } = await inquirer.prompt<{ action: InteractiveAction }>([
       {
         type: 'list',
         name: 'action',
-        message: 'What would you like to do?',
+        message: t('prompts.main.action'),
         choices
       }
     ]);

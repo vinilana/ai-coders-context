@@ -13,13 +13,29 @@ async function getOrBuildContext(repoPath: string): Promise<string> {
     return cachedContext.context;
   }
 
-  if (!sharedContextBuilder) {
-    sharedContextBuilder = new SemanticContextBuilder();
+  // Cleanup existing builder before creating new one (cache invalidation)
+  // This releases LSP language server child processes
+  if (sharedContextBuilder) {
+    await sharedContextBuilder.shutdown();
+    sharedContextBuilder = null;
   }
 
+  sharedContextBuilder = new SemanticContextBuilder();
   const context = await sharedContextBuilder.buildDocumentationContext(repoPath);
   cachedContext = { repoPath, context };
   return context;
+}
+
+/**
+ * Cleanup shared context builder resources.
+ * Call this during server/process shutdown to release LSP processes.
+ */
+export async function cleanupSharedContext(): Promise<void> {
+  if (sharedContextBuilder) {
+    await sharedContextBuilder.shutdown();
+    sharedContextBuilder = null;
+    cachedContext = null;
+  }
 }
 
 // ============================================
