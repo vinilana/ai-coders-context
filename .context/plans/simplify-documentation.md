@@ -63,9 +63,105 @@ E a ferramenta **detecta automaticamente** o que precisa ser feito.
 | Estado | Detecção | Ação Automática |
 |--------|----------|-----------------|
 | **Novo** | Não existe `.context/` | Pergunta se quer inicializar |
-| **Inicializado** | Existe `.context/` mas arquivos têm `<!-- TODO -->` | Oferece preencher |
-| **Pronto** | Existe `.context/` com conteúdo real | Menu de opções |
+| **Não preenchido** | Arquivo tem `@status: unfilled` na primeira linha | Oferece preencher |
+| **Pronto** | Arquivo não tem marcação de status | Menu de opções |
 | **Desatualizado** | `.context/` mais antigo que código | Sugere atualizar |
+
+---
+
+## Marcação de Estado nos Arquivos
+
+### Problema Atual
+Os templates têm `TODO:` espalhados pelo conteúdo. Para saber se um arquivo precisa ser preenchido, a IA precisa **ler o arquivo inteiro**.
+
+### Solução: Marcação na Primeira Linha
+
+Cada arquivo gerado pelo `init` começa com um YAML front matter indicando o estado:
+
+```markdown
+---
+status: unfilled
+generated: 2026-01-09
+---
+
+# Architecture Notes
+
+> Fill this section with your system architecture...
+```
+
+### Detecção Instantânea
+
+```typescript
+// Ler apenas primeira linha do arquivo
+async function needsFill(filePath: string): Promise<boolean> {
+  const firstLine = await readFirstLine(filePath);
+  return firstLine.includes('status: unfilled');
+}
+
+// Listar todos que precisam preencher
+async function getUnfilledFiles(contextDir: string): Promise<string[]> {
+  const files = await glob(`${contextDir}/**/*.md`);
+  const results = await Promise.all(
+    files.map(async f => ({ file: f, unfilled: await needsFill(f) }))
+  );
+  return results.filter(r => r.unfilled).map(r => r.file);
+}
+```
+
+**Vantagens:**
+- Detecção sem ler conteúdo (só primeira linha)
+- IA não precisa interpretar "está preenchido?"
+- Remove ambiguidade
+- Fácil de automatizar em CI
+
+### Fluxo de Vida do Arquivo
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                                                              │
+│  init                    fill                   update       │
+│    │                       │                       │         │
+│    ▼                       ▼                       ▼         │
+│ ┌──────────┐         ┌──────────┐           ┌──────────┐    │
+│ │ status:  │ ──────► │ (sem     │ ──────►   │ (sem     │    │
+│ │ unfilled │  preen- │ status)  │  atualiza │ status)  │    │
+│ └──────────┘  cher   └──────────┘           └──────────┘    │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Remoção de TODOs Inline
+
+Com a marcação de status, **removemos todos os `TODO:` do conteúdo**. O arquivo template fica mais limpo:
+
+**Antes:**
+```markdown
+# Architecture Notes
+
+> TODO: Describe how the system is assembled...
+
+## System Architecture Overview
+- TODO: Summarize the top-level topology...
+```
+
+**Depois:**
+```markdown
+---
+status: unfilled
+---
+
+# Architecture Notes
+
+## System Architecture Overview
+Summarize the top-level topology (monolith, microservices) and deployment model.
+
+## Architectural Layers
+...
+```
+
+O conteúdo vira **guia de preenchimento**, não marcadores para IA buscar.
+
+---
 
 ### Detecção de "Desatualizado"
 
@@ -82,7 +178,7 @@ if (codeMtime > contextMtime) {
 }
 ```
 
-**Sem snapshots. Sem complexidade. Apenas timestamps.**
+**Sem snapshots. Sem complexidade. Apenas timestamps e front matter.**
 
 ---
 
@@ -283,32 +379,59 @@ MIT
 
 ## Implementação
 
-### Fase 1: Refatorar Wizard (2-3 dias)
+### Fase 0: Migrar Templates para Front Matter (1 dia)
 
-- [ ] Criar `StateDetector` para identificar estado do projeto
+- [ ] Adicionar YAML front matter `status: unfilled` em todos os templates
+- [ ] Remover `TODO:` e `<!-- -->` do conteúdo dos templates
+- [ ] Transformar instruções em texto guia (não marcadores)
+- [ ] Atualizar `FillService` para remover front matter após preencher
+- [ ] Criar helper `needsFill(filePath)` que lê só primeira linha
+
+**Templates a modificar:**
+```
+src/generators/
+├── documentation/templates/
+│   ├── architectureTemplate.ts
+│   ├── projectOverviewTemplate.ts
+│   ├── developmentWorkflowTemplate.ts
+│   ├── testingTemplate.ts
+│   ├── glossaryTemplate.ts
+│   ├── dataFlowTemplate.ts
+│   ├── securityTemplate.ts
+│   ├── toolingTemplate.ts
+│   └── ... (8+ arquivos)
+├── agents/templates/
+│   └── playbookTemplate.ts
+└── plans/templates/
+    └── planTemplate.ts
+```
+
+### Fase 1: Refatorar Wizard (1-2 dias)
+
+- [ ] Criar `StateDetector` usando `needsFill()`
 - [ ] Unificar fluxo interativo em `runInteractive()`
 - [ ] Adicionar detecção de "desatualizado" por mtime
 - [ ] Implementar flag `--yes` para modo não-interativo
 - [ ] Implementar flag `--check` para CI
 
-### Fase 2: Comando `update` (1-2 dias)
+### Fase 2: Comando `update` (1 dia)
 
 - [ ] Criar novo comando que combina detecção + fill seletivo
-- [ ] Implementar grep simples para mapear arquivos → docs
 - [ ] Integrar com git diff quando disponível
+- [ ] Usar grep para sugerir quais docs atualizar
 
 ### Fase 3: Simplificar README (1 dia)
 
-- [ ] Reescrever README minimalista
+- [ ] Reescrever README minimalista (~50 linhas)
 - [ ] Criar `docs/GUIDE.md` com conteúdo detalhado
 - [ ] Mover configuração de providers para `docs/PROVIDERS.md`
 - [ ] Atualizar CLAUDE.md e AGENTS.md
 
 ### Fase 4: Testes e Polish (1 dia)
 
+- [ ] Testes para `needsFill()`
 - [ ] Testes e2e do fluxo wizard
 - [ ] Teste de CI com `--check`
-- [ ] Melhorar mensagens de erro
 
 ---
 
@@ -317,13 +440,19 @@ MIT
 ```
 src/
 ├── index.ts                    # Refatorar runInteractive()
+├── generators/
+│   ├── documentation/templates/*.ts  # Adicionar front matter
+│   ├── agents/templates/*.ts         # Adicionar front matter
+│   └── plans/templates/*.ts          # Adicionar front matter
 ├── services/
 │   ├── state/
-│   │   ├── stateDetector.ts    # NOVO: Detecta estado do projeto
-│   │   └── changeDetector.ts   # NOVO: Detecta mudanças simples
+│   │   └── stateDetector.ts    # NOVO: Detecta estado via front matter
+│   ├── fill/
+│   │   └── fillService.ts      # Atualizar para remover front matter
 │   └── update/
 │       └── updateService.ts    # NOVO: Atualização seletiva
 └── utils/
+    ├── frontMatter.ts          # NOVO: Parse/remove YAML front matter
     └── prompts.ts              # Atualizar prompts do wizard
 
 docs/
@@ -343,7 +472,8 @@ README.md                       # Reescrever (minimalista)
 | README | 437 linhas | ~50 linhas |
 | Comandos para decorar | 5+ | 0 (wizard) |
 | Primeiro uso | "qual comando uso?" | "npx @ai-coders/context" |
-| Atualização | Manual | Semi-automática |
+| Detectar "não preenchido" | Ler arquivo inteiro | Ler 1 linha |
+| Marcações no template | `TODO:` espalhados | 1 front matter |
 
 ---
 
@@ -353,6 +483,7 @@ README.md                       # Reescrever (minimalista)
 - ❌ Diff semântico de símbolos (over-engineering)
 - ❌ Mapeamento automático mudança→doc (heurísticas frágeis)
 - ❌ Armazenar estado em `.context/.snapshot/` (overhead)
+- ❌ Múltiplos `TODO:` ou `<!-- -->` no conteúdo (substituído por front matter)
 
 ---
 
