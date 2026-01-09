@@ -1,6 +1,6 @@
 import * as path from 'path';
 import { DocumentationTemplateContext } from './types';
-import { formatDirectoryList, formatSymbolRef, buildSymbolList } from './common';
+import { formatDirectoryList, formatSymbolRef, buildSymbolList, wrapWithFrontMatter } from './common';
 
 function renderEntryPointsSection(context: DocumentationTemplateContext): string {
   const { semantics, repoStructure } = context;
@@ -60,11 +60,12 @@ export function renderProjectOverview(context: DocumentationTemplateContext): st
   const entryPointsSection = renderEntryPointsSection(context);
   const keyExportsSection = renderKeyExportsSection(context);
 
-  return `# Project Overview
+  const content = `# Project Overview
 
-> TODO: Summarize the problem this project solves and who benefits from it.
+Summarize the problem this project solves and who benefits from it.
 
 ## Quick Facts
+
 - Root path: \`${context.repoStructure.rootPath}\`
 - Primary languages detected:
 ${languageSummary}
@@ -79,27 +80,31 @@ ${keyExportsSection}
 ${directoryList || '*Add a short description for each relevant directory.*'}
 
 ## Technology Stack Summary
-- Outline primary runtimes, languages, and platforms in use.
-- Note build tooling, linting, and formatting infrastructure the team relies on.
+
+Outline primary runtimes, languages, and platforms in use. Note build tooling, linting, and formatting infrastructure the team relies on.
 
 ## Core Framework Stack
-- Document core frameworks per layer (backend, frontend, data, messaging).
-- Mention architectural patterns enforced by these frameworks.
+
+Document core frameworks per layer (backend, frontend, data, messaging). Mention architectural patterns enforced by these frameworks.
 
 ## UI & Interaction Libraries
-- List UI kits, CLI interaction helpers, or design system dependencies.
-- Note theming, accessibility, or localization considerations contributors must follow.
+
+List UI kits, CLI interaction helpers, or design system dependencies. Note theming, accessibility, or localization considerations contributors must follow.
 
 ## Development Tools Overview
-- Highlight essential CLIs, scripts, or developer environments.
-- Link to [Tooling & Productivity Guide](./tooling.md) for deeper setup instructions.
+
+Highlight essential CLIs, scripts, or developer environments. Link to [Tooling & Productivity Guide](./tooling.md) for deeper setup instructions.
 
 ## Getting Started Checklist
+
 1. Install dependencies with \`npm install\`.
 2. Explore the CLI by running \`npm run dev\`.
 3. Review [Development Workflow](./development-workflow.md) for day-to-day tasks.
 
 ## Next Steps
+
 Capture product positioning, key stakeholders, and links to external documentation or product specs here.
 `;
+
+  return wrapWithFrontMatter(content);
 }

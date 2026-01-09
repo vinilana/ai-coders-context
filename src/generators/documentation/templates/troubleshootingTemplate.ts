@@ -1,5 +1,7 @@
+import { wrapWithFrontMatter } from './common';
+
 export function renderTroubleshooting(): string {
-  return `# Troubleshooting Guide
+  const content = `# Troubleshooting Guide
 
 **Purpose:** Enable AI agents to diagnose and resolve issues using automated diagnostics and decision trees.
 
@@ -263,4 +265,6 @@ EOF
 echo "Escalation created. Agent awaiting human intervention."
 \`\`\`
 `;
+
+  return wrapWithFrontMatter(content);
 }

@@ -1,5 +1,7 @@
+import { wrapWithFrontMatter } from './common';
+
 export function renderMigration(): string {
-  return `# Migration Guide
+  const content = `# Migration Guide
 
 Complete guide for upgrading between versions, handling breaking changes, and migrating data.
 
@@ -393,4 +395,6 @@ When reporting migration problems, include:
 4. Database type and version
 5. Steps to reproduce
 `;
+
+  return wrapWithFrontMatter(content);
 }

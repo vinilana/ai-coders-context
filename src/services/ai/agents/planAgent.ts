@@ -9,6 +9,7 @@ import type { AgentEventCallbacks } from '../agentEvents';
 import { summarizeToolResult } from '../agentEvents';
 import { SemanticContextBuilder } from '../../semantic';
 import { sanitizeAIResponse } from '../../../utils/contentSanitizer';
+import { getPlanAgentPrompt, PLAN_UPDATE_PROMPT } from '../prompts';
 
 export interface PlanAgentOptions {
   repoPath: string;
@@ -34,58 +35,9 @@ export interface PlanAgentResult {
   steps: number;
 }
 
-const SYSTEM_PROMPT = `You are an expert software development planner. Your task is to create or update development plans that coordinate AI agents and documentation.
-
-You have access to code analysis tools:
-- readFile: Read file contents
-- listFiles: List files matching patterns
-- analyzeSymbols: Extract code symbols (classes, functions, etc.)
-- getFileStructure: Get repository structure
-- searchCode: Search for code patterns
-
-A good development plan includes:
-1. Clear goal and scope definition
-2. Agent lineup with specific roles and focus areas
-3. Documentation touchpoints that need updates
-4. Phased implementation with concrete steps
-5. Each step has an owner (agent type), deliverable, and evidence of completion
-6. Git commit checkpoints for each phase
-7. Success criteria and risk mitigation
-
-Use the tools to:
-- Understand the codebase structure
-- Identify key files and patterns
-- Find existing documentation and agent playbooks
-- Discover dependencies and relationships
-
-Then create a detailed, actionable plan.
-
-IMPORTANT OUTPUT FORMAT:
-- Output ONLY the final plan content in Markdown format
-- Do NOT include your reasoning, planning, or analysis process
-- Do NOT start with phrases like "I will...", "Let me...", "First, I need to..."
-- Begin directly with the plan content (YAML front matter or title)
-- Your response will be saved directly to a file`;
-
-const PLAN_UPDATE_PROMPT = `You are updating an existing development plan with fresh context from the repository.
-
-Preserve:
-- YAML front matter
-- agent-update wrapper comments
-- Overall structure and formatting
-
-Update:
-- Replace TODOs with concrete steps
-- Ensure agent lineup matches available agents
-- Update documentation touchpoints based on actual docs
-- Add specific file paths and code references
-- Segment work into clear phases with commit checkpoints
-
-CRITICAL OUTPUT REQUIREMENT:
-- Return ONLY the complete updated Markdown plan content
-- Do NOT include reasoning, thinking, or analysis
-- Do NOT start with "I will...", "Let me...", etc.
-- Your response replaces the plan file directly`;
+// Use shared system prompts from prompts module
+const SYSTEM_PROMPT = getPlanAgentPrompt();
+// PLAN_UPDATE_PROMPT is imported from '../prompts'
 
 export class PlanAgent {
   private config: LLMConfig;

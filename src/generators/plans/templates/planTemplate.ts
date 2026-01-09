@@ -1,5 +1,6 @@
 import { PlanTemplateContext, CodebaseSnapshot } from './types';
 import { SemanticContext } from '../../../services/semantic';
+import { wrapWithFrontMatter } from '../../documentation/templates/common';
 
 function renderCodebaseSnapshot(snapshot?: CodebaseSnapshot): string {
   if (!snapshot) {
@@ -77,7 +78,7 @@ export function renderPlanTemplate(context: PlanTemplateContext): string {
         .join('\n')
     : '| Documentation Index | [README.md](../docs/README.md) | Current docs directory listing |';
 
-  return `# ${title} Plan
+  const content = `# ${title} Plan
 
 > ${summary?.trim() || 'TODO: Summarize the desired outcome and the problem this plan addresses.'}
 
@@ -198,7 +199,9 @@ When to initiate rollback:
 4. Update plan with lessons learned before retry
 
 ## Evidence & Follow-up
-- TODO: List artifacts to collect (logs, PR links, test runs, design notes).
-- TODO: Record follow-up actions or owners.
+
+List artifacts to collect (logs, PR links, test runs, design notes). Record follow-up actions or owners.
 `;
+
+  return wrapWithFrontMatter(content);
 }
