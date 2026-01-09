@@ -18,6 +18,7 @@ import { PlanService } from './services/plan/planService';
 import { SyncService } from './services/sync/syncService';
 import { ServeService } from './services/serve';
 import { startMCPServer } from './services/mcp';
+import { StateDetector } from './services/state';
 import { DEFAULT_MODELS } from './services/ai/providerFactory';
 import {
   detectSmartDefaults,
@@ -344,26 +345,160 @@ async function selectLocale(showWelcome: boolean): Promise<void> {
   }
 }
 
-type InteractiveAction = 'scaffold' | 'fill' | 'plan' | 'syncAgents' | 'changeLanguage' | 'exit';
+type InteractiveAction = 'scaffold' | 'fill' | 'plan' | 'syncAgents' | 'update' | 'changeLanguage' | 'exit';
+type StateAction = 'create' | 'fill' | 'menu' | 'exit';
 
 async function runInteractive(): Promise<void> {
   await selectLocale(true);
 
+  const projectPath = process.cwd();
+  const detector = new StateDetector({ projectPath });
+  const result = await detector.detect();
+
+  // Display project info
+  console.log('');
+  ui.displayInfo(
+    `${PACKAGE_NAME} v${VERSION}`,
+    `Project: ${projectPath}`
+  );
+
+  // Show state-specific information
+  switch (result.state) {
+    case 'new':
+      console.log(colors.secondaryDim('  No context documentation found.\n'));
+      break;
+    case 'unfilled':
+      console.log(colors.secondaryDim(`  Context: ${result.details.unfilledFiles} files need filling\n`));
+      break;
+    case 'outdated':
+      console.log(colors.warning(`  Code modified ${result.details.daysBehind} day(s) ago (docs not updated)\n`));
+      break;
+    case 'ready':
+      console.log(colors.success(`  Context: ${result.details.totalFiles} docs, all up to date\n`));
+      break;
+  }
+
+  // Handle state-based flow
+  if (result.state === 'new') {
+    const { action } = await inquirer.prompt<{ action: StateAction }>([
+      {
+        type: 'list',
+        name: 'action',
+        message: 'What would you like to do?',
+        choices: [
+          { name: 'Create documentation for this project', value: 'create' },
+          { name: 'Exit', value: 'exit' }
+        ]
+      }
+    ]);
+
+    if (action === 'create') {
+      // Run init + fill automatically
+      await runQuickSetup(projectPath);
+    }
+    return;
+  }
+
+  if (result.state === 'unfilled') {
+    const { action } = await inquirer.prompt<{ action: StateAction }>([
+      {
+        type: 'list',
+        name: 'action',
+        message: `${result.details.unfilledFiles} files need to be filled. What would you like to do?`,
+        choices: [
+          { name: 'Fill documentation with AI', value: 'fill' },
+          { name: 'More options...', value: 'menu' },
+          { name: 'Exit', value: 'exit' }
+        ]
+      }
+    ]);
+
+    if (action === 'fill') {
+      await runInteractiveLlmFill();
+      return;
+    } else if (action === 'menu') {
+      await runFullMenu();
+    }
+    return;
+  }
+
+  // For 'ready' or 'outdated' states, show full menu
+  await runFullMenu(result.state === 'outdated' ? result.details.daysBehind : undefined);
+}
+
+async function runQuickSetup(projectPath: string): Promise<void> {
+  const { confirm } = await inquirer.prompt<{ confirm: boolean }>([
+    {
+      type: 'confirm',
+      name: 'confirm',
+      message: 'This will create and fill documentation. Continue?',
+      default: true
+    }
+  ]);
+
+  if (!confirm) {
+    return;
+  }
+
+  // Run init
+  ui.startSpinner('Creating documentation structure...');
+  try {
+    const initService = new InitService({ ui, t, version: VERSION });
+    await initService.run(projectPath, 'all', {
+      semantic: true
+    });
+    ui.stopSpinner();
+  } catch (error) {
+    ui.stopSpinner();
+    ui.displayError('Failed to create structure', error as Error);
+    return;
+  }
+
+  // Prompt for LLM config and run fill
+  const llmConfig = await promptLLMConfig(t);
+  if (!llmConfig) {
+    ui.displayInfo('Setup incomplete', 'Run `npx @ai-coders/context fill .` to fill documentation later.');
+    return;
+  }
+
+  ui.startSpinner('Filling documentation with AI...');
+  try {
+    const fillService = new FillService({ ui, t, version: VERSION, defaultModel: DEFAULT_MODEL });
+    await fillService.run(projectPath, {
+      model: llmConfig.model,
+      provider: llmConfig.provider,
+      apiKey: llmConfig.apiKey,
+      baseUrl: llmConfig.baseUrl,
+      verbose: false,
+      semantic: true
+    });
+    ui.stopSpinner();
+    ui.displaySuccess('Documentation created!');
+    console.log(colors.secondaryDim('  Review the files in .context/ and commit them.'));
+  } catch (error) {
+    ui.stopSpinner();
+    ui.displayError('Failed to fill documentation', error as Error);
+  }
+}
+
+async function runFullMenu(daysBehind?: number): Promise<void> {
   let exitRequested = false;
   while (!exitRequested) {
+    const choices = [
+      { name: daysBehind ? `Update documentation (${daysBehind} days behind)` : 'Update documentation', value: 'fill' as InteractiveAction },
+      { name: 'Create a work plan', value: 'plan' as InteractiveAction },
+      { name: 'Sync agent playbooks', value: 'syncAgents' as InteractiveAction },
+      { name: 'Re-scaffold (overwrite)', value: 'scaffold' as InteractiveAction },
+      { name: 'Change language', value: 'changeLanguage' as InteractiveAction },
+      { name: 'Exit', value: 'exit' as InteractiveAction }
+    ];
+
     const { action } = await inquirer.prompt<{ action: InteractiveAction }>([
       {
         type: 'list',
         name: 'action',
-        message: t('prompts.main.action'),
-        choices: [
-          { name: t('prompts.main.choice.scaffold'), value: 'scaffold' },
-          { name: t('prompts.main.choice.fill'), value: 'fill' },
-          { name: t('prompts.main.choice.plan'), value: 'plan' },
-          { name: t('prompts.main.choice.syncAgents'), value: 'syncAgents' },
-          { name: t('prompts.main.choice.changeLanguage'), value: 'changeLanguage' },
-          { name: t('prompts.main.choice.exit'), value: 'exit' }
-        ]
+        message: 'What would you like to do?',
+        choices
       }
     ]);
 
