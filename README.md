@@ -2,6 +2,9 @@
 
 [![npm version](https://badge.fury.io/js/@ai-coders%2Fcontext.svg)](https://www.npmjs.com/package/@ai-coders/context)
 [![CI](https://github.com/vinilana/ai-coders-context/actions/workflows/ci.yml/badge.svg)](https://github.com/vinilana/ai-coders-context/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+<img width="663" height="192" alt="ai-coders-context" src="https://github.com/user-attachments/assets/4b07f61d-6800-420a-ae91-6e952cbc790d" />
 
 Context engineering for AI. Stupidly simple.
 
