@@ -30,6 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `docs/MCP.md` - MCP server setup and configuration
   - `docs/PROVIDERS.md` - Multi-provider configuration guide
 
+- **New MCP tools for incremental scaffolding**: Avoid output size limits
+  - `listFilesToFill` - Returns only file paths (~1KB response) for efficient listing
+  - `fillSingleFile` - Process one scaffold file at a time (~10KB per file)
+  - MCP server now exposes 12 tools (up from 10)
+
 - **Tests for new utilities**:
   - `frontMatter.test.ts` - 12 tests for YAML front matter parsing/updating
   - `stateDetector.test.ts` - 8 tests for project state detection
@@ -41,6 +46,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Menu reordered to prioritize plan creation over docs update
   - Plan creation now asks for goal/summary instead of just name
 - **Quick setup fix**: Uses correct `both` value instead of `all` for scaffold type
+- **fillScaffolding pagination**: Added `offset` and `limit` parameters (default: 3 files)
+  - Prevents output size errors for large projects
+  - Returns `pagination.hasMore` to indicate remaining files
+- **Centralized tool descriptions**: Single source of truth for MCP and AI SDK
+  - New `toolRegistry.ts` with all tool descriptions
+  - MCP server uses `getToolDescription()` instead of inline strings
+- **Shared agent prompts**: Eliminated redundancy across agents
+  - New `prompts/sharedPrompts.ts` with common prompt components
+  - `getDocumentationAgentPrompt()`, `getPlaybookAgentPrompt()`, `getPlanAgentPrompt()`
+  - Agents now import prompts instead of defining inline
 
 ### Removed
 
@@ -56,6 +71,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `src/services/update/updateService.ts` - Update command service
 - `src/utils/frontMatter.ts` - YAML front matter utilities
 - `src/utils/frontMatter.test.ts` - Front matter tests
+- `src/services/ai/toolRegistry.ts` - Centralized tool descriptions
+- `src/services/ai/prompts/sharedPrompts.ts` - Shared agent system prompts
+- `src/services/ai/prompts/index.ts` - Prompts barrel export
 - `docs/GUIDE.md` - Usage guide
 - `docs/MCP.md` - MCP documentation
 - `docs/PROVIDERS.md` - Provider configuration
