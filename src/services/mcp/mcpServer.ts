@@ -21,6 +21,7 @@ import {
   listFilesToFillTool,
   fillSingleFileTool
 } from '../ai/tools';
+import { getToolDescription } from '../ai/toolRegistry';
 import { SemanticContextBuilder, type ContextFormat } from '../semantic/contextBuilder';
 import { VERSION } from '../../version';
 
@@ -63,7 +64,7 @@ export class AIContextMCPServer {
   private registerTools(): void {
     // readFile tool
     this.server.registerTool('readFile', {
-      description: 'Read the contents of a file from the filesystem',
+      description: getToolDescription('readFile'),
       inputSchema: {
         filePath: z.string().describe('Absolute or relative path to the file to read'),
         encoding: z.enum(['utf-8', 'ascii', 'binary']).default('utf-8').optional()
@@ -84,7 +85,7 @@ export class AIContextMCPServer {
 
     // listFiles tool
     this.server.registerTool('listFiles', {
-      description: 'List files matching a glob pattern',
+      description: getToolDescription('listFiles'),
       inputSchema: {
         pattern: z.string().describe('Glob pattern to match files (e.g., "**/*.ts")'),
         cwd: z.string().optional().describe('Working directory for the glob pattern'),
@@ -106,7 +107,7 @@ export class AIContextMCPServer {
 
     // analyzeSymbols tool
     this.server.registerTool('analyzeSymbols', {
-      description: 'Analyze symbols in a source file (classes, functions, interfaces, types, enums)',
+      description: getToolDescription('analyzeSymbols'),
       inputSchema: {
         filePath: z.string().describe('Path to the file to analyze'),
         symbolTypes: z.array(z.enum(['class', 'interface', 'function', 'type', 'enum']))
@@ -129,7 +130,7 @@ export class AIContextMCPServer {
 
     // getFileStructure tool
     this.server.registerTool('getFileStructure', {
-      description: 'Get the file structure of a repository',
+      description: getToolDescription('getFileStructure'),
       inputSchema: {
         rootPath: z.string().describe('Root path of the repository'),
         maxDepth: z.number().optional().default(3).describe('Maximum directory depth'),
@@ -151,7 +152,7 @@ export class AIContextMCPServer {
 
     // searchCode tool
     this.server.registerTool('searchCode', {
-      description: 'Search for code patterns using regex',
+      description: getToolDescription('searchCode'),
       inputSchema: {
         pattern: z.string().describe('Regex pattern to search for'),
         fileGlob: z.string().optional().describe('Glob pattern to filter files'),
@@ -179,7 +180,7 @@ export class AIContextMCPServer {
 
     // buildSemanticContext tool - higher-level context building
     this.server.registerTool('buildSemanticContext', {
-      description: 'Build optimized semantic context for LLM prompts. Pre-analyzes the codebase and returns formatted context.',
+      description: getToolDescription('buildSemanticContext'),
       inputSchema: {
         repoPath: z.string().describe('Path to the repository'),
         contextType: z.enum(['documentation', 'playbook', 'plan', 'compact'])
@@ -234,7 +235,7 @@ export class AIContextMCPServer {
 
     // checkScaffolding tool
     this.server.registerTool('checkScaffolding', {
-      description: 'Check if .context scaffolding exists and return granular status',
+      description: getToolDescription('checkScaffolding'),
       inputSchema: {
         repoPath: z.string().optional().describe('Repository path to check (defaults to cwd)')
       }
@@ -254,28 +255,7 @@ export class AIContextMCPServer {
 
     // initializeContext tool
     this.server.registerTool('initializeContext', {
-      description: `Initialize .context scaffolding and create template files.
-IMPORTANT: After this tool completes, you MUST fill the generated files:
-1. Use buildSemanticContext to analyze the codebase
-2. Read each generated template file
-3. Write filled content to each file based on the analysis
-
-CRITICAL - Documentation Quality Requirements:
-After filling the files with semantic analysis content, you MUST apply reasoning to significantly IMPROVE the documentation:
-
-- Architecture docs: Reason about design patterns, identify why certain architectural decisions were made, explain trade-offs, and document implicit design principles that aren't obvious from code alone
-- Data flow docs: Think through edge cases, document error handling paths, explain the reasoning behind data transformations, and clarify complex interactions
-- Agent playbooks: Use your understanding to create actionable, context-aware instructions that go beyond generic templates
-- README files: Synthesize information to create clear, developer-friendly overviews that highlight what's most important
-
-DO NOT simply copy the semantic analysis output. Use critical thinking to:
-1. Identify gaps in the auto-generated content
-2. Add explanations for "why" not just "what"
-3. Include practical examples where helpful
-4. Highlight important caveats or gotchas
-5. Ensure documentation tells a coherent story
-
-The goal is documentation that a new developer would find genuinely helpful, not just technically accurate.`,
+      description: getToolDescription('initializeContext', true),
       inputSchema: {
         repoPath: z.string().describe('Repository path to initialize'),
         type: z.enum(['docs', 'agents', 'both']).default('both').optional()
@@ -309,7 +289,7 @@ The goal is documentation that a new developer would find genuinely helpful, not
 
     // scaffoldPlan tool
     this.server.registerTool('scaffoldPlan', {
-      description: 'Create a plan template in .context/plans/',
+      description: getToolDescription('scaffoldPlan'),
       inputSchema: {
         planName: z.string().describe('Name of the plan (will be slugified)'),
         repoPath: z.string().optional().describe('Repository path'),
@@ -341,10 +321,7 @@ The goal is documentation that a new developer would find genuinely helpful, not
 
     // fillScaffolding tool (with pagination)
     this.server.registerTool('fillScaffolding', {
-      description: `Analyze codebase and generate filled content for scaffolding templates.
-Returns suggestedContent for each file. Supports pagination with offset/limit (default: 3 files).
-For large projects, use listFilesToFill + fillSingleFile instead to avoid output size limits.
-IMPORTANT: After calling this, write each suggestedContent to its corresponding file path.`,
+      description: getToolDescription('fillScaffolding', true),
       inputSchema: {
         repoPath: z.string().describe('Repository path'),
         outputDir: z.string().optional().describe('Scaffold directory (default: ./.context)'),
@@ -375,9 +352,7 @@ IMPORTANT: After calling this, write each suggestedContent to its corresponding 
 
     // listFilesToFill tool - lightweight listing without content
     this.server.registerTool('listFilesToFill', {
-      description: `List scaffold files that need to be filled. Returns only file paths (no content).
-Use this first to get the list, then call fillSingleFile for each file.
-This is more efficient than fillScaffolding for large projects.`,
+      description: getToolDescription('listFilesToFill', true),
       inputSchema: {
         repoPath: z.string().describe('Repository path'),
         outputDir: z.string().optional().describe('Scaffold directory (default: ./.context)'),
@@ -404,9 +379,7 @@ This is more efficient than fillScaffolding for large projects.`,
 
     // fillSingleFile tool - process one file at a time
     this.server.registerTool('fillSingleFile', {
-      description: `Generate suggested content for a single scaffold file.
-Call listFilesToFill first to get file paths, then call this for each file.
-This avoids output size limits by processing one file at a time.`,
+      description: getToolDescription('fillSingleFile', true),
       inputSchema: {
         repoPath: z.string().describe('Repository path'),
         filePath: z.string().describe('Absolute path to the scaffold file to fill')

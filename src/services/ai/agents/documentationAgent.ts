@@ -9,6 +9,7 @@ import type { AgentEventCallbacks } from '../agentEvents';
 import { summarizeToolResult } from '../agentEvents';
 import { SemanticContextBuilder } from '../../semantic';
 import { sanitizeAIResponse } from '../../../utils/contentSanitizer';
+import { getDocumentationAgentPrompt } from '../prompts';
 
 export interface DocumentationAgentOptions {
   repoPath: string;
@@ -29,35 +30,8 @@ export interface DocumentationAgentResult {
   steps: number;
 }
 
-const SYSTEM_PROMPT = `You are a technical documentation expert. Your task is to analyze code and generate comprehensive documentation.
-
-You have access to tools for:
-- Reading file contents (readFile)
-- Listing files in the repository (listFiles)
-- Analyzing code symbols like classes, functions, interfaces (analyzeSymbols)
-- Getting repository structure (getFileStructure)
-- Searching for code patterns (searchCode)
-
-Use these tools to gather context about the codebase before generating documentation.
-
-When analyzing, focus on:
-1. Understanding the file's purpose and main exports
-2. Identifying dependencies and relationships
-3. Finding usage examples in tests or other files
-4. Discovering patterns and conventions
-
-Generate documentation that is:
-- Clear and concise
-- Practical for developers
-- Includes code examples where helpful
-- Cross-references related files
-
-IMPORTANT OUTPUT FORMAT:
-- Output ONLY the final documentation content in Markdown format
-- Do NOT include your reasoning, planning, or analysis process
-- Do NOT start with phrases like "I will...", "Let me...", "First, I need to..."
-- Begin directly with the documentation title or YAML front matter
-- Your response will be saved directly to a file`;
+// Use shared system prompt from prompts module
+const SYSTEM_PROMPT = getDocumentationAgentPrompt();
 
 export class DocumentationAgent {
   private config: LLMConfig;
