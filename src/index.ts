@@ -32,9 +32,13 @@ import {
 } from './utils/prompts';
 import { VERSION, PACKAGE_NAME } from './version';
 
-dotenv.config();
+const rawArgs = process.argv.slice(2);
+const isMcpCommand = rawArgs.includes('mcp');
+if (!isMcpCommand) {
+  dotenv.config();
+}
 
-const initialLocale = detectLocale(process.argv.slice(2), process.env.AI_CONTEXT_LANG);
+const initialLocale = detectLocale(rawArgs, process.env.AI_CONTEXT_LANG);
 let currentLocale: Locale = initialLocale;
 let translateFn = createTranslator(initialLocale);
 const t: TranslateFn = (key, params) => translateFn(key, params);
