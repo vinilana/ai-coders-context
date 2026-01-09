@@ -17,8 +17,11 @@ import {
   checkScaffoldingTool,
   initializeContextTool,
   scaffoldPlanTool,
-  fillScaffoldingTool
+  fillScaffoldingTool,
+  listFilesToFillTool,
+  fillSingleFileTool
 } from '../ai/tools';
+import { getToolDescription } from '../ai/toolRegistry';
 import { SemanticContextBuilder, type ContextFormat } from '../semantic/contextBuilder';
 import { VERSION } from '../../version';
 
@@ -61,7 +64,7 @@ export class AIContextMCPServer {
   private registerTools(): void {
     // readFile tool
     this.server.registerTool('readFile', {
-      description: 'Read the contents of a file from the filesystem',
+      description: getToolDescription('readFile'),
       inputSchema: {
         filePath: z.string().describe('Absolute or relative path to the file to read'),
         encoding: z.enum(['utf-8', 'ascii', 'binary']).default('utf-8').optional()
@@ -82,7 +85,7 @@ export class AIContextMCPServer {
 
     // listFiles tool
     this.server.registerTool('listFiles', {
-      description: 'List files matching a glob pattern',
+      description: getToolDescription('listFiles'),
       inputSchema: {
         pattern: z.string().describe('Glob pattern to match files (e.g., "**/*.ts")'),
         cwd: z.string().optional().describe('Working directory for the glob pattern'),
@@ -104,7 +107,7 @@ export class AIContextMCPServer {
 
     // analyzeSymbols tool
     this.server.registerTool('analyzeSymbols', {
-      description: 'Analyze symbols in a source file (classes, functions, interfaces, types, enums)',
+      description: getToolDescription('analyzeSymbols'),
       inputSchema: {
         filePath: z.string().describe('Path to the file to analyze'),
         symbolTypes: z.array(z.enum(['class', 'interface', 'function', 'type', 'enum']))
@@ -127,7 +130,7 @@ export class AIContextMCPServer {
 
     // getFileStructure tool
     this.server.registerTool('getFileStructure', {
-      description: 'Get the file structure of a repository',
+      description: getToolDescription('getFileStructure'),
       inputSchema: {
         rootPath: z.string().describe('Root path of the repository'),
         maxDepth: z.number().optional().default(3).describe('Maximum directory depth'),
@@ -149,7 +152,7 @@ export class AIContextMCPServer {
 
     // searchCode tool
     this.server.registerTool('searchCode', {
-      description: 'Search for code patterns using regex',
+      description: getToolDescription('searchCode'),
       inputSchema: {
         pattern: z.string().describe('Regex pattern to search for'),
         fileGlob: z.string().optional().describe('Glob pattern to filter files'),
@@ -177,7 +180,7 @@ export class AIContextMCPServer {
 
     // buildSemanticContext tool - higher-level context building
     this.server.registerTool('buildSemanticContext', {
-      description: 'Build optimized semantic context for LLM prompts. Pre-analyzes the codebase and returns formatted context.',
+      description: getToolDescription('buildSemanticContext'),
       inputSchema: {
         repoPath: z.string().describe('Path to the repository'),
         contextType: z.enum(['documentation', 'playbook', 'plan', 'compact'])
@@ -232,7 +235,7 @@ export class AIContextMCPServer {
 
     // checkScaffolding tool
     this.server.registerTool('checkScaffolding', {
-      description: 'Check if .context scaffolding exists and return granular status',
+      description: getToolDescription('checkScaffolding'),
       inputSchema: {
         repoPath: z.string().optional().describe('Repository path to check (defaults to cwd)')
       }
@@ -252,11 +255,7 @@ export class AIContextMCPServer {
 
     // initializeContext tool
     this.server.registerTool('initializeContext', {
-      description: `Initialize .context scaffolding and create template files.
-IMPORTANT: After this tool completes, you MUST fill the generated files:
-1. Use buildSemanticContext to analyze the codebase
-2. Read each generated template file
-3. Write filled content to each file based on the analysis`,
+      description: getToolDescription('initializeContext', true),
       inputSchema: {
         repoPath: z.string().describe('Repository path to initialize'),
         type: z.enum(['docs', 'agents', 'both']).default('both').optional()
@@ -290,7 +289,7 @@ IMPORTANT: After this tool completes, you MUST fill the generated files:
 
     // scaffoldPlan tool
     this.server.registerTool('scaffoldPlan', {
-      description: 'Create a plan template in .context/plans/',
+      description: getToolDescription('scaffoldPlan'),
       inputSchema: {
         planName: z.string().describe('Name of the plan (will be slugified)'),
         repoPath: z.string().optional().describe('Repository path'),
@@ -320,19 +319,48 @@ IMPORTANT: After this tool completes, you MUST fill the generated files:
       };
     });
 
-    // fillScaffolding tool
+    // fillScaffolding tool (with pagination)
     this.server.registerTool('fillScaffolding', {
-      description: `Analyze codebase and generate filled content for scaffolding templates.
-Returns suggestedContent for each file that you should write to the file path.
-IMPORTANT: After calling this, write each suggestedContent to its corresponding file path.`,
+      description: getToolDescription('fillScaffolding', true),
       inputSchema: {
         repoPath: z.string().describe('Repository path'),
         outputDir: z.string().optional().describe('Scaffold directory (default: ./.context)'),
         target: z.enum(['docs', 'agents', 'plans', 'all']).default('all').optional()
-          .describe('Which scaffolding to fill')
+          .describe('Which scaffolding to fill'),
+        offset: z.number().optional().describe('Skip first N files (for pagination)'),
+        limit: z.number().optional().describe('Max files to return (default: 3, use 0 for all)')
+      }
+    }, async ({ repoPath, outputDir, target, offset, limit }) => {
+      const result = await fillScaffoldingTool.execute!(
+        {
+          repoPath: repoPath || this.options.repoPath || process.cwd(),
+          outputDir,
+          target,
+          offset,
+          limit
+        },
+        { toolCallId: '', messages: [] }
+      );
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify(result, null, 2)
+        }]
+      };
+    });
+
+    // listFilesToFill tool - lightweight listing without content
+    this.server.registerTool('listFilesToFill', {
+      description: getToolDescription('listFilesToFill', true),
+      inputSchema: {
+        repoPath: z.string().describe('Repository path'),
+        outputDir: z.string().optional().describe('Scaffold directory (default: ./.context)'),
+        target: z.enum(['docs', 'agents', 'plans', 'all']).default('all').optional()
+          .describe('Which scaffolding to list')
       }
     }, async ({ repoPath, outputDir, target }) => {
-      const result = await fillScaffoldingTool.execute!(
+      const result = await listFilesToFillTool.execute!(
         {
           repoPath: repoPath || this.options.repoPath || process.cwd(),
           outputDir,
@@ -349,7 +377,31 @@ IMPORTANT: After calling this, write each suggestedContent to its corresponding 
       };
     });
 
-    this.log('Registered 10 tools');
+    // fillSingleFile tool - process one file at a time
+    this.server.registerTool('fillSingleFile', {
+      description: getToolDescription('fillSingleFile', true),
+      inputSchema: {
+        repoPath: z.string().describe('Repository path'),
+        filePath: z.string().describe('Absolute path to the scaffold file to fill')
+      }
+    }, async ({ repoPath, filePath }) => {
+      const result = await fillSingleFileTool.execute!(
+        {
+          repoPath: repoPath || this.options.repoPath || process.cwd(),
+          filePath
+        },
+        { toolCallId: '', messages: [] }
+      );
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify(result, null, 2)
+        }]
+      };
+    });
+
+    this.log('Registered 12 tools');
   }
 
   /**

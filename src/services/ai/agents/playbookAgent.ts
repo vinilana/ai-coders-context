@@ -10,6 +10,7 @@ import type { AgentEventCallbacks } from '../agentEvents';
 import { summarizeToolResult } from '../agentEvents';
 import { SemanticContextBuilder } from '../../semantic';
 import { sanitizeAIResponse } from '../../../utils/contentSanitizer';
+import { getPlaybookAgentPrompt } from '../prompts';
 
 export interface PlaybookAgentOptions {
   repoPath: string;
@@ -30,30 +31,8 @@ export interface PlaybookAgentResult {
   steps: number;
 }
 
-const SYSTEM_PROMPT = `You are an expert at creating AI agent playbooks for software development.
-
-You have access to code analysis tools. Use them to understand the codebase before generating the playbook.
-
-A good playbook includes:
-1. Clear understanding of what files/areas the agent should focus on
-2. Specific workflows and steps for common tasks
-3. Best practices derived from the actual codebase
-4. Relevant code patterns and conventions
-5. Key files and their purposes
-
-Use the tools to discover:
-- Relevant source files for the agent type
-- Test files and testing patterns
-- Configuration files
-- Existing documentation
-- Code patterns and conventions
-
-IMPORTANT OUTPUT FORMAT:
-- Output ONLY the final playbook content in Markdown format
-- Do NOT include your reasoning, planning, or analysis process
-- Do NOT start with phrases like "I will...", "Let me...", "First, I need to..."
-- Begin directly with the playbook title or content structure
-- Your response will be saved directly to a .md file`;
+// Use shared system prompt from prompts module
+const SYSTEM_PROMPT = getPlaybookAgentPrompt();
 
 const AGENT_TYPE_FOCUS: Record<GeneratorAgentType, string[]> = {
   'code-reviewer': ['**/*.ts', '**/*.tsx', '.eslintrc*', 'tsconfig.json'],

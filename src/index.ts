@@ -18,6 +18,8 @@ import { PlanService } from './services/plan/planService';
 import { SyncService } from './services/sync/syncService';
 import { ServeService } from './services/serve';
 import { startMCPServer } from './services/mcp';
+import { StateDetector } from './services/state';
+import { UpdateService } from './services/update';
 import { DEFAULT_MODELS } from './services/ai/providerFactory';
 import {
   detectSmartDefaults,
@@ -70,6 +72,11 @@ const syncService = new SyncService({
   ui,
   t,
   version: VERSION
+});
+
+const updateService = new UpdateService({
+  ui,
+  t
 });
 
 program
@@ -140,6 +147,73 @@ program
       await fillService.run(repoPath, options);
     } catch (error) {
       ui.displayError(t('errors.fill.failed'), error as Error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('update')
+  .description('Analyze code changes and update affected documentation')
+  .argument('[repo-path]', 'Repository path to analyze', '.')
+  .option('-o, --output <dir>', 'Output directory', './.context')
+  .option('--days <number>', 'Days to look back for changes', (v: string) => parseInt(v, 10), 30)
+  .option('--dry-run', 'Show what would be updated without making changes')
+  .option('--no-git', 'Use mtime instead of git for change detection')
+  .option('-k, --api-key <key>', 'API key for LLM provider')
+  .option('-m, --model <model>', 'Model to use', DEFAULT_MODEL)
+  .option('-p, --provider <provider>', 'LLM provider')
+  .option('--base-url <url>', 'Custom base URL for API')
+  .option('-v, --verbose', 'Verbose output')
+  .action(async (repoPath: string, options: any) => {
+    try {
+      const outputDir = path.resolve(options.output || './.context');
+
+      const analysis = await updateService.analyze(repoPath, {
+        output: options.output,
+        days: options.days,
+        useGit: options.git !== false,
+        verbose: options.verbose
+      });
+
+      updateService.displayAnalysis(analysis);
+
+      if (options.dryRun) {
+        return;
+      }
+
+      const filesToUpdate = updateService.getFilesToUpdate(analysis);
+
+      if (filesToUpdate.length === 0) {
+        return;
+      }
+
+      const { proceed } = await inquirer.prompt([{
+        type: 'confirm',
+        name: 'proceed',
+        message: `Update ${filesToUpdate.length} document(s)?`,
+        default: true
+      }]);
+
+      if (!proceed) {
+        return;
+      }
+
+      // Run fill on affected docs
+      // Convert absolute paths to relative paths from the output directory
+      await fillService.run(repoPath, {
+        output: options.output,
+        include: filesToUpdate.map(f => path.relative(outputDir, f)),
+        model: options.model,
+        provider: options.provider,
+        apiKey: options.apiKey,
+        baseUrl: options.baseUrl,
+        verbose: options.verbose,
+        semantic: true
+      });
+
+      ui.displaySuccess('Documentation updated!');
+    } catch (error) {
+      ui.displayError('Failed to update documentation', error as Error);
       process.exit(1);
     }
   });
@@ -344,26 +418,164 @@ async function selectLocale(showWelcome: boolean): Promise<void> {
   }
 }
 
-type InteractiveAction = 'scaffold' | 'fill' | 'plan' | 'syncAgents' | 'changeLanguage' | 'exit';
+type InteractiveAction = 'scaffold' | 'fill' | 'plan' | 'syncAgents' | 'update' | 'changeLanguage' | 'exit';
+type StateAction = 'create' | 'fill' | 'menu' | 'exit';
 
 async function runInteractive(): Promise<void> {
   await selectLocale(true);
 
-  let exitRequested = false;
-  while (!exitRequested) {
-    const { action } = await inquirer.prompt<{ action: InteractiveAction }>([
+  const projectPath = process.cwd();
+  const detector = new StateDetector({ projectPath });
+  const result = await detector.detect();
+
+  // Display project info
+  console.log('');
+  ui.displayInfo(
+    `${PACKAGE_NAME} v${VERSION}`,
+    `Project: ${projectPath}`
+  );
+
+  // Show state-specific information
+  switch (result.state) {
+    case 'new':
+      console.log(colors.secondaryDim('  No context documentation found.\n'));
+      break;
+    case 'unfilled':
+      console.log(colors.secondaryDim(`  Context: ${result.details.unfilledFiles} files need filling\n`));
+      break;
+    case 'outdated':
+      console.log(colors.warning(`  Code modified ${result.details.daysBehind} day(s) ago (docs not updated)\n`));
+      break;
+    case 'ready':
+      console.log(colors.success(`  Context: ${result.details.totalFiles} docs, all up to date\n`));
+      break;
+  }
+
+  // Handle state-based flow
+  if (result.state === 'new') {
+    const { action } = await inquirer.prompt<{ action: StateAction }>([
       {
         type: 'list',
         name: 'action',
         message: t('prompts.main.action'),
         choices: [
-          { name: t('prompts.main.choice.scaffold'), value: 'scaffold' },
-          { name: t('prompts.main.choice.fill'), value: 'fill' },
-          { name: t('prompts.main.choice.plan'), value: 'plan' },
-          { name: t('prompts.main.choice.syncAgents'), value: 'syncAgents' },
-          { name: t('prompts.main.choice.changeLanguage'), value: 'changeLanguage' },
+          { name: t('prompts.main.choice.create'), value: 'create' },
           { name: t('prompts.main.choice.exit'), value: 'exit' }
         ]
+      }
+    ]);
+
+    if (action === 'create') {
+      // Run init + fill automatically
+      await runQuickSetup(projectPath);
+    }
+    return;
+  }
+
+  if (result.state === 'unfilled') {
+    const { action } = await inquirer.prompt<{ action: StateAction }>([
+      {
+        type: 'list',
+        name: 'action',
+        message: t('prompts.main.unfilledPrompt', { count: result.details.unfilledFiles }),
+        choices: [
+          { name: t('prompts.main.choice.fill'), value: 'fill' },
+          { name: t('prompts.main.choice.moreOptions'), value: 'menu' },
+          { name: t('prompts.main.choice.exit'), value: 'exit' }
+        ]
+      }
+    ]);
+
+    if (action === 'fill') {
+      await runInteractiveLlmFill();
+      return;
+    } else if (action === 'menu') {
+      await runFullMenu();
+    }
+    return;
+  }
+
+  // For 'ready' or 'outdated' states, show full menu
+  await runFullMenu(result.state === 'outdated' ? result.details.daysBehind : undefined);
+}
+
+async function runQuickSetup(projectPath: string): Promise<void> {
+  const { confirm } = await inquirer.prompt<{ confirm: boolean }>([
+    {
+      type: 'confirm',
+      name: 'confirm',
+      message: t('prompts.setup.confirmContinue'),
+      default: true
+    }
+  ]);
+
+  if (!confirm) {
+    return;
+  }
+
+  // Run init
+  ui.startSpinner(t('spinner.setup.creatingStructure'));
+  try {
+    const initService = new InitService({ ui, t, version: VERSION });
+    await initService.run(projectPath, 'both', {
+      semantic: true
+    });
+    ui.stopSpinner();
+  } catch (error) {
+    ui.stopSpinner();
+    ui.displayError('Failed to create structure', error as Error);
+    return;
+  }
+
+  // Prompt for LLM config and run fill
+  const llmConfig = await promptLLMConfig(t);
+  if (!llmConfig) {
+    ui.displayInfo(t('info.setup.incomplete.title'), t('info.setup.incomplete.detail'));
+    return;
+  }
+
+  ui.startSpinner(t('spinner.setup.fillingDocs'));
+  try {
+    const fillService = new FillService({ ui, t, version: VERSION, defaultModel: DEFAULT_MODEL });
+    await fillService.run(projectPath, {
+      model: llmConfig.model,
+      provider: llmConfig.provider,
+      apiKey: llmConfig.apiKey,
+      baseUrl: llmConfig.baseUrl,
+      verbose: false,
+      semantic: true
+    });
+    ui.stopSpinner();
+    ui.displaySuccess(t('success.setup.docsCreated'));
+    console.log(colors.secondaryDim(`  ${t('info.setup.reviewFiles')}`));
+  } catch (error) {
+    ui.stopSpinner();
+    ui.displayError('Failed to fill documentation', error as Error);
+  }
+}
+
+async function runFullMenu(daysBehind?: number): Promise<void> {
+  let exitRequested = false;
+  while (!exitRequested) {
+    const updateLabel = daysBehind
+      ? t('prompts.main.choice.updateDocsBehind', { daysBehind })
+      : t('prompts.main.choice.updateDocs');
+
+    const choices = [
+      { name: t('prompts.main.choice.plan'), value: 'plan' as InteractiveAction },
+      { name: updateLabel, value: 'fill' as InteractiveAction },
+      { name: t('prompts.main.choice.syncAgents'), value: 'syncAgents' as InteractiveAction },
+      { name: t('prompts.main.choice.rescaffold'), value: 'scaffold' as InteractiveAction },
+      { name: t('prompts.main.choice.changeLanguage'), value: 'changeLanguage' as InteractiveAction },
+      { name: t('prompts.main.choice.exit'), value: 'exit' as InteractiveAction }
+    ];
+
+    const { action } = await inquirer.prompt<{ action: InteractiveAction }>([
+      {
+        type: 'list',
+        name: 'action',
+        message: t('prompts.main.action'),
+        choices
       }
     ]);
 
@@ -589,18 +801,39 @@ async function runInteractiveLlmFill(): Promise<void> {
   }
 }
 
+function generatePlanSlug(goal: string): string {
+  return goal
+    .toLowerCase()
+    .replace(/[àáâãäå]/g, 'a')
+    .replace(/[èéêë]/g, 'e')
+    .replace(/[ìíîï]/g, 'i')
+    .replace(/[òóôõö]/g, 'o')
+    .replace(/[ùúûü]/g, 'u')
+    .replace(/[ç]/g, 'c')
+    .replace(/[ñ]/g, 'n')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .substring(0, 50)
+    .replace(/-$/, '') || 'new-plan';
+}
+
 async function runInteractivePlan(): Promise<void> {
   const defaults = await detectSmartDefaults();
 
-  // Always ask for plan name first
-  const { planName } = await inquirer.prompt<{ planName: string }>([
+  // Ask what should be planned
+  const { planGoal } = await inquirer.prompt<{ planGoal: string }>([
     {
       type: 'input',
-      name: 'planName',
-      message: t('prompts.plan.name'),
-      default: 'new-plan'
+      name: 'planGoal',
+      message: t('prompts.plan.goal'),
+      validate: (input: string) => input.trim().length > 0 || 'Please describe what should be planned'
     }
   ]);
+
+  const planName = generatePlanSlug(planGoal);
+  const planSummary = planGoal;
 
   const interactiveMode = await promptInteractiveMode(t);
 
@@ -627,6 +860,7 @@ async function runInteractivePlan(): Promise<void> {
       try {
         const result = await generator.generatePlan({
           planName,
+          summary: planSummary,
           outputDir: defaults.outputDir,
           verbose: false,
           semantic: true,
@@ -647,7 +881,7 @@ async function runInteractivePlan(): Promise<void> {
     // Quick fill: use auto-detected LLM config
     const llmConfig = await promptLLMConfig(t, { defaultModel: DEFAULT_MODEL, skipIfConfigured: true });
 
-    const summary: ConfigSummary = {
+    const configSummary: ConfigSummary = {
       operation: 'plan',
       repoPath: defaults.repoPath,
       outputDir: defaults.outputDir,
@@ -655,18 +889,19 @@ async function runInteractivePlan(): Promise<void> {
       model: llmConfig.model,
       apiKeySource: llmConfig.autoDetected ? 'env' : llmConfig.apiKey ? 'provided' : 'none',
       options: {
-        'Plan Name': planName,
+        Goal: planSummary,
+        'File': `${planName}.md`,
         LSP: true,
         'Dry Run': false
       }
     };
 
-    displayConfigSummary(summary, t);
+    displayConfigSummary(configSummary, t);
     const proceed = await promptConfirmProceed(t);
 
     if (proceed) {
       try {
-        await planService.scaffoldPlanIfNeeded(planName, defaults.outputDir, {});
+        await planService.scaffoldPlanIfNeeded(planName, defaults.outputDir, { summary: planSummary });
         await planService.fillPlan(planName, {
           output: defaults.outputDir,
           repo: defaults.repoPath,
@@ -708,15 +943,6 @@ async function runInteractivePlan(): Promise<void> {
   ]);
 
   if (mode === 'fill') {
-    const { summary } = await inquirer.prompt<{ summary: string }>([
-      {
-        type: 'input',
-        name: 'summary',
-        message: t('prompts.plan.summary'),
-        filter: (value: string) => value.trim()
-      }
-    ]);
-
     const { repoPath } = await inquirer.prompt<{ repoPath: string }>([
       {
         type: 'input',
@@ -748,7 +974,7 @@ async function runInteractivePlan(): Promise<void> {
     ]);
 
     // Show summary before execution
-    const configSummary: ConfigSummary = {
+    const advancedConfigSummary: ConfigSummary = {
       operation: 'plan',
       repoPath,
       outputDir,
@@ -756,20 +982,21 @@ async function runInteractivePlan(): Promise<void> {
       model: llmConfig.model,
       apiKeySource: llmConfig.autoDetected ? 'env' : llmConfig.apiKey ? 'provided' : 'none',
       options: {
-        'Plan Name': planName,
+        Goal: planSummary,
+        'File': `${planName}.md`,
         LSP: useLsp,
         'Dry Run': dryRun
       }
     };
 
-    displayConfigSummary(configSummary, t);
+    displayConfigSummary(advancedConfigSummary, t);
     const proceed = await promptConfirmProceed(t);
 
     if (proceed) {
       try {
         const resolvedOutput = path.resolve(outputDir.trim() || defaultOutput);
         await planService.scaffoldPlanIfNeeded(planName, resolvedOutput, {
-          summary: summary || undefined
+          summary: planSummary
         });
 
         await planService.fillPlan(planName, {
@@ -788,16 +1015,7 @@ async function runInteractivePlan(): Promise<void> {
     return;
   }
 
-  // Scaffold mode
-  const { summary } = await inquirer.prompt<{ summary: string }>([
-    {
-      type: 'input',
-      name: 'summary',
-      message: t('prompts.plan.summary'),
-      filter: (value: string) => value.trim()
-    }
-  ]);
-
+  // Scaffold mode - use planSummary from goal input
   const generator = new PlanGenerator();
   ui.startSpinner(t('spinner.plan.creating'));
 
@@ -805,7 +1023,7 @@ async function runInteractivePlan(): Promise<void> {
     const result = await generator.generatePlan({
       planName,
       outputDir: path.resolve(outputDir.trim() || defaultOutput),
-      summary: summary || undefined,
+      summary: planSummary,
       verbose: false,
       semantic: true,
       projectPath: path.resolve(outputDir.trim() || defaultOutput, '..')

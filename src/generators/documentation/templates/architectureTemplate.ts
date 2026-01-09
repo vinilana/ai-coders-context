@@ -1,5 +1,5 @@
 import { DocumentationTemplateContext } from './types';
-import { formatDirectoryStats, formatSymbolRef, buildSymbolTable, formatCodeLocation } from './common';
+import { formatDirectoryStats, formatSymbolRef, buildSymbolTable, formatCodeLocation, wrapWithFrontMatter } from './common';
 import * as path from 'path';
 
 function renderSemanticLayers(context: DocumentationTemplateContext): string {
@@ -143,13 +143,13 @@ export function renderArchitectureNotes(context: DocumentationTemplateContext): 
 ${statsSection}
 ` : '';
 
-  return `# Architecture Notes
+  const content = `# Architecture Notes
 
-> TODO: Describe how the system is assembled and why the current design exists.
+Describe how the system is assembled and why the current design exists.
 ${semanticSection}
 ## System Architecture Overview
-- Summarize the top-level topology (monolith, modular service, microservices) and deployment model.
-- Highlight how requests traverse the system and where control pivots between layers.
+
+Summarize the top-level topology (monolith, modular service, microservices) and deployment model. Highlight how requests traverse the system and where control pivots between layers.
 
 ## Architectural Layers
 ${layersSection}
@@ -164,28 +164,33 @@ ${entryPointsSection}
 ${publicAPISection}
 
 ## Internal System Boundaries
-- Document seams between domains, bounded contexts, or service ownership.
-- Note data ownership, synchronization strategies, and shared contract enforcement.
+
+Document seams between domains, bounded contexts, or service ownership. Note data ownership, synchronization strategies, and shared contract enforcement.
 
 ## External Service Dependencies
-- List SaaS platforms, third-party APIs, or infrastructure services the system relies on.
-- Describe authentication methods, rate limits, and failure considerations for each dependency.
+
+List SaaS platforms, third-party APIs, or infrastructure services the system relies on. Describe authentication methods, rate limits, and failure considerations for each dependency.
 
 ## Key Decisions & Trade-offs
-- Summarize architectural decisions, experiments, or ADR outcomes that shape the current design.
-- Reference supporting documents and explain why selected approaches won over alternatives.
+
+Summarize architectural decisions, experiments, or ADR outcomes that shape the current design. Reference supporting documents and explain why selected approaches won over alternatives.
 
 ## Diagrams
-- Link architectural diagrams or add mermaid definitions here.
+
+Link architectural diagrams or add mermaid definitions here.
 
 ## Risks & Constraints
-- Document performance constraints, scaling considerations, or external system assumptions.
+
+Document performance constraints, scaling considerations, or external system assumptions.
 
 ## Top Directories Snapshot
 ${directorySnapshot}
 
 ## Related Resources
+
 - [Project Overview](./project-overview.md)
 - Update [agents/README.md](../agents/README.md) when architecture changes.
 `;
+
+  return wrapWithFrontMatter(content);
 }

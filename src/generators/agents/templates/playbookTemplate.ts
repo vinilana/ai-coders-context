@@ -3,6 +3,7 @@ import { AgentType } from '../agentTypes';
 import { formatDirectoryList } from '../../shared/directoryTemplateHelpers';
 import { DocTouchpoint, KeySymbolInfo, AgentTemplateContext } from './types';
 import { SemanticContext } from '../../../services/semantic';
+import { wrapWithFrontMatter } from '../../documentation/templates/common';
 import * as path from 'path';
 
 /**
@@ -135,7 +136,7 @@ export function renderAgentPlaybook(
   const keyFilesSection = renderKeyFiles(semantics, repoRoot);
   const architectureSection = renderArchitectureLayers(semantics, repoRoot);
 
-  return `# ${title} Agent Playbook
+  const content = `# ${title} Agent Playbook
 
 ## Mission
 Describe how the ${title.toLowerCase()} agent supports the team and when to engage it.
@@ -165,14 +166,18 @@ ${keySymbolsSection}
 ${touchpointList}
 
 ## Collaboration Checklist
+
 1. Confirm assumptions with issue reporters or maintainers.
 2. Review open pull requests affecting this area.
 3. Update the relevant doc section listed above.
 4. Capture learnings back in [docs/README.md](../docs/README.md).
 
 ## Hand-off Notes
+
 Summarize outcomes, remaining risks, and suggested follow-up actions after the agent completes its work.
 `;
+
+  return wrapWithFrontMatter(content);
 }
 
 function formatTitle(agentType: string): string {

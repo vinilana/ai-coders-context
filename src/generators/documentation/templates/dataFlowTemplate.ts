@@ -1,6 +1,6 @@
 import * as path from 'path';
 import { DocumentationTemplateContext } from './types';
-import { formatInlineDirectoryList } from './common';
+import { formatInlineDirectoryList, wrapWithFrontMatter } from './common';
 
 function renderModuleDependencies(context: DocumentationTemplateContext): string {
   const { semantics, repoStructure } = context;
@@ -75,7 +75,7 @@ export function renderDataFlow(context: DocumentationTemplateContext): string {
   const moduleDependencies = renderModuleDependencies(context);
   const serviceLayer = renderServiceLayer(context);
 
-  return `# Data Flow & Integrations
+  const content = `# Data Flow & Integrations
 
 Explain how data enters, moves through, and exits the system, including interactions with external services.
 
@@ -86,16 +86,21 @@ ${moduleDependencies}
 ${serviceLayer}
 
 ## High-level Flow
-- Summarize the primary pipeline from input to output. Reference diagrams or embed Mermaid definitions when available.
+
+Summarize the primary pipeline from input to output. Reference diagrams or embed Mermaid definitions when available.
 
 ## Internal Movement
-- Describe how modules within ${formatInlineDirectoryList(context.topLevelDirectories)} collaborate (queues, events, RPC calls, shared databases).
+
+Describe how modules within ${formatInlineDirectoryList(context.topLevelDirectories)} collaborate (queues, events, RPC calls, shared databases).
 
 ## External Integrations
-- **Integration** — Purpose, authentication, payload shapes, retry strategy.
+
+Document each integration with purpose, authentication, payload shapes, and retry strategy.
 
 ## Observability & Failure Modes
-- Metrics, traces, or logs that monitor the flow.
-- Backoff, dead-letter, or compensating actions when downstream systems fail.
+
+Describe metrics, traces, or logs that monitor the flow. Note backoff, dead-letter, or compensating actions when downstream systems fail.
 `;
+
+  return wrapWithFrontMatter(content);
 }

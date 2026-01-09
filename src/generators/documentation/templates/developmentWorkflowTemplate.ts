@@ -1,5 +1,7 @@
+import { wrapWithFrontMatter } from './common';
+
 export function renderDevelopmentWorkflow(): string {
-  return `# Development Workflow
+  const content = `# Development Workflow
 
 Outline the day-to-day engineering process for this repository.
 
@@ -17,7 +19,9 @@ Outline the day-to-day engineering process for this repository.
 - Reference [AGENTS.md](../../AGENTS.md) for agent collaboration tips.
 
 ## Onboarding Tasks
-- Point newcomers to first issues or starter tickets.
-- Link to internal runbooks or dashboards.
+
+Point newcomers to first issues or starter tickets. Link to internal runbooks or dashboards.
 `;
+
+  return wrapWithFrontMatter(content);
 }

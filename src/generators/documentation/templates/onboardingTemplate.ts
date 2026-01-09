@@ -1,5 +1,7 @@
+import { wrapWithFrontMatter } from './common';
+
 export function renderOnboarding(): string {
-  return `# Onboarding Guide
+  const content = `# Onboarding Guide
 
 Welcome to the team! This guide will help you get set up and productive quickly.
 
@@ -402,4 +404,6 @@ We're always improving! Please provide feedback on:
 - Ask in #engineering if something is unclear
 - Your feedback helps future team members!
 `;
+
+  return wrapWithFrontMatter(content);
 }
