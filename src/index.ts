@@ -794,18 +794,39 @@ async function runInteractiveLlmFill(): Promise<void> {
   }
 }
 
+function generatePlanSlug(goal: string): string {
+  return goal
+    .toLowerCase()
+    .replace(/[àáâãäå]/g, 'a')
+    .replace(/[èéêë]/g, 'e')
+    .replace(/[ìíîï]/g, 'i')
+    .replace(/[òóôõö]/g, 'o')
+    .replace(/[ùúûü]/g, 'u')
+    .replace(/[ç]/g, 'c')
+    .replace(/[ñ]/g, 'n')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .substring(0, 50)
+    .replace(/-$/, '') || 'new-plan';
+}
+
 async function runInteractivePlan(): Promise<void> {
   const defaults = await detectSmartDefaults();
 
-  // Always ask for plan name first
-  const { planName } = await inquirer.prompt<{ planName: string }>([
+  // Ask what should be planned
+  const { planGoal } = await inquirer.prompt<{ planGoal: string }>([
     {
       type: 'input',
-      name: 'planName',
-      message: t('prompts.plan.name'),
-      default: 'new-plan'
+      name: 'planGoal',
+      message: t('prompts.plan.goal'),
+      validate: (input: string) => input.trim().length > 0 || 'Please describe what should be planned'
     }
   ]);
+
+  const planName = generatePlanSlug(planGoal);
+  const planSummary = planGoal;
 
   const interactiveMode = await promptInteractiveMode(t);
 
@@ -832,6 +853,7 @@ async function runInteractivePlan(): Promise<void> {
       try {
         const result = await generator.generatePlan({
           planName,
+          summary: planSummary,
           outputDir: defaults.outputDir,
           verbose: false,
           semantic: true,
@@ -852,7 +874,7 @@ async function runInteractivePlan(): Promise<void> {
     // Quick fill: use auto-detected LLM config
     const llmConfig = await promptLLMConfig(t, { defaultModel: DEFAULT_MODEL, skipIfConfigured: true });
 
-    const summary: ConfigSummary = {
+    const configSummary: ConfigSummary = {
       operation: 'plan',
       repoPath: defaults.repoPath,
       outputDir: defaults.outputDir,
@@ -860,18 +882,19 @@ async function runInteractivePlan(): Promise<void> {
       model: llmConfig.model,
       apiKeySource: llmConfig.autoDetected ? 'env' : llmConfig.apiKey ? 'provided' : 'none',
       options: {
-        'Plan Name': planName,
+        Goal: planSummary,
+        'File': `${planName}.md`,
         LSP: true,
         'Dry Run': false
       }
     };
 
-    displayConfigSummary(summary, t);
+    displayConfigSummary(configSummary, t);
     const proceed = await promptConfirmProceed(t);
 
     if (proceed) {
       try {
-        await planService.scaffoldPlanIfNeeded(planName, defaults.outputDir, {});
+        await planService.scaffoldPlanIfNeeded(planName, defaults.outputDir, { summary: planSummary });
         await planService.fillPlan(planName, {
           output: defaults.outputDir,
           repo: defaults.repoPath,
@@ -913,15 +936,6 @@ async function runInteractivePlan(): Promise<void> {
   ]);
 
   if (mode === 'fill') {
-    const { summary } = await inquirer.prompt<{ summary: string }>([
-      {
-        type: 'input',
-        name: 'summary',
-        message: t('prompts.plan.summary'),
-        filter: (value: string) => value.trim()
-      }
-    ]);
-
     const { repoPath } = await inquirer.prompt<{ repoPath: string }>([
       {
         type: 'input',
@@ -953,7 +967,7 @@ async function runInteractivePlan(): Promise<void> {
     ]);
 
     // Show summary before execution
-    const configSummary: ConfigSummary = {
+    const advancedConfigSummary: ConfigSummary = {
       operation: 'plan',
       repoPath,
       outputDir,
@@ -961,20 +975,21 @@ async function runInteractivePlan(): Promise<void> {
       model: llmConfig.model,
       apiKeySource: llmConfig.autoDetected ? 'env' : llmConfig.apiKey ? 'provided' : 'none',
       options: {
-        'Plan Name': planName,
+        Goal: planSummary,
+        'File': `${planName}.md`,
         LSP: useLsp,
         'Dry Run': dryRun
       }
     };
 
-    displayConfigSummary(configSummary, t);
+    displayConfigSummary(advancedConfigSummary, t);
     const proceed = await promptConfirmProceed(t);
 
     if (proceed) {
       try {
         const resolvedOutput = path.resolve(outputDir.trim() || defaultOutput);
         await planService.scaffoldPlanIfNeeded(planName, resolvedOutput, {
-          summary: summary || undefined
+          summary: planSummary
         });
 
         await planService.fillPlan(planName, {
@@ -993,16 +1008,7 @@ async function runInteractivePlan(): Promise<void> {
     return;
   }
 
-  // Scaffold mode
-  const { summary } = await inquirer.prompt<{ summary: string }>([
-    {
-      type: 'input',
-      name: 'summary',
-      message: t('prompts.plan.summary'),
-      filter: (value: string) => value.trim()
-    }
-  ]);
-
+  // Scaffold mode - use planSummary from goal input
   const generator = new PlanGenerator();
   ui.startSpinner(t('spinner.plan.creating'));
 
@@ -1010,7 +1016,7 @@ async function runInteractivePlan(): Promise<void> {
     const result = await generator.generatePlan({
       planName,
       outputDir: path.resolve(outputDir.trim() || defaultOutput),
-      summary: summary || undefined,
+      summary: planSummary,
       verbose: false,
       semantic: true,
       projectPath: path.resolve(outputDir.trim() || defaultOutput, '..')
