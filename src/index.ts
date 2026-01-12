@@ -20,6 +20,8 @@ import { ServeService } from './services/serve';
 import { startMCPServer } from './services/mcp';
 import { StateDetector } from './services/state';
 import { UpdateService } from './services/update';
+import { WorkflowService, WorkflowServiceDependencies } from './services/workflow';
+import { getScaleName, PHASE_NAMES_PT, ROLE_DISPLAY_NAMES, type PrevcRole } from './workflow';
 import { DEFAULT_MODELS } from './services/ai/providerFactory';
 import {
   detectSmartDefaults,
@@ -362,6 +364,174 @@ program
     }
   });
 
+// PREVC Workflow Commands
+const workflowCommand = program
+  .command('workflow')
+  .description('PREVC workflow management (Planejamento, Revisão, Execução, Validação, Confirmação)');
+
+// Helper to create workflow service dependencies
+const getWorkflowDeps = (): WorkflowServiceDependencies => ({
+  ui: {
+    displaySuccess: (msg: string) => ui.displaySuccess(msg),
+    displayError: (msg: string, err?: Error) => ui.displayError(msg, err),
+    displayInfo: (title: string, detail?: string) => ui.displayInfo(title, detail || '')
+  }
+});
+
+workflowCommand
+  .command('init <name>')
+  .description('Initialize a new PREVC workflow')
+  .option('-d, --description <text>', 'Project description for scale detection')
+  .option('-s, --scale <scale>', 'Project scale: QUICK, SMALL, MEDIUM, LARGE, ENTERPRISE')
+  .option('-r, --repo-path <path>', 'Repository path', process.cwd())
+  .action(async (name: string, options: any) => {
+    try {
+      const workflowService = new WorkflowService(options.repoPath, getWorkflowDeps());
+      const status = await workflowService.init({
+        name,
+        description: options.description,
+        scale: options.scale
+      });
+
+      ui.displaySuccess(`Workflow PREVC initialized: ${name}`);
+      ui.displayInfo('Scale', getScaleName(status.project.scale as any));
+      ui.displayInfo('Current Phase', `${status.project.current_phase} - ${PHASE_NAMES_PT[status.project.current_phase]}`);
+    } catch (error) {
+      ui.displayError('Failed to initialize workflow', error as Error);
+      process.exit(1);
+    }
+  });
+
+workflowCommand
+  .command('status')
+  .description('Show current workflow status')
+  .option('-r, --repo-path <path>', 'Repository path', process.cwd())
+  .action(async (options: any) => {
+    try {
+      const workflowService = new WorkflowService(options.repoPath, getWorkflowDeps());
+
+      if (!await workflowService.hasWorkflow()) {
+        ui.displayError('No workflow found. Run "workflow init <name>" first.');
+        process.exit(1);
+      }
+
+      const formattedStatus = await workflowService.getFormattedStatus();
+      console.log(formattedStatus);
+
+      const actions = await workflowService.getRecommendedActions();
+      if (actions.length > 0) {
+        console.log('\nRecommended actions:');
+        actions.forEach((action, i) => console.log(`  ${i + 1}. ${action}`));
+      }
+    } catch (error) {
+      ui.displayError('Failed to get workflow status', error as Error);
+      process.exit(1);
+    }
+  });
+
+workflowCommand
+  .command('advance')
+  .description('Complete current phase and advance to next')
+  .option('-r, --repo-path <path>', 'Repository path', process.cwd())
+  .option('-o, --outputs <files...>', 'Output files generated in current phase')
+  .action(async (options: any) => {
+    try {
+      const workflowService = new WorkflowService(options.repoPath, getWorkflowDeps());
+
+      if (!await workflowService.hasWorkflow()) {
+        ui.displayError('No workflow found. Run "workflow init <name>" first.');
+        process.exit(1);
+      }
+
+      const nextPhase = await workflowService.advance(options.outputs);
+
+      if (nextPhase) {
+        ui.displaySuccess(`Advanced to phase: ${nextPhase} - ${PHASE_NAMES_PT[nextPhase]}`);
+      } else {
+        ui.displaySuccess('Workflow completed!');
+      }
+    } catch (error) {
+      ui.displayError('Failed to advance workflow', error as Error);
+      process.exit(1);
+    }
+  });
+
+workflowCommand
+  .command('handoff <from> <to>')
+  .description('Perform handoff between roles')
+  .option('-r, --repo-path <path>', 'Repository path', process.cwd())
+  .option('-a, --artifacts <files...>', 'Artifacts to hand off')
+  .action(async (from: string, to: string, options: any) => {
+    try {
+      const workflowService = new WorkflowService(options.repoPath, getWorkflowDeps());
+
+      if (!await workflowService.hasWorkflow()) {
+        ui.displayError('No workflow found. Run "workflow init <name>" first.');
+        process.exit(1);
+      }
+
+      await workflowService.handoff(from as PrevcRole, to as PrevcRole, options.artifacts || []);
+      ui.displaySuccess(`Handoff: ${ROLE_DISPLAY_NAMES[from as PrevcRole]} → ${ROLE_DISPLAY_NAMES[to as PrevcRole]}`);
+    } catch (error) {
+      ui.displayError('Failed to perform handoff', error as Error);
+      process.exit(1);
+    }
+  });
+
+workflowCommand
+  .command('collaborate <topic>')
+  .description('Start a collaboration session between roles')
+  .option('-r, --repo-path <path>', 'Repository path', process.cwd())
+  .option('-p, --participants <roles...>', 'Participating roles')
+  .action(async (topic: string, options: any) => {
+    try {
+      const workflowService = new WorkflowService(options.repoPath, getWorkflowDeps());
+
+      const session = await workflowService.startCollaboration(
+        topic,
+        options.participants as PrevcRole[]
+      );
+
+      ui.displaySuccess(`Collaboration started: ${topic}`);
+      ui.displayInfo('Session ID', session.getId());
+      ui.displayInfo('Participants', session.getParticipantNames().join(', '));
+      console.log('\nUse MCP tools to contribute and synthesize the collaboration.');
+    } catch (error) {
+      ui.displayError('Failed to start collaboration', error as Error);
+      process.exit(1);
+    }
+  });
+
+workflowCommand
+  .command('role <action> <role>')
+  .description('Manage role status (start/complete)')
+  .option('-r, --repo-path <path>', 'Repository path', process.cwd())
+  .option('-o, --outputs <files...>', 'Output files (for complete action)')
+  .action(async (action: string, role: string, options: any) => {
+    try {
+      const workflowService = new WorkflowService(options.repoPath, getWorkflowDeps());
+
+      if (!await workflowService.hasWorkflow()) {
+        ui.displayError('No workflow found. Run "workflow init <name>" first.');
+        process.exit(1);
+      }
+
+      if (action === 'start') {
+        await workflowService.startRole(role as PrevcRole);
+        ui.displaySuccess(`Started role: ${ROLE_DISPLAY_NAMES[role as PrevcRole]}`);
+      } else if (action === 'complete') {
+        await workflowService.completeRole(role as PrevcRole, options.outputs || []);
+        ui.displaySuccess(`Completed role: ${ROLE_DISPLAY_NAMES[role as PrevcRole]}`);
+      } else {
+        ui.displayError(`Unknown action: ${action}. Use 'start' or 'complete'.`);
+        process.exit(1);
+      }
+    } catch (error) {
+      ui.displayError('Failed to manage role', error as Error);
+      process.exit(1);
+    }
+  });
+
 export async function runInit(repoPath: string, type: string, rawOptions: any): Promise<void> {
   await initService.run(repoPath, type, rawOptions);
 }
@@ -422,7 +592,7 @@ async function selectLocale(showWelcome: boolean): Promise<void> {
   }
 }
 
-type InteractiveAction = 'scaffold' | 'fill' | 'plan' | 'syncAgents' | 'update' | 'changeLanguage' | 'exit';
+type InteractiveAction = 'scaffold' | 'fill' | 'plan' | 'syncAgents' | 'update' | 'workflow' | 'changeLanguage' | 'exit';
 type StateAction = 'create' | 'fill' | 'menu' | 'exit';
 
 async function runInteractive(): Promise<void> {
@@ -567,6 +737,7 @@ async function runFullMenu(daysBehind?: number): Promise<void> {
 
     const choices = [
       { name: t('prompts.main.choice.plan'), value: 'plan' as InteractiveAction },
+      { name: t('prompts.main.choice.workflow'), value: 'workflow' as InteractiveAction },
       { name: updateLabel, value: 'fill' as InteractiveAction },
       { name: t('prompts.main.choice.syncAgents'), value: 'syncAgents' as InteractiveAction },
       { name: t('prompts.main.choice.rescaffold'), value: 'scaffold' as InteractiveAction },
@@ -601,6 +772,8 @@ async function runFullMenu(daysBehind?: number): Promise<void> {
       await runInteractivePlan();
     } else if (action === 'syncAgents') {
       await runInteractiveSync();
+    } else if (action === 'workflow') {
+      await runInteractiveWorkflow();
     }
 
     ui.displayInfo(
@@ -1120,6 +1293,195 @@ async function runInteractiveSync(): Promise<void> {
     } catch (error) {
       ui.displayError(t('errors.sync.failed'), error as Error);
     }
+  }
+}
+
+type WorkflowAction = 'init' | 'status' | 'advance' | 'back' | 'newWorkflow';
+
+async function createNewWorkflow(workflowService: WorkflowService): Promise<boolean> {
+  const { name, description, scale } = await inquirer.prompt<{
+    name: string;
+    description: string;
+    scale: string;
+  }>([
+    {
+      type: 'input',
+      name: 'name',
+      message: t('prompts.workflow.projectName'),
+      validate: (input: string) => input.trim().length > 0 || t('prompts.workflow.projectNameRequired')
+    },
+    {
+      type: 'input',
+      name: 'description',
+      message: t('prompts.workflow.description'),
+      default: ''
+    },
+    {
+      type: 'list',
+      name: 'scale',
+      message: t('prompts.workflow.scale'),
+      choices: [
+        { name: t('prompts.workflow.scale.auto'), value: '' },
+        { name: t('prompts.workflow.scale.quick'), value: 'QUICK' },
+        { name: t('prompts.workflow.scale.small'), value: 'SMALL' },
+        { name: t('prompts.workflow.scale.medium'), value: 'MEDIUM' },
+        { name: t('prompts.workflow.scale.large'), value: 'LARGE' },
+        { name: t('prompts.workflow.scale.enterprise'), value: 'ENTERPRISE' }
+      ],
+      default: ''
+    }
+  ]);
+
+  try {
+    const status = await workflowService.init({
+      name: name.trim(),
+      description: description.trim() || undefined,
+      scale: scale || undefined
+    });
+
+    ui.displaySuccess(t('success.workflow.initialized', { name }));
+    ui.displayInfo(t('info.workflow.scale'), getScaleName(status.project.scale as any));
+    ui.displayInfo(t('info.workflow.currentPhase'), `${status.project.current_phase} - ${PHASE_NAMES_PT[status.project.current_phase]}`);
+    return true;
+  } catch (error) {
+    ui.displayError(t('errors.workflow.initFailed'), error as Error);
+    return false;
+  }
+}
+
+async function runInteractiveWorkflow(): Promise<void> {
+  const projectPath = process.cwd();
+  const workflowService = new WorkflowService(projectPath, getWorkflowDeps());
+  const hasWorkflow = await workflowService.hasWorkflow();
+
+  if (!hasWorkflow) {
+    // No workflow exists - offer to create one
+    const { createNew } = await inquirer.prompt<{ createNew: boolean }>([
+      {
+        type: 'confirm',
+        name: 'createNew',
+        message: t('prompts.workflow.noWorkflowFound'),
+        default: true
+      }
+    ]);
+
+    if (!createNew) {
+      return;
+    }
+
+    await createNewWorkflow(workflowService);
+    return;
+  }
+
+  // Workflow exists - check if complete
+  const isComplete = await workflowService.isComplete();
+
+  if (isComplete) {
+    // Workflow is complete - offer to start a new one or view status
+    console.log('');
+    const formattedStatus = await workflowService.getFormattedStatus();
+    console.log(formattedStatus);
+
+    const { completeAction } = await inquirer.prompt<{ completeAction: 'newWorkflow' | 'viewStatus' | 'back' }>([
+      {
+        type: 'list',
+        name: 'completeAction',
+        message: t('prompts.workflow.workflowComplete'),
+        choices: [
+          { name: t('prompts.workflow.action.newWorkflow'), value: 'newWorkflow' },
+          { name: t('prompts.workflow.action.viewStatus'), value: 'viewStatus' },
+          { name: t('prompts.workflow.action.back'), value: 'back' }
+        ]
+      }
+    ]);
+
+    if (completeAction === 'newWorkflow') {
+      const { confirmNew } = await inquirer.prompt<{ confirmNew: boolean }>([
+        {
+          type: 'confirm',
+          name: 'confirmNew',
+          message: t('prompts.workflow.confirmNewWorkflow'),
+          default: true
+        }
+      ]);
+
+      if (confirmNew) {
+        await createNewWorkflow(workflowService);
+      }
+    }
+    // 'viewStatus' and 'back' just return
+    return;
+  }
+
+  // Workflow exists and is not complete - show status and actions
+  let continueMenu = true;
+  while (continueMenu) {
+    console.log('');
+    const formattedStatus = await workflowService.getFormattedStatus();
+    console.log(formattedStatus);
+
+    const choices: Array<{ name: string; value: WorkflowAction }> = [];
+
+    choices.push({ name: t('prompts.workflow.action.advance'), value: 'advance' });
+    choices.push({ name: t('prompts.workflow.action.newWorkflow'), value: 'newWorkflow' });
+    choices.push({ name: t('prompts.workflow.action.refresh'), value: 'status' });
+    choices.push({ name: t('prompts.workflow.action.back'), value: 'back' });
+
+    const { action } = await inquirer.prompt<{ action: WorkflowAction }>([
+      {
+        type: 'list',
+        name: 'action',
+        message: t('prompts.workflow.action'),
+        choices
+      }
+    ]);
+
+    if (action === 'back') {
+      continueMenu = false;
+    } else if (action === 'newWorkflow') {
+      const { confirmNew } = await inquirer.prompt<{ confirmNew: boolean }>([
+        {
+          type: 'confirm',
+          name: 'confirmNew',
+          message: t('prompts.workflow.confirmNewWorkflow'),
+          default: false
+        }
+      ]);
+
+      if (confirmNew) {
+        const created = await createNewWorkflow(workflowService);
+        if (created) {
+          // Continue with the new workflow
+          continue;
+        }
+      }
+    } else if (action === 'advance') {
+      try {
+        const nextPhase = await workflowService.advance();
+        if (nextPhase) {
+          ui.displaySuccess(t('success.workflow.advanced', { phase: nextPhase, phaseName: PHASE_NAMES_PT[nextPhase] }));
+        } else {
+          ui.displaySuccess(t('success.workflow.completed'));
+          // Workflow completed - ask if they want to start a new one
+          const { startNew } = await inquirer.prompt<{ startNew: boolean }>([
+            {
+              type: 'confirm',
+              name: 'startNew',
+              message: t('prompts.workflow.noWorkflowFound'),
+              default: true
+            }
+          ]);
+
+          if (startNew) {
+            await createNewWorkflow(workflowService);
+          }
+          continueMenu = false;
+        }
+      } catch (error) {
+        ui.displayError(t('errors.workflow.advanceFailed'), error as Error);
+      }
+    }
+    // 'status' just loops and refreshes
   }
 }
 
