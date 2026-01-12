@@ -16,6 +16,7 @@ import { InitService } from './services/init/initService';
 import { FillService } from './services/fill/fillService';
 import { PlanService } from './services/plan/planService';
 import { SyncService } from './services/sync/syncService';
+import { ImportRulesService, ImportAgentsService } from './services/import';
 import { ServeService } from './services/serve';
 import { startMCPServer } from './services/mcp';
 import { StateDetector } from './services/state';
@@ -75,6 +76,18 @@ const planService = new PlanService({
 });
 
 const syncService = new SyncService({
+  ui,
+  t,
+  version: VERSION
+});
+
+const importRulesService = new ImportRulesService({
+  ui,
+  t,
+  version: VERSION
+});
+
+const importAgentsService = new ImportAgentsService({
   ui,
   t,
   version: VERSION
@@ -307,6 +320,60 @@ program
       await syncService.run(options);
     } catch (error) {
       ui.displayError(t('errors.sync.failed'), error as Error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('import-rules')
+  .description(t('commands.importRules.description'))
+  .argument('[repo-path]', 'Repository path to scan', process.cwd())
+  .option('-s, --source <paths...>', t('commands.importRules.options.source'))
+  .option('-t, --target <dir>', t('commands.importRules.options.target'))
+  .option('-f, --format <format>', t('commands.importRules.options.format'), 'markdown')
+  .option('--force', t('commands.importRules.options.force'))
+  .option('--dry-run', t('commands.importRules.options.dryRun'))
+  .option('-v, --verbose', t('commands.importRules.options.verbose'))
+  .option('--no-auto-detect', 'Disable auto-detection')
+  .action(async (repoPath: string, options: any) => {
+    try {
+      await importRulesService.run({
+        source: options.source,
+        target: options.target,
+        format: options.format,
+        force: options.force,
+        dryRun: options.dryRun,
+        verbose: options.verbose,
+        autoDetect: options.autoDetect !== false
+      }, repoPath);
+    } catch (error) {
+      ui.displayError(t('errors.import.failed'), error as Error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('import-agents')
+  .description(t('commands.importAgents.description'))
+  .argument('[repo-path]', 'Repository path to scan', process.cwd())
+  .option('-s, --source <paths...>', t('commands.importAgents.options.source'))
+  .option('-t, --target <dir>', t('commands.importAgents.options.target'))
+  .option('--force', t('commands.importAgents.options.force'))
+  .option('--dry-run', t('commands.importAgents.options.dryRun'))
+  .option('-v, --verbose', t('commands.importAgents.options.verbose'))
+  .option('--no-auto-detect', 'Disable auto-detection')
+  .action(async (repoPath: string, options: any) => {
+    try {
+      await importAgentsService.run({
+        source: options.source,
+        target: options.target,
+        force: options.force,
+        dryRun: options.dryRun,
+        verbose: options.verbose,
+        autoDetect: options.autoDetect !== false
+      }, repoPath);
+    } catch (error) {
+      ui.displayError(t('errors.import.failed'), error as Error);
       process.exit(1);
     }
   });
