@@ -28,7 +28,40 @@ npx @ai-coders/context init .     # Create structure
 npx @ai-coders/context fill .     # Fill with AI
 npx @ai-coders/context update     # Update outdated docs
 npx @ai-coders/context plan name  # Create work plan
+npx @ai-coders/context workflow   # Manage PREVC workflow
 ```
+
+## PREVC Workflow System
+
+A structured workflow for software development with 5 phases:
+
+| Phase | Name | Description |
+|-------|------|-------------|
+| **P** | Planning | Discovery, requirements, specifications |
+| **R** | Review | Architecture, technical decisions, design |
+| **E** | Execution | Implementation, development |
+| **V** | Validation | Tests, QA, code review |
+| **C** | Confirmation | Deploy, documentation, handoff |
+
+### Workflow Commands
+
+```bash
+npx @ai-coders/context workflow init "feature-name"  # Start new workflow
+npx @ai-coders/context workflow status               # View current status
+npx @ai-coders/context workflow advance              # Move to next phase
+```
+
+### Scale-Adaptive Routing
+
+The system automatically detects project scale and adjusts the workflow:
+
+| Scale | Phases | Use Case |
+|-------|--------|----------|
+| QUICK | E → V | Bug fixes, small tweaks |
+| SMALL | P → E → V | Simple features |
+| MEDIUM | P → R → E → V | Regular features |
+| LARGE | P → R → E → V → C | Full products |
+| ENTERPRISE | All + extras | Systems with compliance |
 
 ## Requirements
 
@@ -156,9 +189,26 @@ command = "npx"
 args = ["--yes", "@ai-coders/context@latest", "mcp"]
 ```
 
+### Local Development
+
+For local development, point directly to the built distribution:
+
+```json
+{
+  "mcpServers": {
+    "ai-context-dev": {
+      "command": "node",
+      "args": ["/path/to/ai-coders-context/dist/index.js", "mcp"]
+    }
+  }
+}
+```
+
 ### Available MCP Tools
 
 Once configured, your AI assistant will have access to:
+
+#### Context Tools
 
 | Tool | Description |
 |------|-------------|
@@ -170,8 +220,51 @@ Once configured, your AI assistant will have access to:
 | `getFileStructure` | Get repository directory structure |
 | `scaffoldPlan` | Create work plans |
 
-## Contributing
+#### Workflow Tools
 
+| Tool | Description |
+|------|-------------|
+| `workflowInit` | Initialize a PREVC workflow with scale detection |
+| `workflowStatus` | Get current workflow status |
+| `workflowAdvance` | Advance to the next phase |
+| `workflowHandoff` | Handoff between roles with artifacts |
+| `workflowCollaborate` | Start multi-agent collaboration session |
+| `workflowCreateDoc` | Generate phase-specific documents |
+
+#### Orchestration Tools
+
+| Tool | Description |
+|------|-------------|
+| `orchestrateAgents` | Select agents by task, phase, or role |
+| `getAgentSequence` | Get recommended agent handoff sequence |
+| `getAgentDocs` | Get documentation relevant to an agent |
+| `getPhaseDocs` | Get documentation for a PREVC phase |
+| `listAgentTypes` | List all 14 available agent types |
+
+### Agent Types
+
+The orchestration system maps tasks to specialized agents:
+
+| Agent | Focus |
+|-------|-------|
+| `architect-specialist` | System architecture and patterns |
+| `feature-developer` | New feature implementation |
+| `bug-fixer` | Bug identification and fixes |
+| `test-writer` | Test suites and coverage |
+| `code-reviewer` | Code quality and best practices |
+| `security-auditor` | Security vulnerabilities |
+| `performance-optimizer` | Performance bottlenecks |
+| `documentation-writer` | Technical documentation |
+| `backend-specialist` | Server-side logic and APIs |
+| `frontend-specialist` | User interfaces |
+| `database-specialist` | Database solutions |
+| `devops-specialist` | CI/CD and deployment |
+| `mobile-specialist` | Mobile applications |
+| `refactoring-specialist` | Code structure improvements |
+
+## Documentation
+
+- [User Guide](./docs/GUIDE.md) — Complete usage guide
 - [Development Guide](./AGENTS.md) — Development guidelines
 
 ## License

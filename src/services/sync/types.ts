@@ -3,7 +3,7 @@ import type { TranslateFn } from '../../utils/i18n';
 
 export type SyncMode = 'symlink' | 'markdown';
 
-export type PresetName = 'claude' | 'github' | 'cursor' | 'all';
+export type PresetName = 'claude' | 'github' | 'cursor' | 'windsurf' | 'cline' | 'continue' | 'all';
 
 export interface TargetPreset {
   name: PresetName;

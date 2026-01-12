@@ -1,7 +1,17 @@
 import type { CLIInterface } from '../../utils/cliUI';
 import type { TranslateFn } from '../../utils/i18n';
 
-export type RuleType = 'cursorrules' | 'claude-memory' | 'github-copilot' | 'generic';
+export type RuleType = 
+  | 'cursorrules' 
+  | 'claude-memory' 
+  | 'github-copilot' 
+  | 'windsurfrules'
+  | 'clinerules'
+  | 'aider'
+  | 'continue'
+  | 'codex'
+  | 'zed'
+  | 'generic';
 
 export type ImportFormat = 'markdown' | 'raw' | 'formatted';
 

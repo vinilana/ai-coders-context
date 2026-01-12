@@ -185,9 +185,15 @@ export class RulesDetector {
   }
 
   private determineRuleType(sourceName: string): RuleType {
-    if (sourceName.includes('cursorrules')) return 'cursorrules';
+    if (sourceName.includes('cursorrules') || sourceName === 'cursorrules') return 'cursorrules';
     if (sourceName.includes('claude')) return 'claude-memory';
     if (sourceName.includes('github') || sourceName.includes('copilot')) return 'github-copilot';
+    if (sourceName.includes('windsurf') || sourceName === 'windsurfrules') return 'windsurfrules';
+    if (sourceName.includes('cline') || sourceName === 'clinerules') return 'clinerules';
+    if (sourceName.includes('aider')) return 'aider';
+    if (sourceName.includes('continue')) return 'continue';
+    if (sourceName.includes('codex')) return 'codex';
+    if (sourceName.includes('zed')) return 'zed';
     return 'generic';
   }
 
@@ -196,6 +202,12 @@ export class RulesDetector {
     if (normalized.includes('.cursorrules') || normalized.includes('.cursor/')) return 'cursorrules';
     if (normalized.includes('.claude/') || normalized.includes('memory')) return 'claude-memory';
     if (normalized.includes('.github/') || normalized.includes('copilot')) return 'github-copilot';
+    if (normalized.includes('.windsurfrules') || normalized.includes('.windsurf/')) return 'windsurfrules';
+    if (normalized.includes('.clinerules') || normalized.includes('.cline/')) return 'clinerules';
+    if (normalized.includes('.aider') || normalized.includes('conventions.md')) return 'aider';
+    if (normalized.includes('.continuerules') || normalized.includes('.continue/')) return 'continue';
+    if (normalized.includes('.codex/')) return 'codex';
+    if (normalized.includes('.zed/')) return 'zed';
     return 'generic';
   }
 
@@ -203,24 +215,25 @@ export class RulesDetector {
     const basename = path.basename(sourcePath, path.extname(sourcePath));
     const ext = path.extname(sourcePath) || '.md';
     
-    // Generate meaningful filename
-    let prefix = '';
-    switch (type) {
-      case 'cursorrules':
-        prefix = 'cursor-rules';
-        break;
-      case 'claude-memory':
-        prefix = 'claude-memory';
-        break;
-      case 'github-copilot':
-        prefix = 'github-copilot-rules';
-        break;
-      default:
-        prefix = 'rules';
-    }
+    // Generate meaningful filename based on rule type
+    const prefixMap: Record<RuleType, string> = {
+      'cursorrules': 'cursor-rules',
+      'claude-memory': 'claude-memory',
+      'github-copilot': 'github-copilot-rules',
+      'windsurfrules': 'windsurf-rules',
+      'clinerules': 'cline-rules',
+      'aider': 'aider-conventions',
+      'continue': 'continue-rules',
+      'codex': 'codex-instructions',
+      'zed': 'zed-settings',
+      'generic': 'rules'
+    };
+    
+    const prefix = prefixMap[type] || 'rules';
 
     // If basename is generic, use prefix, otherwise combine
-    const finalName = basename === 'rules' || basename === 'cursorrules' || basename === 'memory'
+    const genericNames = ['rules', 'cursorrules', 'memory', 'windsurfrules', 'clinerules', 'continuerules', 'config', 'settings', 'instructions'];
+    const finalName = genericNames.includes(basename.toLowerCase())
       ? prefix
       : `${prefix}-${basename}`;
 
