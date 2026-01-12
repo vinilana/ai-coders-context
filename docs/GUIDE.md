@@ -180,7 +180,6 @@ The workflow adapts to your project size:
 | **SMALL** | P → E → V | Simple features, minor additions |
 | **MEDIUM** | P → R → E → V | Regular features |
 | **LARGE** | P → R → E → V → C | Full products, major features |
-| **ENTERPRISE** | All + extras | Systems requiring compliance |
 
 ### Workflow Commands
 
