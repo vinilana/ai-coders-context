@@ -225,7 +225,7 @@ export class CollaborationSession {
       lowerTopic.includes('architecture') ||
       lowerTopic.includes('design')
     ) {
-      return ['arquiteto', 'desenvolvedor', 'designer'];
+      return ['architect', 'developer', 'designer'];
     }
 
     // Testing/Quality topics
@@ -235,7 +235,7 @@ export class CollaborationSession {
       lowerTopic.includes('qualidade') ||
       lowerTopic.includes('quality')
     ) {
-      return ['qa', 'revisor', 'desenvolvedor'];
+      return ['qa', 'reviewer', 'developer'];
     }
 
     // Planning/Requirements topics
@@ -245,7 +245,7 @@ export class CollaborationSession {
       lowerTopic.includes('planejamento') ||
       lowerTopic.includes('planning')
     ) {
-      return ['planejador', 'arquiteto', 'designer'];
+      return ['planner', 'architect', 'designer'];
     }
 
     // Documentation topics
@@ -254,7 +254,7 @@ export class CollaborationSession {
       lowerTopic.includes('documentation') ||
       lowerTopic.includes('docs')
     ) {
-      return ['documentador', 'desenvolvedor', 'planejador'];
+      return ['documenter', 'developer', 'planner'];
     }
 
     // Security topics
@@ -262,7 +262,7 @@ export class CollaborationSession {
       lowerTopic.includes('segurança') ||
       lowerTopic.includes('security')
     ) {
-      return ['qa', 'arquiteto', 'revisor'];
+      return ['qa', 'architect', 'reviewer'];
     }
 
     // Performance topics
@@ -270,11 +270,11 @@ export class CollaborationSession {
       lowerTopic.includes('performance') ||
       lowerTopic.includes('desempenho')
     ) {
-      return ['qa', 'desenvolvedor', 'arquiteto'];
+      return ['qa', 'developer', 'architect'];
     }
 
     // Default: core team
-    return ['planejador', 'arquiteto', 'desenvolvedor'];
+    return ['planner', 'architect', 'developer'];
   }
 
   /**

@@ -156,10 +156,10 @@ export function displayPhaseIndicator(
   const { currentLabel, symbols = {} } = options || {};
 
   const {
-    completed = '✓',
-    inProgress = '●',
-    pending = '○',
-    skipped = '⊘',
+    completed = '[x]',
+    inProgress = '[>]',
+    pending = '[ ]',
+    skipped = '[-]',
   } = symbols;
 
   const symbolMap = {
@@ -177,7 +177,7 @@ export function displayPhaseIndicator(
   let output = parts.join(' → ');
 
   if (currentLabel) {
-    output += `\n${' '.repeat(10)}↑ ${currentLabel}`;
+    output += `\n${' '.repeat(10)}^ ${currentLabel}`;
   }
 
   return output;

@@ -2,11 +2,11 @@
  * PREVC Workflow Phases
  *
  * Defines the five phases of the PREVC workflow:
- * P - Planejamento (Planning)
- * R - Revisão (Review)
- * E - Execução (Execution)
- * V - Validação (Validation)
- * C - Confirmação (Confirmation)
+ * P - Planning
+ * R - Review
+ * E - Execution
+ * V - Validation
+ * C - Confirmation
  */
 
 import { PrevcPhase, PhaseDefinition } from './types';
@@ -21,41 +21,41 @@ export const PREVC_PHASE_ORDER: PrevcPhase[] = ['P', 'R', 'E', 'V', 'C'];
  */
 export const PREVC_PHASES: Record<PrevcPhase, PhaseDefinition> = {
   P: {
-    name: 'Planejamento',
-    description: 'Discovery, requisitos e especificações',
-    roles: ['planejador', 'designer'],
-    outputs: ['prd', 'tech-spec', 'requisitos', 'wireframes'],
+    name: 'Planning',
+    description: 'Discovery, requirements and specifications',
+    roles: ['planner', 'designer'],
+    outputs: ['prd', 'tech-spec', 'requirements', 'wireframes'],
     optional: false,
     order: 1,
   },
   R: {
-    name: 'Revisão',
-    description: 'Arquitetura, decisões técnicas e design review',
-    roles: ['arquiteto', 'designer'],
+    name: 'Review',
+    description: 'Architecture, technical decisions and design review',
+    roles: ['architect', 'designer'],
     outputs: ['architecture', 'adr', 'design-spec'],
     optional: true, // Depends on scale
     order: 2,
   },
   E: {
-    name: 'Execução',
-    description: 'Implementação e desenvolvimento',
-    roles: ['desenvolvedor'],
+    name: 'Execution',
+    description: 'Implementation and development',
+    roles: ['developer'],
     outputs: ['code', 'unit-tests'],
     optional: false,
     order: 3,
   },
   V: {
-    name: 'Validação',
-    description: 'Testes, QA e code review',
-    roles: ['qa', 'revisor'],
+    name: 'Validation',
+    description: 'Tests, QA and code review',
+    roles: ['qa', 'reviewer'],
     outputs: ['test-report', 'review-comments', 'approval'],
     optional: false,
     order: 4,
   },
   C: {
-    name: 'Confirmação',
-    description: 'Documentação, deploy e handoff',
-    roles: ['documentador'],
+    name: 'Confirmation',
+    description: 'Documentation, deploy and handoff',
+    roles: ['documenter'],
     outputs: ['documentation', 'changelog', 'deploy'],
     optional: true, // Depends on scale
     order: 5,
@@ -63,9 +63,9 @@ export const PREVC_PHASES: Record<PrevcPhase, PhaseDefinition> = {
 };
 
 /**
- * Phase display names in English
+ * Phase display names (English - default)
  */
-export const PHASE_NAMES_EN: Record<PrevcPhase, string> = {
+export const PHASE_NAMES: Record<PrevcPhase, string> = {
   P: 'Planning',
   R: 'Review',
   E: 'Execution',
@@ -74,7 +74,12 @@ export const PHASE_NAMES_EN: Record<PrevcPhase, string> = {
 };
 
 /**
- * Phase display names in Portuguese
+ * Phase display names in English (alias for consistency)
+ */
+export const PHASE_NAMES_EN = PHASE_NAMES;
+
+/**
+ * Phase display names in Portuguese (for i18n)
  */
 export const PHASE_NAMES_PT: Record<PrevcPhase, string> = {
   P: 'Planejamento',
