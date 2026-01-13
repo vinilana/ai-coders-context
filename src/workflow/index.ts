@@ -100,3 +100,17 @@ export {
   PHASE_TO_DOCS,
   ROLE_TO_DOCS,
 } from './orchestration';
+
+// Plan Integration
+export {
+  PlanLinker,
+  createPlanLinker,
+  PlanReference,
+  LinkedPlan,
+  PlanPhase,
+  PlanStep,
+  PlanDecision,
+  PlanRisk,
+  WorkflowPlans,
+  PLAN_PHASE_TO_PREVC,
+} from './plans';

@@ -109,6 +109,15 @@ export interface RoleStatus {
 }
 
 /**
+ * Plan reference in workflow (lightweight)
+ */
+export interface WorkflowPlanRef {
+  slug: string;
+  path: string;
+  status: 'active' | 'completed' | 'paused';
+}
+
+/**
  * Project metadata in the workflow status
  */
 export interface ProjectMetadata {
@@ -116,6 +125,10 @@ export interface ProjectMetadata {
   scale: ProjectScale | keyof typeof ProjectScale;
   started: string;
   current_phase: PrevcPhase;
+  /** Primary plan being executed */
+  plan?: string;
+  /** All linked plans */
+  plans?: WorkflowPlanRef[];
 }
 
 /**

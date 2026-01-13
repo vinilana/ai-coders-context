@@ -41,6 +41,7 @@ import {
   documentLinker,
   AgentType,
   AGENT_TYPES,
+  createPlanLinker,
 } from '../../workflow';
 
 export interface MCPServerOptions {
@@ -967,6 +968,267 @@ export class AIContextMCPServer {
     });
 
     this.log('Registered 4 extended workflow tools');
+
+    // Register plan-workflow integration tools
+    this.registerPlanTools();
+  }
+
+  /**
+   * Register plan-workflow integration tools
+   */
+  private registerPlanTools(): void {
+    const repoPath = this.options.repoPath || process.cwd();
+
+    // linkPlan - Link a plan to the current workflow
+    this.server.registerTool('linkPlan', {
+      description: 'Link an implementation plan to the current PREVC workflow. Plans provide detailed steps mapped to workflow phases.',
+      inputSchema: {
+        planSlug: z.string().describe('Plan slug/identifier (filename without .md)'),
+      }
+    }, async ({ planSlug }) => {
+      try {
+        const linker = createPlanLinker(repoPath);
+        const ref = await linker.linkPlan(planSlug);
+
+        if (!ref) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                success: false,
+                error: `Plan not found: ${planSlug}`,
+              }, null, 2)
+            }]
+          };
+        }
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              plan: ref,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // getLinkedPlans - Get all plans linked to the workflow
+    this.server.registerTool('getLinkedPlans', {
+      description: 'Get all implementation plans linked to the current PREVC workflow.',
+      inputSchema: {}
+    }, async () => {
+      try {
+        const linker = createPlanLinker(repoPath);
+        const plans = await linker.getLinkedPlans();
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              plans,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // getPlanDetails - Get detailed plan with PREVC mapping
+    this.server.registerTool('getPlanDetails', {
+      description: 'Get detailed plan information including phases mapped to PREVC, agents, and documentation.',
+      inputSchema: {
+        planSlug: z.string().describe('Plan slug/identifier'),
+      }
+    }, async ({ planSlug }) => {
+      try {
+        const linker = createPlanLinker(repoPath);
+        const plan = await linker.getLinkedPlan(planSlug);
+
+        if (!plan) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                success: false,
+                error: `Plan not found or not linked: ${planSlug}`,
+              }, null, 2)
+            }]
+          };
+        }
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              plan: {
+                ...plan,
+                phasesWithPrevc: plan.phases.map(p => ({
+                  ...p,
+                  prevcPhaseName: PHASE_NAMES_EN[p.prevcPhase],
+                })),
+              },
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // getPlansForPhase - Get plans relevant to current PREVC phase
+    this.server.registerTool('getPlansForPhase', {
+      description: 'Get all plans that have work items for a specific PREVC phase.',
+      inputSchema: {
+        phase: z.enum(['P', 'R', 'E', 'V', 'C']).describe('PREVC phase'),
+      }
+    }, async ({ phase }) => {
+      try {
+        const linker = createPlanLinker(repoPath);
+        const plans = await linker.getPlansForPhase(phase as PrevcPhase);
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              phase,
+              phaseName: PHASE_NAMES_EN[phase as PrevcPhase],
+              plans: plans.map(p => ({
+                slug: p.ref.slug,
+                title: p.ref.title,
+                phasesInThisPrevc: p.phases
+                  .filter(ph => ph.prevcPhase === phase)
+                  .map(ph => ({ id: ph.id, name: ph.name, status: ph.status })),
+                hasPendingWork: linker.hasPendingWorkForPhase(p, phase as PrevcPhase),
+              })),
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // updatePlanPhase - Update plan phase status
+    this.server.registerTool('updatePlanPhase', {
+      description: 'Update the status of a plan phase (syncs with PREVC workflow tracking).',
+      inputSchema: {
+        planSlug: z.string().describe('Plan slug/identifier'),
+        phaseId: z.string().describe('Phase ID within the plan (e.g., "phase-1")'),
+        status: z.enum(['pending', 'in_progress', 'completed', 'skipped']).describe('New status'),
+      }
+    }, async ({ planSlug, phaseId, status }) => {
+      try {
+        const linker = createPlanLinker(repoPath);
+        const success = await linker.updatePlanPhase(planSlug, phaseId, status as any);
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success,
+              planSlug,
+              phaseId,
+              status,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // recordDecision - Record a decision in a plan
+    this.server.registerTool('recordDecision', {
+      description: 'Record a decision made during plan execution. Decisions are tracked and can be referenced later.',
+      inputSchema: {
+        planSlug: z.string().describe('Plan slug/identifier'),
+        title: z.string().describe('Decision title'),
+        description: z.string().describe('Decision description and rationale'),
+        phase: z.enum(['P', 'R', 'E', 'V', 'C']).optional().describe('Related PREVC phase'),
+        alternatives: z.array(z.string()).optional().describe('Alternatives that were considered'),
+      }
+    }, async ({ planSlug, title, description, phase, alternatives }) => {
+      try {
+        const linker = createPlanLinker(repoPath);
+        const decision = await linker.recordDecision(planSlug, {
+          title,
+          description,
+          phase: phase as PrevcPhase | undefined,
+          alternatives,
+          status: 'accepted',
+        });
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              decision,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    this.log('Registered 6 plan-workflow tools');
   }
 
   /**
