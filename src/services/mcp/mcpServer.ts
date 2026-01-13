@@ -25,9 +25,13 @@ import { getToolDescription } from '../ai/toolRegistry';
 import { SemanticContextBuilder, type ContextFormat } from '../semantic/contextBuilder';
 import { VERSION } from '../../version';
 import { WorkflowService } from '../workflow';
+import { StartService } from '../start';
+import { ReportService } from '../report';
+import { ExportRulesService, EXPORT_PRESETS } from '../export';
+import { StackDetector } from '../stack';
 import {
   PREVC_ROLES,
-  PHASE_NAMES_PT,
+  PHASE_NAMES_EN,
   ROLE_DISPLAY_NAMES,
   getScaleName,
   ProjectScale,
@@ -504,7 +508,7 @@ export class AIContextMCPServer {
               scale: getScaleName(summary.scale as ProjectScale),
               currentPhase: {
                 code: summary.currentPhase,
-                name: PHASE_NAMES_PT[summary.currentPhase],
+                name: PHASE_NAMES_EN[summary.currentPhase],
               },
               progress: summary.progress,
               isComplete: summary.isComplete,
@@ -557,10 +561,10 @@ export class AIContextMCPServer {
               type: 'text' as const,
               text: JSON.stringify({
                 success: true,
-                message: `Advanced to ${PHASE_NAMES_PT[nextPhase]} phase`,
+                message: `Advanced to ${PHASE_NAMES_EN[nextPhase]} phase`,
                 nextPhase: {
                   code: nextPhase,
-                  name: PHASE_NAMES_PT[nextPhase],
+                  name: PHASE_NAMES_EN[nextPhase],
                 }
               }, null, 2)
             }]
@@ -742,6 +746,227 @@ export class AIContextMCPServer {
     });
 
     this.log('Registered 6 workflow tools');
+
+    // Register extended workflow tools (start, report, export, stack detection)
+    this.registerExtendedWorkflowTools();
+  }
+
+  /**
+   * Register extended workflow tools (start, report, export, stack detection)
+   */
+  private registerExtendedWorkflowTools(): void {
+    const repoPath = this.options.repoPath || process.cwd();
+
+    // projectStart - Unified start command
+    this.server.registerTool('projectStart', {
+      description: 'Start a new project with unified setup: scaffolding + context fill + workflow initialization. Supports workflow templates (hotfix, feature, mvp).',
+      inputSchema: {
+        featureName: z.string().describe('Feature/project name'),
+        template: z.enum(['hotfix', 'feature', 'mvp', 'auto']).optional()
+          .describe('Workflow template (hotfix=quick fix, feature=standard, mvp=complete)'),
+        skipFill: z.boolean().optional().describe('Skip AI-assisted context filling'),
+        skipWorkflow: z.boolean().optional().describe('Skip workflow initialization'),
+      }
+    }, async ({ featureName, template, skipFill, skipWorkflow }) => {
+      try {
+        const startService = new StartService({
+          ui: {
+            displayOutput: () => {},
+            displaySuccess: () => {},
+            displayError: () => {},
+            displayInfo: () => {},
+            displayWarning: () => {},
+            startSpinner: () => {},
+            stopSpinner: () => {},
+            updateSpinner: () => {},
+            prompt: async () => '',
+            confirm: async () => true,
+          } as any,
+          t: (key: string) => key,
+          version: VERSION,
+          defaultModel: 'claude-3-5-sonnet-20241022',
+        });
+
+        const result = await startService.run(repoPath, {
+          featureName,
+          template: template as any,
+          skipFill,
+          skipWorkflow,
+        });
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: result.workflowStarted || result.initialized,
+              initialized: result.initialized,
+              filled: result.filled,
+              workflowStarted: result.workflowStarted,
+              scale: result.scale ? getScaleName(result.scale) : null,
+              featureName: result.featureName,
+              stack: result.stackDetected ? {
+                primaryLanguage: result.stackDetected.primaryLanguage,
+                frameworks: result.stackDetected.frameworks,
+              } : null,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // projectReport - Generate visual reports
+    this.server.registerTool('projectReport', {
+      description: 'Generate a visual progress report for the current PREVC workflow. Shows phases, roles, deliverables, and a visual dashboard.',
+      inputSchema: {
+        format: z.enum(['json', 'markdown', 'dashboard']).default('dashboard').optional()
+          .describe('Output format: json (raw data), markdown (formatted), dashboard (visual)'),
+        includeStack: z.boolean().optional().describe('Include technology stack info'),
+      }
+    }, async ({ format, includeStack }) => {
+      try {
+        const reportService = new ReportService({
+          ui: {
+            displayOutput: () => {},
+            displaySuccess: () => {},
+            displayError: () => {},
+            displayInfo: () => {},
+            displayWarning: () => {},
+            startSpinner: () => {},
+            stopSpinner: () => {},
+            updateSpinner: () => {},
+          } as any,
+          t: (key: string) => key,
+          version: VERSION,
+        });
+
+        const report = await reportService.generate(repoPath, { includeStack });
+
+        let output: string;
+        if (format === 'json') {
+          output = JSON.stringify(report, null, 2);
+        } else if (format === 'dashboard') {
+          output = reportService.generateVisualDashboard(report);
+        } else {
+          // Markdown format - use visual dashboard as fallback
+          output = reportService.generateVisualDashboard(report);
+        }
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: output
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // exportRules - Export rules to AI tools
+    this.server.registerTool('exportRules', {
+      description: 'Export context rules to AI tool directories (Cursor, Claude, GitHub Copilot, Windsurf, Cline, Aider, Codex). Bidirectional rules sync.',
+      inputSchema: {
+        preset: z.enum(['cursor', 'claude', 'github', 'windsurf', 'cline', 'aider', 'codex', 'all']).default('all')
+          .describe('Target AI tool preset or "all" for all supported tools'),
+        force: z.boolean().optional().describe('Overwrite existing files'),
+        dryRun: z.boolean().optional().describe('Preview changes without writing'),
+      }
+    }, async ({ preset, force, dryRun }) => {
+      try {
+        const exportService = new ExportRulesService({
+          ui: {
+            displayOutput: () => {},
+            displaySuccess: () => {},
+            displayError: () => {},
+            displayInfo: () => {},
+            displayWarning: () => {},
+            startSpinner: () => {},
+            stopSpinner: () => {},
+            updateSpinner: () => {},
+          } as any,
+          t: (key: string) => key,
+          version: VERSION,
+        });
+
+        const result = await exportService.run(repoPath, { preset, force, dryRun });
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              filesCreated: result.filesCreated,
+              filesSkipped: result.filesSkipped,
+              filesFailed: result.filesFailed,
+              targets: result.targets,
+              errors: result.errors,
+              dryRun: dryRun || false,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // detectStack - Detect project technology stack
+    this.server.registerTool('detectStack', {
+      description: 'Detect the project technology stack including languages, frameworks, build tools, and test frameworks. Useful for intelligent defaults.',
+      inputSchema: {}
+    }, async () => {
+      try {
+        const detector = new StackDetector();
+        const stackInfo = await detector.detect(repoPath);
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              stack: stackInfo,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    this.log('Registered 4 extended workflow tools');
   }
 
   /**
@@ -913,7 +1138,7 @@ export class AIContextMCPServer {
           source = `task: "${task}"`;
         } else if (phase) {
           agents = agentOrchestrator.getAgentsForPhase(phase as PrevcPhase);
-          source = `phase: ${phase} (${PHASE_NAMES_PT[phase as PrevcPhase]})`;
+          source = `phase: ${phase} (${PHASE_NAMES_EN[phase as PrevcPhase]})`;
         } else if (role) {
           agents = agentOrchestrator.getAgentsForRole(role as PrevcRole);
           source = `role: ${ROLE_DISPLAY_NAMES[role as PrevcRole]}`;
@@ -1058,7 +1283,7 @@ export class AIContextMCPServer {
             type: 'text',
             text: JSON.stringify({
               phase,
-              phaseName: PHASE_NAMES_PT[phase as PrevcPhase],
+              phaseName: PHASE_NAMES_EN[phase as PrevcPhase],
               documentation: docs.map((doc) => ({
                 type: doc.type,
                 title: doc.title,
