@@ -310,7 +310,7 @@ export class ReportService {
     // Add phase details
     content.push('─'.repeat(innerWidth));
     for (const phase of report.phases) {
-      const icon = this.getStatusEmoji(phase.status);
+      const icon = this.getStatusLabel(phase.status);
       content.push(this.padText(` ${icon} ${phase.phase}: ${phase.name}`, innerWidth));
       if (phase.outputs.length > 0 && phase.status === 'completed') {
         content.push(this.padText(`    Outputs: ${phase.outputs.length} file(s)`, innerWidth));
@@ -327,27 +327,27 @@ export class ReportService {
     }
 
     const box = createBox(content, { width, title: 'Workflow Dashboard' });
-    return report.progress.isComplete ? box + '\n\n✨ Workflow Complete!' : box;
+    return report.progress.isComplete ? box + '\n\nWorkflow Complete.' : box;
   }
 
   private getStatusIcon(status: string): string {
     const icons: Record<string, string> = {
-      completed: '✓',
-      in_progress: '●',
-      skipped: '⊘',
-      pending: '○',
+      completed: '[x]',
+      in_progress: '[>]',
+      skipped: '[-]',
+      pending: '[ ]',
     };
-    return icons[status] || '○';
+    return icons[status] || '[ ]';
   }
 
-  private getStatusEmoji(status: string): string {
-    const emojis: Record<string, string> = {
-      completed: '✅',
-      in_progress: '🔄',
-      skipped: '⏭️',
-      pending: '⏸️',
+  private getStatusLabel(status: string): string {
+    const labels: Record<string, string> = {
+      completed: '[done]',
+      in_progress: '[...]',
+      skipped: '[skip]',
+      pending: '[wait]',
     };
-    return emojis[status] || '⏸️';
+    return labels[status] || '[wait]';
   }
 
   private centerText(text: string, width: number): string {
@@ -398,7 +398,7 @@ export class ReportService {
       '## Phases',
       '',
       ...phases.flatMap(phase => [
-        `### ${this.getStatusEmoji(phase.status)} ${phase.phase} - ${phase.name}`,
+        `### ${this.getStatusLabel(phase.status)} ${phase.phase} - ${phase.name}`,
         '',
         `**Status:** ${phase.status}`,
         phase.startedAt ? `**Started:** ${new Date(phase.startedAt).toLocaleString()}` : '',
