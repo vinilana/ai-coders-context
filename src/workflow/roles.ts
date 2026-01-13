@@ -11,13 +11,13 @@ import { PrevcRole } from './types';
  * All available PREVC roles
  */
 export const PREVC_ROLES = [
-  'planejador', // P: Discovery, requirements, specifications
+  'planner', // P: Discovery, requirements, specifications
   'designer', // P/R: UX, design systems, wireframes
-  'arquiteto', // R: ADRs, technical decisions, blueprints
-  'desenvolvedor', // E: Implementation, coding
+  'architect', // R: ADRs, technical decisions, blueprints
+  'developer', // E: Implementation, coding
   'qa', // V: Tests, quality gates
-  'revisor', // V: Code review, standards
-  'documentador', // C: Documentation, handoff
+  'reviewer', // V: Code review, standards
+  'documenter', // C: Documentation, handoff
   'solo-dev', // P→C: Full quick flow
 ] as const;
 
@@ -25,10 +25,10 @@ export const PREVC_ROLES = [
  * Mapping from PREVC roles to existing agent types (specialists)
  */
 export const ROLE_TO_SPECIALISTS: Record<PrevcRole, string[]> = {
-  planejador: [], // New role, no existing mapping
+  planner: [], // New role, no existing mapping
   designer: ['frontend-specialist'],
-  arquiteto: ['architect-specialist'],
-  desenvolvedor: [
+  architect: ['architect-specialist'],
+  developer: [
     'feature-developer',
     'bug-fixer',
     'backend-specialist',
@@ -36,8 +36,8 @@ export const ROLE_TO_SPECIALISTS: Record<PrevcRole, string[]> = {
     'mobile-specialist',
   ],
   qa: ['test-writer', 'security-auditor', 'performance-optimizer'],
-  revisor: ['code-reviewer'],
-  documentador: ['documentation-writer'],
+  reviewer: ['code-reviewer'],
+  documenter: ['documentation-writer'],
   'solo-dev': ['refactoring-specialist', 'bug-fixer'],
 };
 
@@ -46,46 +46,51 @@ export const ROLE_TO_SPECIALISTS: Record<PrevcRole, string[]> = {
  */
 export const SPECIALIST_TO_ROLE: Record<string, PrevcRole> = {
   'frontend-specialist': 'designer',
-  'architect-specialist': 'arquiteto',
-  'feature-developer': 'desenvolvedor',
-  'bug-fixer': 'desenvolvedor',
-  'backend-specialist': 'desenvolvedor',
-  'mobile-specialist': 'desenvolvedor',
+  'architect-specialist': 'architect',
+  'feature-developer': 'developer',
+  'bug-fixer': 'developer',
+  'backend-specialist': 'developer',
+  'mobile-specialist': 'developer',
   'test-writer': 'qa',
   'security-auditor': 'qa',
   'performance-optimizer': 'qa',
-  'code-reviewer': 'revisor',
-  'documentation-writer': 'documentador',
+  'code-reviewer': 'reviewer',
+  'documentation-writer': 'documenter',
   'refactoring-specialist': 'solo-dev',
-  'database-specialist': 'desenvolvedor',
-  'devops-specialist': 'desenvolvedor',
+  'database-specialist': 'developer',
+  'devops-specialist': 'developer',
 };
 
 /**
- * Role display names in Portuguese
+ * Role display names (English)
  */
 export const ROLE_DISPLAY_NAMES: Record<PrevcRole, string> = {
-  planejador: 'Planejador',
+  planner: 'Planner',
   designer: 'Designer',
-  arquiteto: 'Arquiteto',
-  desenvolvedor: 'Desenvolvedor',
-  qa: 'QA',
-  revisor: 'Revisor',
-  documentador: 'Documentador',
+  architect: 'Architect',
+  developer: 'Developer',
+  qa: 'QA Engineer',
+  reviewer: 'Reviewer',
+  documenter: 'Documenter',
   'solo-dev': 'Solo Dev',
 };
 
 /**
- * Role display names in English
+ * Role display names in English (alias for consistency)
  */
-export const ROLE_DISPLAY_NAMES_EN: Record<PrevcRole, string> = {
-  planejador: 'Planner',
+export const ROLE_DISPLAY_NAMES_EN = ROLE_DISPLAY_NAMES;
+
+/**
+ * Role display names in Portuguese (for i18n)
+ */
+export const ROLE_DISPLAY_NAMES_PT: Record<PrevcRole, string> = {
+  planner: 'Planejador',
   designer: 'Designer',
-  arquiteto: 'Architect',
-  desenvolvedor: 'Developer',
-  qa: 'QA Engineer',
-  revisor: 'Reviewer',
-  documentador: 'Documenter',
+  architect: 'Arquiteto',
+  developer: 'Desenvolvedor',
+  qa: 'QA',
+  reviewer: 'Revisor',
+  documenter: 'Documentador',
   'solo-dev': 'Solo Dev',
 };
 

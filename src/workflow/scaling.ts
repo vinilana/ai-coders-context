@@ -19,12 +19,12 @@ export const SCALE_ROUTES: Record<ProjectScale, ScaleRoute> = {
   },
   [ProjectScale.SMALL]: {
     phases: ['P', 'E', 'V'],
-    roles: ['planejador', 'desenvolvedor', 'qa'],
+    roles: ['planner', 'developer', 'qa'],
     documents: ['tech-spec', 'code', 'test-report'],
   },
   [ProjectScale.MEDIUM]: {
     phases: ['P', 'R', 'E', 'V'],
-    roles: ['planejador', 'arquiteto', 'desenvolvedor', 'qa', 'revisor'],
+    roles: ['planner', 'architect', 'developer', 'qa', 'reviewer'],
     documents: ['prd', 'architecture', 'code', 'test-report', 'review'],
   },
   [ProjectScale.LARGE]: {

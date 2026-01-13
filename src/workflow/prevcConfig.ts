@@ -10,53 +10,53 @@ import { PrevcRole, RoleDefinition } from './types';
  * Complete configuration for all PREVC roles
  */
 export const ROLE_CONFIG: Record<PrevcRole, RoleDefinition> = {
-  planejador: {
+  planner: {
     phase: 'P',
     responsibilities: [
-      'Conduzir discovery e levantamento de requisitos',
-      'Criar especificações e escopo do projeto',
-      'Definir critérios de aceite',
-      'Gerar PRD ou Tech Spec',
-      'Identificar riscos e dependências',
+      'Conduct discovery and requirements gathering',
+      'Create specifications and project scope',
+      'Define acceptance criteria',
+      'Generate PRD or Tech Spec',
+      'Identify risks and dependencies',
     ],
-    outputs: ['prd', 'tech-spec', 'requisitos'],
+    outputs: ['prd', 'tech-spec', 'requirements'],
     specialists: [],
   },
 
   designer: {
     phase: ['P', 'R'],
     responsibilities: [
-      'Criar wireframes e protótipos',
-      'Definir design system e componentes',
-      'Garantir acessibilidade e usabilidade',
-      'Documentar padrões de UI/UX',
-      'Validar fluxos de usuário',
+      'Create wireframes and prototypes',
+      'Define design system and components',
+      'Ensure accessibility and usability',
+      'Document UI/UX patterns',
+      'Validate user flows',
     ],
     outputs: ['wireframes', 'design-spec', 'ui-components'],
     specialists: ['frontend-specialist'],
   },
 
-  arquiteto: {
+  architect: {
     phase: 'R',
     responsibilities: [
-      'Definir arquitetura do sistema',
-      'Criar ADRs (Architecture Decision Records)',
-      'Escolher tecnologias e padrões',
-      'Garantir escalabilidade e manutenibilidade',
-      'Revisar impacto técnico das decisões',
+      'Define system architecture',
+      'Create ADRs (Architecture Decision Records)',
+      'Choose technologies and patterns',
+      'Ensure scalability and maintainability',
+      'Review technical impact of decisions',
     ],
     outputs: ['architecture', 'adr', 'tech-decisions'],
     specialists: ['architect-specialist'],
   },
 
-  desenvolvedor: {
+  developer: {
     phase: 'E',
     responsibilities: [
-      'Implementar código conforme especificações',
-      'Seguir padrões e arquitetura definidos',
-      'Criar testes unitários básicos',
-      'Documentar código quando necessário',
-      'Resolver problemas técnicos',
+      'Implement code according to specifications',
+      'Follow defined patterns and architecture',
+      'Create basic unit tests',
+      'Document code when necessary',
+      'Solve technical problems',
     ],
     outputs: ['code', 'unit-tests'],
     specialists: [
@@ -73,37 +73,37 @@ export const ROLE_CONFIG: Record<PrevcRole, RoleDefinition> = {
   qa: {
     phase: 'V',
     responsibilities: [
-      'Criar e executar testes de integração',
-      'Validar segurança e performance',
-      'Garantir quality gates',
-      'Reportar e rastrear bugs',
-      'Validar critérios de aceite',
+      'Create and execute integration tests',
+      'Validate security and performance',
+      'Ensure quality gates',
+      'Report and track bugs',
+      'Validate acceptance criteria',
     ],
     outputs: ['test-report', 'qa-approval', 'bug-report'],
     specialists: ['test-writer', 'security-auditor', 'performance-optimizer'],
   },
 
-  revisor: {
+  reviewer: {
     phase: 'V',
     responsibilities: [
-      'Revisar código e arquitetura',
-      'Garantir conformidade com padrões',
-      'Sugerir melhorias e otimizações',
-      'Validar boas práticas',
-      'Aprovar ou solicitar mudanças',
+      'Review code and architecture',
+      'Ensure compliance with standards',
+      'Suggest improvements and optimizations',
+      'Validate best practices',
+      'Approve or request changes',
     ],
     outputs: ['review-comments', 'approval'],
     specialists: ['code-reviewer'],
   },
 
-  documentador: {
+  documenter: {
     phase: 'C',
     responsibilities: [
-      'Criar documentação técnica',
-      'Atualizar README e APIs',
-      'Preparar handoff para produção',
-      'Gerar changelog e release notes',
-      'Documentar decisões importantes',
+      'Create technical documentation',
+      'Update README and APIs',
+      'Prepare handoff to production',
+      'Generate changelog and release notes',
+      'Document important decisions',
     ],
     outputs: ['documentation', 'changelog', 'readme'],
     specialists: ['documentation-writer'],
@@ -112,11 +112,11 @@ export const ROLE_CONFIG: Record<PrevcRole, RoleDefinition> = {
   'solo-dev': {
     phase: ['P', 'R', 'E', 'V', 'C'],
     responsibilities: [
-      'Executar fluxo completo para tarefas pequenas',
-      'Bug fixes e refactorings rápidos',
-      'Features de baixa complexidade',
-      'Manutenção de código existente',
-      'Ajustes e tweaks pontuais',
+      'Execute complete flow for small tasks',
+      'Bug fixes and quick refactorings',
+      'Low complexity features',
+      'Maintenance of existing code',
+      'Adjustments and specific tweaks',
     ],
     outputs: ['code', 'tests', 'docs'],
     specialists: ['refactoring-specialist', 'bug-fixer'],

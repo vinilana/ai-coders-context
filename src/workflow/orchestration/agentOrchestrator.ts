@@ -57,10 +57,10 @@ export const PHASE_TO_AGENTS: Record<PrevcPhase, AgentType[]> = {
  * Mapping from PREVC roles to agent types
  */
 export const ROLE_TO_AGENTS: Record<PrevcRole, AgentType[]> = {
-  planejador: ['architect-specialist', 'documentation-writer'],
+  planner: ['architect-specialist', 'documentation-writer'],
   designer: ['frontend-specialist'],
-  arquiteto: ['architect-specialist', 'backend-specialist', 'database-specialist'],
-  desenvolvedor: [
+  architect: ['architect-specialist', 'backend-specialist', 'database-specialist'],
+  developer: [
     'feature-developer',
     'bug-fixer',
     'backend-specialist',
@@ -69,8 +69,8 @@ export const ROLE_TO_AGENTS: Record<PrevcRole, AgentType[]> = {
     'database-specialist',
   ],
   qa: ['test-writer', 'security-auditor', 'performance-optimizer'],
-  revisor: ['code-reviewer', 'security-auditor'],
-  documentador: ['documentation-writer'],
+  reviewer: ['code-reviewer', 'security-auditor'],
+  documenter: ['documentation-writer'],
   'solo-dev': [
     'refactoring-specialist',
     'bug-fixer',

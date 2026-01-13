@@ -134,13 +134,13 @@ export const PHASE_TO_DOCS: Record<PrevcPhase, DocType[]> = {
  * Mapping from PREVC roles to relevant documentation
  */
 export const ROLE_TO_DOCS: Record<PrevcRole, DocType[]> = {
-  planejador: ['architecture', 'glossary', 'readme'],
+  planner: ['architecture', 'glossary', 'readme'],
   designer: ['architecture', 'getting-started'],
-  arquiteto: ['architecture', 'data-flow', 'security', 'deployment'],
-  desenvolvedor: ['architecture', 'api', 'data-flow', 'getting-started'],
+  architect: ['architecture', 'data-flow', 'security', 'deployment'],
+  developer: ['architecture', 'api', 'data-flow', 'getting-started'],
   qa: ['testing', 'security', 'api'],
-  revisor: ['architecture', 'contributing', 'glossary'],
-  documentador: ['readme', 'glossary', 'architecture', 'api', 'contributing'],
+  reviewer: ['architecture', 'contributing', 'glossary'],
+  documenter: ['readme', 'glossary', 'architecture', 'api', 'contributing'],
   'solo-dev': ['architecture', 'api', 'testing', 'readme'],
 };
 

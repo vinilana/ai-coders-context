@@ -15,6 +15,20 @@ import { PREVC_PHASE_ORDER } from '../phases';
 import { getScaleRoute } from '../scaling';
 
 /**
+ * All available roles constant
+ */
+const ALL_ROLES: PrevcRole[] = [
+  'planner',
+  'designer',
+  'architect',
+  'developer',
+  'qa',
+  'reviewer',
+  'documenter',
+  'solo-dev',
+];
+
+/**
  * Options for creating initial status
  */
 export interface CreateStatusOptions {
@@ -70,11 +84,11 @@ export function createInitialStatus(options: CreateStatusOptions): PrevcStatus {
   // Get active roles
   const activeRoles =
     roles === 'all'
-      ? (['planejador', 'designer', 'arquiteto', 'desenvolvedor', 'qa', 'revisor', 'documentador', 'solo-dev'] as PrevcRole[])
+      ? ALL_ROLES
       : Array.isArray(roles)
       ? roles
       : route.roles === 'all'
-      ? (['planejador', 'designer', 'arquiteto', 'desenvolvedor', 'qa', 'revisor', 'documentador'] as PrevcRole[])
+      ? ALL_ROLES.filter(r => r !== 'solo-dev')
       : route.roles;
 
   // Create role statuses
@@ -117,7 +131,7 @@ export function createSmallProjectStatus(name: string): PrevcStatus {
     name,
     scale: ProjectScale.SMALL,
     phases: ['P', 'E', 'V'],
-    roles: ['planejador', 'desenvolvedor', 'qa'],
+    roles: ['planner', 'developer', 'qa'],
   });
 }
 
@@ -129,7 +143,7 @@ export function createMediumProjectStatus(name: string): PrevcStatus {
     name,
     scale: ProjectScale.MEDIUM,
     phases: ['P', 'R', 'E', 'V'],
-    roles: ['planejador', 'arquiteto', 'desenvolvedor', 'qa', 'revisor'],
+    roles: ['planner', 'architect', 'developer', 'qa', 'reviewer'],
   });
 }
 

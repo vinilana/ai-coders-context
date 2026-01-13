@@ -2,11 +2,11 @@
  * PREVC Workflow Types
  *
  * Core type definitions for the PREVC workflow system:
- * P - Planejamento (Planning)
- * R - Revisão (Review)
- * E - Execução (Execution)
- * V - Validação (Validation)
- * C - Confirmação (Confirmation)
+ * P - Planning
+ * R - Review
+ * E - Execution
+ * V - Validation
+ * C - Confirmation
  */
 
 /**
@@ -18,13 +18,13 @@ export type PrevcPhase = 'P' | 'R' | 'E' | 'V' | 'C';
  * Available roles in the PREVC workflow
  */
 export type PrevcRole =
-  | 'planejador'
+  | 'planner'
   | 'designer'
-  | 'arquiteto'
-  | 'desenvolvedor'
+  | 'architect'
+  | 'developer'
   | 'qa'
-  | 'revisor'
-  | 'documentador'
+  | 'reviewer'
+  | 'documenter'
   | 'solo-dev';
 
 /**
