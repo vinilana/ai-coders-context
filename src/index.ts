@@ -22,7 +22,12 @@ import { startMCPServer } from './services/mcp';
 import { StateDetector } from './services/state';
 import { UpdateService } from './services/update';
 import { WorkflowService, WorkflowServiceDependencies } from './services/workflow';
-import { getScaleName, PHASE_NAMES_PT, ROLE_DISPLAY_NAMES, type PrevcRole } from './workflow';
+import { StartService } from './services/start';
+import { ExportRulesService, EXPORT_PRESETS } from './services/export';
+import { ReportService } from './services/report';
+import { StackDetector } from './services/stack';
+import { AutoAdvanceDetector } from './services/workflow/autoAdvance';
+import { getScaleName, PHASE_NAMES_PT, PHASE_NAMES_EN, ROLE_DISPLAY_NAMES, ROLE_DISPLAY_NAMES_EN, type PrevcRole, ProjectScale } from './workflow';
 import { DEFAULT_MODELS } from './services/ai/providerFactory';
 import {
   detectSmartDefaults,
@@ -431,10 +436,122 @@ program
     }
   });
 
+// Smart Start Command
+program
+  .command('start')
+  .description(t('commands.start.description'))
+  .argument('[feature-name]', t('commands.start.arguments.featureName'))
+  .option('-t, --template <template>', t('commands.start.options.template'), 'auto')
+  .option('--skip-fill', t('commands.start.options.skipFill'))
+  .option('--skip-workflow', t('commands.start.options.skipWorkflow'))
+  .option('-k, --api-key <key>', t('commands.fill.options.apiKey'))
+  .option('-m, --model <model>', t('commands.fill.options.model'), DEFAULT_MODEL)
+  .option('-p, --provider <provider>', t('commands.fill.options.provider'))
+  .option('-v, --verbose', t('commands.fill.options.verbose'))
+  .action(async (featureName: string | undefined, options: any) => {
+    try {
+      const startService = new StartService({
+        ui,
+        t,
+        version: VERSION,
+        defaultModel: DEFAULT_MODEL,
+      });
+
+      const result = await startService.run(process.cwd(), {
+        featureName,
+        template: options.template,
+        skipFill: options.skipFill,
+        skipWorkflow: options.skipWorkflow,
+        apiKey: options.apiKey,
+        model: options.model,
+        provider: options.provider,
+        verbose: options.verbose,
+      });
+
+      // Display summary
+      const details: string[] = [];
+      if (result.initialized) details.push('context initialized');
+      if (result.filled) details.push('docs filled');
+      if (result.workflowStarted) details.push(`workflow started (${getScaleName(result.scale!)})`);
+      if (result.stackDetected?.primaryLanguage) {
+        details.push(`stack: ${result.stackDetected.primaryLanguage}`);
+      }
+
+      ui.displaySuccess(t('success.start.complete', { details: details.join(', ') }));
+    } catch (error) {
+      ui.displayError(t('errors.cli.executionFailed'), error as Error);
+      process.exit(1);
+    }
+  });
+
+// Export Rules Command
+program
+  .command('export-rules')
+  .description(t('commands.export.description'))
+  .argument('[repo-path]', 'Repository path', process.cwd())
+  .option('-s, --source <dir>', t('commands.export.options.source'), '.context/docs')
+  .option('-t, --targets <paths...>', t('commands.export.options.targets'))
+  .option('--preset <name>', t('commands.export.options.preset'))
+  .option('--force', t('commands.export.options.force'))
+  .option('--dry-run', t('commands.export.options.dryRun'))
+  .option('-v, --verbose', t('commands.fill.options.verbose'))
+  .action(async (repoPath: string, options: any) => {
+    try {
+      const exportService = new ExportRulesService({
+        ui,
+        t,
+        version: VERSION,
+      });
+
+      await exportService.run(repoPath, {
+        source: options.source,
+        targets: options.targets,
+        preset: options.preset,
+        force: options.force,
+        dryRun: options.dryRun,
+        verbose: options.verbose,
+      });
+    } catch (error) {
+      ui.displayError(t('errors.cli.executionFailed'), error as Error);
+      process.exit(1);
+    }
+  });
+
+// Report Command
+program
+  .command('report')
+  .description(t('commands.report.description'))
+  .argument('[repo-path]', 'Repository path', process.cwd())
+  .option('-f, --format <format>', t('commands.report.options.format'), 'console')
+  .option('-o, --output <path>', t('commands.report.options.output'))
+  .option('--include-stack', t('commands.report.options.includeStack'))
+  .option('-v, --verbose', t('commands.fill.options.verbose'))
+  .action(async (repoPath: string, options: any) => {
+    try {
+      const reportService = new ReportService({
+        ui,
+        t,
+        version: VERSION,
+      });
+
+      const report = await reportService.generate(repoPath, {
+        format: options.format,
+        output: options.output,
+        includeStack: options.includeStack,
+        verbose: options.verbose,
+      });
+
+      await reportService.output(report, options);
+    } catch (error) {
+      ui.displayError(t('errors.cli.executionFailed'), error as Error);
+      process.exit(1);
+    }
+  });
+
 // PREVC Workflow Commands
 const workflowCommand = program
   .command('workflow')
-  .description('PREVC workflow management (Planejamento, Revisão, Execução, Validação, Confirmação)');
+  .description('PREVC workflow management (Planning, Review, Execution, Validation, Confirmation)');
 
 // Helper to create workflow service dependencies
 const getWorkflowDeps = (): WorkflowServiceDependencies => ({

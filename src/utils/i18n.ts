@@ -306,7 +306,60 @@ const englishMessages = {
   'prompts.workflow.workflowComplete': 'Current workflow is complete. What would you like to do?',
   'prompts.workflow.action.newWorkflow': '🆕 Start a new workflow',
   'prompts.workflow.action.viewStatus': '📊 View completed workflow status',
-  'prompts.workflow.confirmNewWorkflow': 'This will replace the current workflow. Continue?'
+  'prompts.workflow.confirmNewWorkflow': 'This will replace the current workflow. Continue?',
+  // Start command translations
+  'commands.start.description': 'Smart start: initialize, fill, and start workflow in one command',
+  'commands.start.arguments.featureName': 'Optional feature name to start a workflow',
+  'commands.start.options.template': 'Workflow template: hotfix, feature, mvp, or auto',
+  'commands.start.options.skipFill': 'Skip AI-assisted documentation filling',
+  'commands.start.options.skipWorkflow': 'Skip workflow initialization',
+  'spinner.start.detectingStack': 'Detecting technology stack...',
+  'spinner.start.stackDetected': 'Stack detected: {stack}',
+  'spinner.start.initializing': 'Initializing project context...',
+  'spinner.start.initialized': 'Project context initialized',
+  'spinner.start.initFailed': 'Failed to initialize context',
+  'spinner.start.filling': 'Filling documentation with AI...',
+  'spinner.start.filled': 'Documentation filled',
+  'spinner.start.fillFailed': 'Documentation filling skipped (no API key)',
+  'errors.start.workflowFailed': 'Failed to start workflow',
+  'success.start.complete': 'Project ready! {details}',
+  // Export command translations
+  'commands.export.description': 'Export rules from .context to AI tool directories',
+  'commands.export.options.source': 'Source directory for rules',
+  'commands.export.options.targets': 'Target paths to export to',
+  'commands.export.options.preset': 'Export preset: cursor, claude, github, windsurf, cline, aider, codex, or all',
+  'commands.export.options.force': 'Overwrite existing files',
+  'commands.export.options.dryRun': 'Preview changes without writing',
+  'spinner.export.exporting': 'Exporting to {target}...',
+  'spinner.export.exported': 'Exported to {target}',
+  'spinner.export.skipped': 'Skipped {target} (already exists)',
+  'spinner.export.failed': 'Failed to export to {target}',
+  'spinner.export.dryRun': 'Would export to {target}',
+  'errors.export.noTargets': 'No export targets specified. Use --preset or --targets.',
+  'errors.export.noRules': 'No rules found in source directory.',
+  'success.export.completed': 'Exported rules to {count} target(s)',
+  // Report command translations
+  'commands.report.description': 'Generate workflow progress report',
+  'commands.report.options.format': 'Output format: console, markdown, or json',
+  'commands.report.options.output': 'Output file path (for markdown/json)',
+  'commands.report.options.includeStack': 'Include technology stack analysis',
+  'errors.report.noWorkflow': 'No workflow found. Run "workflow init" first.',
+  'success.report.saved': 'Report saved to {path}',
+  // Visual dashboard translations
+  'dashboard.title': 'Workflow Dashboard',
+  'dashboard.phase.completed': 'Completed',
+  'dashboard.phase.inProgress': 'In Progress',
+  'dashboard.phase.pending': 'Pending',
+  'dashboard.phase.skipped': 'Skipped',
+  // Auto-advance translations
+  'autoAdvance.detected': 'Detected {count} output(s) for phase {phase}',
+  'autoAdvance.suggest': 'Ready to advance to next phase?',
+  // Workflow template translations
+  'prompts.workflow.template': 'Select workflow template:',
+  'prompts.workflow.template.hotfix': 'Hotfix - Quick bug fix (E → V)',
+  'prompts.workflow.template.feature': 'Feature - Regular development (P → R → E → V)',
+  'prompts.workflow.template.mvp': 'MVP - Full product workflow (P → R → E → V → C)',
+  'prompts.workflow.template.auto': 'Auto-detect based on description'
 } as const;
 
 export type TranslationKey = keyof typeof englishMessages;
@@ -616,7 +669,60 @@ const portugueseMessages: TranslationDictionary = {
   'prompts.workflow.workflowComplete': 'O workflow atual está concluído. O que você gostaria de fazer?',
   'prompts.workflow.action.newWorkflow': '🆕 Iniciar um novo workflow',
   'prompts.workflow.action.viewStatus': '📊 Ver status do workflow concluído',
-  'prompts.workflow.confirmNewWorkflow': 'Isso substituirá o workflow atual. Continuar?'
+  'prompts.workflow.confirmNewWorkflow': 'Isso substituirá o workflow atual. Continuar?',
+  // Traduções do comando start
+  'commands.start.description': 'Início inteligente: inicializa, preenche e inicia workflow em um comando',
+  'commands.start.arguments.featureName': 'Nome opcional da feature para iniciar um workflow',
+  'commands.start.options.template': 'Template de workflow: hotfix, feature, mvp ou auto',
+  'commands.start.options.skipFill': 'Pular preenchimento de documentação com IA',
+  'commands.start.options.skipWorkflow': 'Pular inicialização do workflow',
+  'spinner.start.detectingStack': 'Detectando stack de tecnologia...',
+  'spinner.start.stackDetected': 'Stack detectada: {stack}',
+  'spinner.start.initializing': 'Inicializando contexto do projeto...',
+  'spinner.start.initialized': 'Contexto do projeto inicializado',
+  'spinner.start.initFailed': 'Falha ao inicializar contexto',
+  'spinner.start.filling': 'Preenchendo documentação com IA...',
+  'spinner.start.filled': 'Documentação preenchida',
+  'spinner.start.fillFailed': 'Preenchimento de documentação pulado (sem chave de API)',
+  'errors.start.workflowFailed': 'Falha ao iniciar workflow',
+  'success.start.complete': 'Projeto pronto! {details}',
+  // Traduções do comando export
+  'commands.export.description': 'Exportar regras de .context para diretórios de ferramentas IA',
+  'commands.export.options.source': 'Diretório fonte das regras',
+  'commands.export.options.targets': 'Caminhos de destino para exportar',
+  'commands.export.options.preset': 'Preset de exportação: cursor, claude, github, windsurf, cline, aider, codex ou all',
+  'commands.export.options.force': 'Sobrescrever arquivos existentes',
+  'commands.export.options.dryRun': 'Pré-visualizar mudanças sem escrever',
+  'spinner.export.exporting': 'Exportando para {target}...',
+  'spinner.export.exported': 'Exportado para {target}',
+  'spinner.export.skipped': 'Pulado {target} (já existe)',
+  'spinner.export.failed': 'Falha ao exportar para {target}',
+  'spinner.export.dryRun': 'Exportaria para {target}',
+  'errors.export.noTargets': 'Nenhum destino de exportação especificado. Use --preset ou --targets.',
+  'errors.export.noRules': 'Nenhuma regra encontrada no diretório fonte.',
+  'success.export.completed': 'Regras exportadas para {count} destino(s)',
+  // Traduções do comando report
+  'commands.report.description': 'Gerar relatório de progresso do workflow',
+  'commands.report.options.format': 'Formato de saída: console, markdown ou json',
+  'commands.report.options.output': 'Caminho do arquivo de saída (para markdown/json)',
+  'commands.report.options.includeStack': 'Incluir análise da stack de tecnologia',
+  'errors.report.noWorkflow': 'Nenhum workflow encontrado. Execute "workflow init" primeiro.',
+  'success.report.saved': 'Relatório salvo em {path}',
+  // Traduções do dashboard visual
+  'dashboard.title': 'Dashboard do Workflow',
+  'dashboard.phase.completed': 'Concluído',
+  'dashboard.phase.inProgress': 'Em Andamento',
+  'dashboard.phase.pending': 'Pendente',
+  'dashboard.phase.skipped': 'Pulado',
+  // Traduções do auto-advance
+  'autoAdvance.detected': 'Detectados {count} output(s) para fase {phase}',
+  'autoAdvance.suggest': 'Pronto para avançar para próxima fase?',
+  // Traduções de templates de workflow
+  'prompts.workflow.template': 'Selecione o template de workflow:',
+  'prompts.workflow.template.hotfix': 'Hotfix - Correção rápida de bug (E → V)',
+  'prompts.workflow.template.feature': 'Feature - Desenvolvimento regular (P → R → E → V)',
+  'prompts.workflow.template.mvp': 'MVP - Workflow completo de produto (P → R → E → V → C)',
+  'prompts.workflow.template.auto': 'Auto-detectar baseado na descrição'
 };
 
 const dictionaries: Record<Locale, TranslationDictionary> = {

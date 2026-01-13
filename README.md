@@ -21,14 +21,28 @@ That's it. The wizard detects what needs to be done.
 2. **Generates playbooks** — Guides for AI agents (Claude, GPT, etc.)
 3. **Keeps it updated** — Detects code changes and suggests updates
 
+## Quick Start
+
+```bash
+npx @ai-coders/context start "my-feature"  # One command does it all
+```
+
+This single command:
+1. Detects your tech stack (TypeScript, Python, etc.)
+2. Creates documentation structure
+3. Fills docs with AI (if API key available)
+4. Starts a PREVC workflow with appropriate scale
+
 ## For automation
 
 ```bash
-npx @ai-coders/context init .     # Create structure
-npx @ai-coders/context fill .     # Fill with AI
-npx @ai-coders/context update     # Update outdated docs
-npx @ai-coders/context plan name  # Create work plan
-npx @ai-coders/context workflow   # Manage PREVC workflow
+npx @ai-coders/context init .              # Create structure
+npx @ai-coders/context fill .              # Fill with AI
+npx @ai-coders/context update              # Update outdated docs
+npx @ai-coders/context plan name           # Create work plan
+npx @ai-coders/context workflow            # Manage PREVC workflow
+npx @ai-coders/context report              # Visual progress dashboard
+npx @ai-coders/context export-rules        # Export rules to AI tools
 ```
 
 ## PREVC Workflow System
@@ -49,6 +63,45 @@ A structured workflow for software development with 5 phases:
 npx @ai-coders/context workflow init "feature-name"  # Start new workflow
 npx @ai-coders/context workflow status               # View current status
 npx @ai-coders/context workflow advance              # Move to next phase
+```
+
+### Workflow Templates
+
+Use templates to quickly start common workflows:
+
+```bash
+npx @ai-coders/context start "fix-login" --template hotfix   # Quick fix (E → V)
+npx @ai-coders/context start "add-auth" --template feature   # Feature (P → R → E → V)
+npx @ai-coders/context start "v2.0" --template mvp           # Full (P → R → E → V → C)
+```
+
+### Visual Dashboard
+
+```bash
+npx @ai-coders/context report
+```
+
+```
+╭──────────────────────────────────────────────────╮
+│                   my-feature                     │
+│                    [MEDIUM]                      │
+├──────────────────────────────────────────────────┤
+│       ████████████████████░░░░░░░░░░░░░░░        │
+│       Progress: 40% (2/5 phases)                 │
+├──────────────────────────────────────────────────┤
+│         ✓ P → ✓ R → ● E → ○ V → ○ C              │
+│                     ↑ Current: Execution         │
+╰──────────────────────────────────────────────────╯
+```
+
+### Export Rules (Bidirectional Sync)
+
+Export your `.context/docs` rules to AI tool directories:
+
+```bash
+npx @ai-coders/context export-rules --preset all       # Export to all tools
+npx @ai-coders/context export-rules --preset cursor    # Export to .cursorrules
+npx @ai-coders/context export-rules --preset claude    # Export to CLAUDE.md
 ```
 
 ### Scale-Adaptive Routing
