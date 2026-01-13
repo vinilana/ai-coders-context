@@ -112,5 +112,6 @@ export {
   PlanDecision,
   PlanRisk,
   WorkflowPlans,
+  AgentLineupEntry,
   PLAN_PHASE_TO_PREVC,
 } from './plans';

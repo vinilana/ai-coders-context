@@ -270,13 +270,129 @@ export class PlanLinker {
   }
 
   /**
+   * Parse frontmatter from plan content
+   */
+  private parseFrontMatter(content: string): {
+    agents: Array<{ type: string; role?: string }>;
+    docs: string[];
+    phases: Array<{ id: string; name: string; prevc: string }>;
+  } | null {
+    // Check if content starts with frontmatter
+    if (!content.startsWith('---')) {
+      return null;
+    }
+
+    const endIndex = content.indexOf('---', 3);
+    if (endIndex === -1) {
+      return null;
+    }
+
+    const frontMatterContent = content.slice(3, endIndex).trim();
+    const result: {
+      agents: Array<{ type: string; role?: string }>;
+      docs: string[];
+      phases: Array<{ id: string; name: string; prevc: string }>;
+    } = {
+      agents: [],
+      docs: [],
+      phases: [],
+    };
+
+    // Parse agents section
+    const agentsMatch = frontMatterContent.match(/agents:\s*\n((?:\s+-[^\n]+\n?)+)/);
+    if (agentsMatch) {
+      const agentLines = agentsMatch[1].split('\n').filter(l => l.trim());
+      let currentAgent: { type: string; role?: string } | null = null;
+
+      for (const line of agentLines) {
+        const typeMatch = line.match(/type:\s*"([^"]+)"/);
+        const roleMatch = line.match(/role:\s*"([^"]+)"/);
+
+        if (typeMatch) {
+          if (currentAgent) {
+            result.agents.push(currentAgent);
+          }
+          currentAgent = { type: typeMatch[1] };
+        }
+        if (roleMatch && currentAgent) {
+          currentAgent.role = roleMatch[1];
+        }
+      }
+      if (currentAgent) {
+        result.agents.push(currentAgent);
+      }
+    }
+
+    // Parse docs section
+    const docsMatch = frontMatterContent.match(/docs:\s*\n((?:\s+-[^\n]+\n?)+)/);
+    if (docsMatch) {
+      const docLines = docsMatch[1].split('\n').filter(l => l.trim());
+      for (const line of docLines) {
+        const docMatch = line.match(/-\s*"([^"]+)"/);
+        if (docMatch) {
+          result.docs.push(docMatch[1]);
+        }
+      }
+    }
+
+    // Parse phases section
+    const phasesMatch = frontMatterContent.match(/phases:\s*\n((?:\s+-[^\n]+\n?)+)/);
+    if (phasesMatch) {
+      const phaseLines = phasesMatch[1].split('\n').filter(l => l.trim());
+      let currentPhase: { id: string; name: string; prevc: string } | null = null;
+
+      for (const line of phaseLines) {
+        const idMatch = line.match(/id:\s*"([^"]+)"/);
+        const nameMatch = line.match(/name:\s*"([^"]+)"/);
+        const prevcMatch = line.match(/prevc:\s*"([^"]+)"/);
+
+        if (idMatch) {
+          if (currentPhase && currentPhase.id && currentPhase.name && currentPhase.prevc) {
+            result.phases.push(currentPhase);
+          }
+          currentPhase = { id: idMatch[1], name: '', prevc: '' };
+        }
+        if (nameMatch && currentPhase) {
+          currentPhase.name = nameMatch[1];
+        }
+        if (prevcMatch && currentPhase) {
+          currentPhase.prevc = prevcMatch[1];
+        }
+      }
+      if (currentPhase && currentPhase.id && currentPhase.name && currentPhase.prevc) {
+        result.phases.push(currentPhase);
+      }
+    }
+
+    return result;
+  }
+
+  /**
    * Parse plan file into LinkedPlan structure
    */
   private parsePlanToLinked(content: string, ref: PlanReference): LinkedPlan {
-    const phases = this.extractPhases(content);
+    // Try frontmatter first, then fallback to body parsing
+    const frontMatter = this.parseFrontMatter(content);
+
+    const phases = frontMatter?.phases.length
+      ? frontMatter.phases.map(p => ({
+          id: p.id,
+          name: p.name,
+          prevcPhase: p.prevc as PrevcPhase,
+          steps: [],
+          status: 'pending' as const,
+        }))
+      : this.extractPhasesFromBody(content);
+
+    const agents = frontMatter?.agents.length
+      ? frontMatter.agents.map(a => a.type)
+      : this.extractAgentsFromBody(content);
+
+    const docs = frontMatter?.docs.length
+      ? frontMatter.docs
+      : this.extractDocsFromBody(content);
+
     const decisions = this.extractDecisions();
-    const agents = this.extractAgents(content);
-    const docs = this.extractDocs(content);
 
     const completedPhases = phases.filter(p => p.status === 'completed').length;
     const progress = phases.length > 0 ? Math.round((completedPhases / phases.length) * 100) : 0;
@@ -292,13 +408,15 @@ export class PlanLinker {
       docs,
       progress,
       currentPhase,
+      // Include full agent lineup with roles from frontmatter
+      agentLineup: frontMatter?.agents || agents.map(a => ({ type: a })),
     };
   }
 
   /**
-   * Extract phases from plan markdown
+   * Extract phases from plan markdown body (fallback)
    */
-  private extractPhases(content: string): PlanPhase[] {
+  private extractPhasesFromBody(content: string): PlanPhase[] {
     const phases: PlanPhase[] = [];
 
     // Match "### Phase N — Name" or "### Phase N - Name"
@@ -351,9 +469,9 @@ export class PlanLinker {
   }
 
   /**
-   * Extract agents from plan content
+   * Extract agents from plan body (fallback)
    */
-  private extractAgents(content: string): string[] {
+  private extractAgentsFromBody(content: string): string[] {
     const agents: string[] = [];
 
     // Match agent references in table rows
@@ -371,9 +489,9 @@ export class PlanLinker {
   }
 
   /**
-   * Extract documentation references from plan
+   * Extract documentation references from plan body (fallback)
    */
-  private extractDocs(content: string): string[] {
+  private extractDocsFromBody(content: string): string[] {
     const docs: string[] = [];
 
     // Match doc references

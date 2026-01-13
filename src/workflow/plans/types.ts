@@ -126,6 +126,16 @@ export interface PlanRisk {
 }
 
 /**
+ * Agent lineup entry with role description
+ */
+export interface AgentLineupEntry {
+  /** Agent type identifier */
+  type: string;
+  /** Role/responsibility in this plan */
+  role?: string;
+}
+
+/**
  * Complete plan structure linked to workflow
  */
 export interface LinkedPlan {
@@ -137,8 +147,10 @@ export interface LinkedPlan {
   decisions: PlanDecision[];
   /** Identified risks */
   risks: PlanRisk[];
-  /** Agents involved in this plan */
+  /** Agents involved in this plan (simple list) */
   agents: string[];
+  /** Full agent lineup with roles (from frontmatter) */
+  agentLineup: AgentLineupEntry[];
   /** Documentation touchpoints */
   docs: string[];
   /** Overall progress percentage */

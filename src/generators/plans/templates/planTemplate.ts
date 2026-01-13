@@ -1,6 +1,48 @@
 import { PlanTemplateContext, CodebaseSnapshot } from './types';
 import { SemanticContext } from '../../../services/semantic';
-import { wrapWithFrontMatter } from '../../documentation/templates/common';
+
+/**
+ * Wrap plan content with enhanced YAML front matter including agent lineup.
+ * This allows AI agents to quickly read which agents are needed for the plan.
+ */
+function wrapWithPlanFrontMatter(
+  content: string,
+  options: {
+    agents: Array<{ type: string; role?: string }>;
+    docs: string[];
+    phases: Array<{ id: string; name: string; prevcPhase: string }>;
+  }
+): string {
+  const date = new Date().toISOString().split('T')[0];
+
+  // Format agents as YAML array
+  const agentsYaml = options.agents.length > 0
+    ? options.agents.map(a => `  - type: "${a.type}"${a.role ? `\n    role: "${a.role}"` : ''}`).join('\n')
+    : '  - type: "documentation-writer"';
+
+  // Format docs as YAML array
+  const docsYaml = options.docs.length > 0
+    ? options.docs.map(d => `  - "${d}"`).join('\n')
+    : '  - "README.md"';
+
+  // Format phases as YAML array
+  const phasesYaml = options.phases.map(p =>
+    `  - id: "${p.id}"\n    name: "${p.name}"\n    prevc: "${p.prevcPhase}"`
+  ).join('\n');
+
+  return `---
+status: unfilled
+generated: ${date}
+agents:
+${agentsYaml}
+docs:
+${docsYaml}
+phases:
+${phasesYaml}
+---
+
+${content}`;
+}
 
 function renderCodebaseSnapshot(snapshot?: CodebaseSnapshot): string {
   if (!snapshot) {
@@ -203,5 +245,24 @@ When to initiate rollback:
 List artifacts to collect (logs, PR links, test runs, design notes). Record follow-up actions or owners.
 `;
 
-  return wrapWithFrontMatter(content);
+  // Build frontmatter data
+  const frontMatterAgents = agents.length > 0
+    ? agents.map(a => ({ type: a.type, role: a.responsibility }))
+    : [{ type: 'documentation-writer' }];
+
+  const frontMatterDocs = docs.length > 0
+    ? docs.map(d => d.file)
+    : ['README.md'];
+
+  const frontMatterPhases = [
+    { id: 'phase-1', name: 'Discovery & Alignment', prevcPhase: 'P' },
+    { id: 'phase-2', name: 'Implementation & Iteration', prevcPhase: 'E' },
+    { id: 'phase-3', name: 'Validation & Handoff', prevcPhase: 'V' },
+  ];
+
+  return wrapWithPlanFrontMatter(content, {
+    agents: frontMatterAgents,
+    docs: frontMatterDocs,
+    phases: frontMatterPhases,
+  });
 }
