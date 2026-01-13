@@ -6,11 +6,12 @@
  */
 
 import * as path from 'path';
-import * as fs from 'fs-extra';
-import { glob } from 'glob';
-import type { CLIInterface } from '../../utils/cliUI';
-import type { TranslateFn } from '../../utils/i18n';
 import type { AIProvider } from '../../types';
+import {
+  AIDependencies,
+  withSpinner,
+  resolveContextPaths,
+} from '../shared';
 import { InitService } from '../init/initService';
 import { FillService } from '../fill/fillService';
 import { WorkflowService } from '../workflow';
@@ -18,12 +19,7 @@ import { StateDetector } from '../state';
 import { StackDetector, type StackInfo } from '../stack/stackDetector';
 import { ProjectScale } from '../../workflow';
 
-export interface StartServiceDependencies {
-  ui: CLIInterface;
-  t: TranslateFn;
-  version: string;
-  defaultModel: string;
-}
+export type StartServiceDependencies = AIDependencies;
 
 export interface StartOptions {
   featureName?: string;
@@ -55,13 +51,11 @@ const TEMPLATE_TO_SCALE: Record<string, ProjectScale> = {
 };
 
 export class StartService {
-  private deps: StartServiceDependencies;
   private initService: InitService;
   private fillService: FillService;
   private stackDetector: StackDetector;
 
-  constructor(deps: StartServiceDependencies) {
-    this.deps = deps;
+  constructor(private deps: StartServiceDependencies) {
     this.initService = new InitService({
       ui: deps.ui,
       t: deps.t,
@@ -80,8 +74,7 @@ export class StartService {
    * Run the unified start command
    */
   async run(repoPath: string, options: StartOptions = {}): Promise<StartResult> {
-    const absolutePath = path.resolve(repoPath);
-    const contextPath = path.join(absolutePath, '.context');
+    const paths = resolveContextPaths(repoPath);
     const result: StartResult = {
       initialized: false,
       filled: false,
@@ -89,98 +82,167 @@ export class StartService {
     };
 
     // Step 1: Detect stack
-    this.deps.ui.startSpinner(this.deps.t('spinner.start.detectingStack'));
-    const stackInfo = await this.stackDetector.detect(absolutePath);
+    const stackInfo = await this.detectStack(paths.absolutePath);
     result.stackDetected = stackInfo;
-    this.deps.ui.updateSpinner(
-      this.deps.t('spinner.start.stackDetected', { stack: stackInfo.primaryLanguage || 'Unknown' }),
-      'success'
-    );
-    this.deps.ui.stopSpinner();
 
-    // Step 2: Detect project state
-    const detector = new StateDetector({ projectPath: absolutePath });
+    // Step 2: Detect project state and initialize if needed
+    const detector = new StateDetector({ projectPath: paths.absolutePath });
     const state = await detector.detect();
 
-    // Step 3: Initialize if needed
     if (state.state === 'new') {
-      this.deps.ui.startSpinner(this.deps.t('spinner.start.initializing'));
-      try {
-        await this.initService.run(absolutePath, 'both', {
-          output: contextPath,
-          semantic: true,
-          verbose: options.verbose,
-        });
-        result.initialized = true;
-        this.deps.ui.updateSpinner(this.deps.t('spinner.start.initialized'), 'success');
-      } catch (error) {
-        this.deps.ui.updateSpinner(this.deps.t('spinner.start.initFailed'), 'fail');
-        throw error;
-      } finally {
-        this.deps.ui.stopSpinner();
-      }
+      result.initialized = await this.initializeProject(paths.absolutePath, paths.contextPath, options);
     }
 
-    // Step 4: Fill with LLM if requested and API key available
-    if (!options.skipFill && (options.apiKey || this.hasApiKeyInEnv())) {
-      const shouldFill = state.state === 'new' || state.state === 'unfilled';
-
-      if (shouldFill) {
-        this.deps.ui.startSpinner(this.deps.t('spinner.start.filling'));
-        try {
-          await this.fillService.run(absolutePath, {
-            output: contextPath,
-            model: options.model || this.deps.defaultModel,
-            provider: options.provider as AIProvider | undefined,
-            apiKey: options.apiKey,
-            verbose: options.verbose,
-            semantic: true,
-          });
-          result.filled = true;
-          this.deps.ui.updateSpinner(this.deps.t('spinner.start.filled'), 'success');
-        } catch (error) {
-          this.deps.ui.updateSpinner(this.deps.t('spinner.start.fillFailed'), 'warn');
-          // Don't throw - filling is optional
-        } finally {
-          this.deps.ui.stopSpinner();
-        }
-      }
+    // Step 3: Fill with LLM if needed
+    if (this.shouldFill(state.state, options)) {
+      result.filled = await this.fillDocs(paths.absolutePath, paths.contextPath, options);
     }
 
-    // Step 5: Initialize workflow if feature name provided
+    // Step 4: Initialize workflow if feature name provided
     if (!options.skipWorkflow && options.featureName) {
-      const workflowService = new WorkflowService(absolutePath, {
-        ui: {
-          displaySuccess: (msg) => this.deps.ui.displaySuccess(msg),
-          displayError: (msg, err) => this.deps.ui.displayError(msg, err),
-          displayInfo: (title, detail) => this.deps.ui.displayInfo(title, detail || ''),
-        },
-      });
-
-      // Determine scale from template or auto-detect
-      let scale: ProjectScale | undefined;
-      if (options.template && options.template !== 'auto') {
-        scale = TEMPLATE_TO_SCALE[options.template];
-      }
-
-      try {
-        const status = await workflowService.init({
-          name: options.featureName,
-          description: `${options.featureName} - ${stackInfo.primaryLanguage || 'project'}`,
-          scale,
-          files: stackInfo.files,
-        });
-
-        result.workflowStarted = true;
-        result.scale = status.project.scale as ProjectScale;
-        result.featureName = options.featureName;
-      } catch (error) {
-        this.deps.ui.displayError(this.deps.t('errors.start.workflowFailed'), error as Error);
-        // Don't throw - workflow is optional
-      }
+      const workflowResult = await this.initializeWorkflow(
+        paths.absolutePath,
+        options.featureName,
+        stackInfo,
+        options
+      );
+      result.workflowStarted = workflowResult.started;
+      result.scale = workflowResult.scale;
+      result.featureName = options.featureName;
     }
 
     return result;
+  }
+
+  /**
+   * Detect technology stack
+   */
+  private async detectStack(repoPath: string): Promise<StackInfo> {
+    const { result } = await withSpinner(
+      this.deps.ui,
+      this.deps.t('spinner.start.detectingStack'),
+      () => this.stackDetector.detect(repoPath),
+      {
+        successMessage: this.deps.t('spinner.start.stackDetected', {
+          stack: 'detected',
+        }),
+      }
+    );
+    return result || {
+      primaryLanguage: null,
+      languages: [],
+      frameworks: [],
+      testFrameworks: [],
+      buildTools: [],
+      files: [],
+      packageManager: null,
+      isMonorepo: false,
+      hasDocker: false,
+      hasCI: false,
+    };
+  }
+
+  /**
+   * Initialize project context
+   */
+  private async initializeProject(
+    repoPath: string,
+    contextPath: string,
+    options: StartOptions
+  ): Promise<boolean> {
+    const { success } = await withSpinner(
+      this.deps.ui,
+      this.deps.t('spinner.start.initializing'),
+      () =>
+        this.initService.run(repoPath, 'both', {
+          output: contextPath,
+          semantic: true,
+          verbose: options.verbose,
+        }),
+      {
+        successMessage: this.deps.t('spinner.start.initialized'),
+        failMessage: this.deps.t('spinner.start.initFailed'),
+      }
+    );
+    return success;
+  }
+
+  /**
+   * Check if we should fill docs
+   */
+  private shouldFill(state: string, options: StartOptions): boolean {
+    if (options.skipFill) return false;
+    if (!options.apiKey && !this.hasApiKeyInEnv()) return false;
+    return state === 'new' || state === 'unfilled';
+  }
+
+  /**
+   * Fill documentation with AI
+   */
+  private async fillDocs(
+    repoPath: string,
+    contextPath: string,
+    options: StartOptions
+  ): Promise<boolean> {
+    const { success } = await withSpinner(
+      this.deps.ui,
+      this.deps.t('spinner.start.filling'),
+      () =>
+        this.fillService.run(repoPath, {
+          output: contextPath,
+          model: options.model || this.deps.defaultModel,
+          provider: options.provider as AIProvider | undefined,
+          apiKey: options.apiKey,
+          verbose: options.verbose,
+          semantic: true,
+        }),
+      {
+        successMessage: this.deps.t('spinner.start.filled'),
+        failMessage: this.deps.t('spinner.start.fillFailed'),
+        failStatus: 'warn',
+      }
+    );
+    return success;
+  }
+
+  /**
+   * Initialize workflow
+   */
+  private async initializeWorkflow(
+    repoPath: string,
+    featureName: string,
+    stackInfo: StackInfo,
+    options: StartOptions
+  ): Promise<{ started: boolean; scale?: ProjectScale }> {
+    const workflowService = new WorkflowService(repoPath, {
+      ui: {
+        displaySuccess: (msg) => this.deps.ui.displaySuccess(msg),
+        displayError: (msg, err) => this.deps.ui.displayError(msg, err),
+        displayInfo: (title, detail) => this.deps.ui.displayInfo(title, detail || ''),
+      },
+    });
+
+    // Determine scale from template or auto-detect
+    const scale = options.template && options.template !== 'auto'
+      ? TEMPLATE_TO_SCALE[options.template]
+      : undefined;
+
+    try {
+      const status = await workflowService.init({
+        name: featureName,
+        description: `${featureName} - ${stackInfo.primaryLanguage || 'project'}`,
+        scale,
+        files: stackInfo.files,
+      });
+
+      return {
+        started: true,
+        scale: status.project.scale as ProjectScale,
+      };
+    } catch (error) {
+      this.deps.ui.displayError(this.deps.t('errors.start.workflowFailed'), error as Error);
+      return { started: false };
+    }
   }
 
   /**

@@ -6,15 +6,21 @@
 
 import * as path from 'path';
 import * as fs from 'fs-extra';
-import { glob } from 'glob';
-import type { CLIInterface } from '../../utils/cliUI';
-import type { TranslateFn } from '../../utils/i18n';
+import {
+  BaseDependencies,
+  OperationResult,
+  createEmptyResult,
+  addError,
+  globFiles,
+  resolveAbsolutePath,
+  ensureParentDirectory,
+  ensureDirectory,
+  pathExists,
+  getBasename,
+  displayOperationSummary,
+} from '../shared';
 
-export interface ExportRulesServiceDependencies {
-  ui: CLIInterface;
-  t: TranslateFn;
-  version: string;
-}
+export type ExportRulesServiceDependencies = BaseDependencies;
 
 export interface ExportTarget {
   name: string;
@@ -33,12 +39,14 @@ export interface ExportOptions {
   verbose?: boolean;
 }
 
-export interface ExportResult {
-  exported: number;
-  skipped: number;
-  failed: number;
+export interface ExportResult extends OperationResult {
   targets: string[];
-  errors: Array<{ target: string; error: string }>;
+}
+
+interface RuleFile {
+  name: string;
+  content: string;
+  path: string;
 }
 
 /**
@@ -46,108 +54,52 @@ export interface ExportResult {
  */
 export const EXPORT_PRESETS: Record<string, ExportTarget[]> = {
   cursor: [
-    {
-      name: 'cursorrules',
-      path: '.cursorrules',
-      format: 'single',
-      description: 'Cursor AI rules file',
-    },
-    {
-      name: 'cursor-rules-dir',
-      path: '.cursor/rules',
-      format: 'directory',
-      description: 'Cursor AI rules directory',
-    },
+    { name: 'cursorrules', path: '.cursorrules', format: 'single', description: 'Cursor AI rules file' },
+    { name: 'cursor-rules-dir', path: '.cursor/rules', format: 'directory', description: 'Cursor AI rules directory' },
   ],
   claude: [
-    {
-      name: 'claude-md',
-      path: 'CLAUDE.md',
-      format: 'single',
-      description: 'Claude Code main rules file',
-    },
+    { name: 'claude-md', path: 'CLAUDE.md', format: 'single', description: 'Claude Code main rules file' },
   ],
   github: [
-    {
-      name: 'copilot-instructions',
-      path: '.github/copilot-instructions.md',
-      format: 'single',
-      description: 'GitHub Copilot instructions',
-    },
+    { name: 'copilot-instructions', path: '.github/copilot-instructions.md', format: 'single', description: 'GitHub Copilot instructions' },
   ],
   windsurf: [
-    {
-      name: 'windsurfrules',
-      path: '.windsurfrules',
-      format: 'single',
-      description: 'Windsurf rules file',
-    },
+    { name: 'windsurfrules', path: '.windsurfrules', format: 'single', description: 'Windsurf rules file' },
   ],
   cline: [
-    {
-      name: 'clinerules',
-      path: '.clinerules',
-      format: 'single',
-      description: 'Cline rules file',
-    },
+    { name: 'clinerules', path: '.clinerules', format: 'single', description: 'Cline rules file' },
   ],
   aider: [
-    {
-      name: 'conventions',
-      path: 'CONVENTIONS.md',
-      format: 'single',
-      description: 'Aider conventions file',
-    },
+    { name: 'conventions', path: 'CONVENTIONS.md', format: 'single', description: 'Aider conventions file' },
   ],
   codex: [
-    {
-      name: 'codex-instructions',
-      path: '.codex/instructions.md',
-      format: 'single',
-      description: 'Codex CLI instructions',
-    },
+    { name: 'codex-instructions', path: '.codex/instructions.md', format: 'single', description: 'Codex CLI instructions' },
   ],
-  all: [], // Will be populated dynamically
+  all: [], // Populated dynamically below
 };
 
 // Populate 'all' preset
-EXPORT_PRESETS.all = [
-  ...EXPORT_PRESETS.cursor,
-  ...EXPORT_PRESETS.claude,
-  ...EXPORT_PRESETS.github,
-  ...EXPORT_PRESETS.windsurf,
-  ...EXPORT_PRESETS.cline,
-  ...EXPORT_PRESETS.aider,
-  ...EXPORT_PRESETS.codex,
-];
+EXPORT_PRESETS.all = Object.entries(EXPORT_PRESETS)
+  .filter(([key]) => key !== 'all')
+  .flatMap(([, targets]) => targets);
 
 export class ExportRulesService {
-  private deps: ExportRulesServiceDependencies;
-
-  constructor(deps: ExportRulesServiceDependencies) {
-    this.deps = deps;
-  }
+  constructor(private deps: ExportRulesServiceDependencies) {}
 
   /**
    * Export rules to AI tool directories
    */
   async run(repoPath: string, options: ExportOptions = {}): Promise<ExportResult> {
     const absolutePath = path.resolve(repoPath);
-    const sourcePath = options.source
-      ? path.resolve(absolutePath, options.source)
-      : path.join(absolutePath, '.context', 'docs');
+    const sourcePath = resolveAbsolutePath(options.source, '.context/docs', absolutePath);
 
     const result: ExportResult = {
-      exported: 0,
-      skipped: 0,
-      failed: 0,
+      ...createEmptyResult(),
       targets: [],
-      errors: [],
     };
 
     // Determine targets
-    const targets = this.resolveTargets(absolutePath, options);
-
+    const targets = this.resolveTargets(options);
     if (targets.length === 0) {
       this.deps.ui.displayError(this.deps.t('errors.export.noTargets'));
       return result;
@@ -155,7 +107,6 @@ export class ExportRulesService {
 
     // Read source rules
     const rules = await this.readSourceRules(sourcePath);
-
     if (rules.length === 0) {
       this.deps.ui.displayError(this.deps.t('errors.export.noRules'));
       return result;
@@ -166,82 +117,100 @@ export class ExportRulesService {
 
     // Export to each target
     for (const target of targets) {
-      try {
-        this.deps.ui.startSpinner(
-          this.deps.t('spinner.export.exporting', { target: target.name })
-        );
-
-        const targetPath = path.join(absolutePath, target.path);
-
-        if (options.dryRun) {
-          this.deps.ui.updateSpinner(
-            this.deps.t('spinner.export.dryRun', { target: targetPath }),
-            'success'
-          );
-          result.skipped++;
-          continue;
-        }
-
-        // Check if target exists and force is not set
-        if (await fs.pathExists(targetPath) && !options.force) {
-          this.deps.ui.updateSpinner(
-            this.deps.t('spinner.export.skipped', { target: targetPath }),
-            'warn'
-          );
-          result.skipped++;
-          continue;
-        }
-
-        // Export based on format
-        if (target.format === 'single') {
-          await this.exportSingleFile(targetPath, combinedContent, target);
-        } else {
-          await this.exportToDirectory(targetPath, rules, target);
-        }
-
-        result.exported++;
-        result.targets.push(targetPath);
-        this.deps.ui.updateSpinner(
-          this.deps.t('spinner.export.exported', { target: targetPath }),
-          'success'
-        );
-      } catch (error) {
-        result.failed++;
-        result.errors.push({
-          target: target.name,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        this.deps.ui.updateSpinner(
-          this.deps.t('spinner.export.failed', { target: target.name }),
-          'fail'
-        );
-      } finally {
-        this.deps.ui.stopSpinner();
-      }
+      await this.exportToTarget(absolutePath, target, rules, combinedContent, options, result);
     }
 
     // Display summary
-    if (result.exported > 0) {
+    if (!options.dryRun && result.filesCreated > 0) {
       this.deps.ui.displaySuccess(
-        this.deps.t('success.export.completed', { count: result.exported })
+        this.deps.t('success.export.completed', { count: result.filesCreated })
       );
+    }
+
+    if (options.verbose) {
+      displayOperationSummary(result, {
+        dryRun: options.dryRun,
+        labels: { created: 'Exported' },
+      });
     }
 
     return result;
   }
 
   /**
+   * Export to a single target
+   */
+  private async exportToTarget(
+    repoPath: string,
+    target: ExportTarget,
+    rules: RuleFile[],
+    combinedContent: string,
+    options: ExportOptions,
+    result: ExportResult
+  ): Promise<void> {
+    const targetPath = path.join(repoPath, target.path);
+
+    try {
+      this.deps.ui.startSpinner(
+        this.deps.t('spinner.export.exporting', { target: target.name })
+      );
+
+      if (options.dryRun) {
+        this.deps.ui.updateSpinner(
+          this.deps.t('spinner.export.dryRun', { target: targetPath }),
+          'success'
+        );
+        result.filesSkipped++;
+        this.deps.ui.stopSpinner();
+        return;
+      }
+
+      // Check if target exists and force is not set
+      if (await pathExists(targetPath) && !options.force) {
+        this.deps.ui.updateSpinner(
+          this.deps.t('spinner.export.skipped', { target: targetPath }),
+          'warn'
+        );
+        result.filesSkipped++;
+        this.deps.ui.stopSpinner();
+        return;
+      }
+
+      // Export based on format
+      if (target.format === 'single') {
+        await ensureParentDirectory(targetPath);
+        await fs.writeFile(targetPath, combinedContent, 'utf-8');
+      } else {
+        await this.exportToDirectory(targetPath, rules);
+      }
+
+      result.filesCreated++;
+      result.targets.push(targetPath);
+      this.deps.ui.updateSpinner(
+        this.deps.t('spinner.export.exported', { target: targetPath }),
+        'success'
+      );
+    } catch (error) {
+      addError(result, target.name, error);
+      this.deps.ui.updateSpinner(
+        this.deps.t('spinner.export.failed', { target: target.name }),
+        'fail'
+      );
+    } finally {
+      this.deps.ui.stopSpinner();
+    }
+  }
+
+  /**
    * Resolve export targets from options
    */
-  private resolveTargets(repoPath: string, options: ExportOptions): ExportTarget[] {
+  private resolveTargets(options: ExportOptions): ExportTarget[] {
     if (options.preset) {
       const preset = EXPORT_PRESETS[options.preset.toLowerCase()];
-      if (preset) {
-        return preset;
-      }
+      if (preset) return preset;
     }
 
-    if (options.targets && options.targets.length > 0) {
+    if (options.targets?.length) {
       return options.targets.map((t) => ({
         name: path.basename(t),
         path: t,
@@ -252,7 +221,7 @@ export class ExportRulesService {
 
     // Default: export to common targets
     return [
-      ...EXPORT_PRESETS.cursor.slice(0, 1),
+      EXPORT_PRESETS.cursor[0],
       ...EXPORT_PRESETS.claude,
       ...EXPORT_PRESETS.github,
     ];
@@ -261,37 +230,33 @@ export class ExportRulesService {
   /**
    * Read source rules from .context/docs
    */
-  private async readSourceRules(
-    sourcePath: string
-  ): Promise<Array<{ name: string; content: string; path: string }>> {
-    const rules: Array<{ name: string; content: string; path: string }> = [];
+  private async readSourceRules(sourcePath: string): Promise<RuleFile[]> {
+    const rules: RuleFile[] = [];
+    const patterns = ['**/*rules*.md', '**/*instructions*.md', '**/*conventions*.md', '**/README.md'];
 
     try {
-      // Look for rules files
-      const patterns = ['**/*rules*.md', '**/*instructions*.md', '**/*conventions*.md', '**/README.md'];
+      const files = await globFiles(`**/*.md`, sourcePath, { absolute: true });
 
-      for (const pattern of patterns) {
-        const files = await glob(pattern, {
-          cwd: sourcePath,
-          absolute: true,
-          ignore: ['node_modules/**'],
-        });
+      for (const file of files) {
+        const basename = getBasename(file).toLowerCase();
+        const isRuleFile = patterns.some(p =>
+          basename.includes('rules') ||
+          basename.includes('instructions') ||
+          basename.includes('conventions') ||
+          basename === 'readme'
+        );
 
-        for (const file of files) {
+        if (isRuleFile || patterns.length === 0) {
           try {
             const content = await fs.readFile(file, 'utf-8');
-            rules.push({
-              name: path.basename(file, path.extname(file)),
-              content,
-              path: file,
-            });
+            rules.push({ name: getBasename(file), content, path: file });
           } catch {
             // Skip unreadable files
           }
         }
       }
     } catch {
-      // Source path doesn't exist or is not accessible
+      // Source path doesn't exist
     }
 
     return rules;
@@ -300,45 +265,29 @@ export class ExportRulesService {
   /**
    * Combine multiple rules into a single content block
    */
-  private combineRules(rules: Array<{ name: string; content: string; path: string }>): string {
-    const sections: string[] = [];
-
-    sections.push('# Project Rules and Guidelines\n');
-    sections.push(`> Auto-generated from .context/docs on ${new Date().toISOString()}\n`);
+  private combineRules(rules: RuleFile[]): string {
+    const lines = [
+      '# Project Rules and Guidelines',
+      '',
+      `> Auto-generated from .context/docs on ${new Date().toISOString()}`,
+      '',
+    ];
 
     for (const rule of rules) {
-      sections.push(`\n## ${rule.name}\n`);
-      sections.push(rule.content);
+      lines.push(`## ${rule.name}`, '', rule.content, '');
     }
 
-    return sections.join('\n');
-  }
-
-  /**
-   * Export rules to a single file
-   */
-  private async exportSingleFile(
-    targetPath: string,
-    content: string,
-    target: ExportTarget
-  ): Promise<void> {
-    await fs.ensureDir(path.dirname(targetPath));
-    await fs.writeFile(targetPath, content, 'utf-8');
+    return lines.join('\n');
   }
 
   /**
    * Export rules to a directory (multiple files)
    */
-  private async exportToDirectory(
-    targetPath: string,
-    rules: Array<{ name: string; content: string; path: string }>,
-    target: ExportTarget
-  ): Promise<void> {
-    await fs.ensureDir(targetPath);
+  private async exportToDirectory(targetPath: string, rules: RuleFile[]): Promise<void> {
+    await ensureDirectory(targetPath);
 
     for (const rule of rules) {
-      const filename = `${rule.name}.md`;
-      const filePath = path.join(targetPath, filename);
+      const filePath = path.join(targetPath, `${rule.name}.md`);
       await fs.writeFile(filePath, rule.content, 'utf-8');
     }
   }

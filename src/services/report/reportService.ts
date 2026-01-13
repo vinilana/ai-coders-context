@@ -6,8 +6,11 @@
 
 import * as path from 'path';
 import * as fs from 'fs-extra';
-import type { CLIInterface } from '../../utils/cliUI';
-import type { TranslateFn } from '../../utils/i18n';
+import {
+  BaseDependencies,
+  displayProgressBar,
+  createBox,
+} from '../shared';
 import { WorkflowService } from '../workflow';
 import { StackDetector } from '../stack';
 import {
@@ -19,11 +22,7 @@ import {
   ProjectScale,
 } from '../../workflow';
 
-export interface ReportServiceDependencies {
-  ui: CLIInterface;
-  t: TranslateFn;
-  version: string;
-}
+export type ReportServiceDependencies = BaseDependencies;
 
 export interface ReportOptions {
   format?: 'markdown' | 'json' | 'console';
@@ -47,63 +46,62 @@ export interface WorkflowReport {
     currentPhase: string;
     isComplete: boolean;
   };
-  phases: Array<{
-    phase: string;
-    name: string;
-    status: string;
-    startedAt?: string;
-    completedAt?: string;
-    outputs: string[];
-    roles: Array<{
-      role: string;
-      name: string;
-      status: string;
-      outputs: string[];
-    }>;
-  }>;
-  timeline: Array<{
-    timestamp: string;
-    event: string;
-    phase?: string;
-    role?: string;
-  }>;
-  stack?: {
-    primaryLanguage: string | null;
-    languages: string[];
-    frameworks: string[];
-    testFrameworks: string[];
-  };
+  phases: PhaseReport[];
+  timeline: TimelineEvent[];
+  stack?: StackReport;
   recommendations: string[];
 }
 
-export class ReportService {
-  private deps: ReportServiceDependencies;
+interface PhaseReport {
+  phase: string;
+  name: string;
+  status: string;
+  startedAt?: string;
+  completedAt?: string;
+  outputs: string[];
+  roles: RoleReport[];
+}
 
-  constructor(deps: ReportServiceDependencies) {
-    this.deps = deps;
-  }
+interface RoleReport {
+  role: string;
+  name: string;
+  status: string;
+  outputs: string[];
+}
+
+interface TimelineEvent {
+  timestamp: string;
+  event: string;
+  phase?: string;
+  role?: string;
+}
+
+interface StackReport {
+  primaryLanguage: string | null;
+  languages: string[];
+  frameworks: string[];
+  testFrameworks: string[];
+}
+
+export class ReportService {
+  constructor(private deps: ReportServiceDependencies) {}
 
   /**
    * Generate a workflow progress report
    */
   async generate(repoPath: string, options: ReportOptions = {}): Promise<WorkflowReport> {
     const absolutePath = path.resolve(repoPath);
-
-    const workflowService = new WorkflowService(absolutePath, {
-      ui: {
-        displaySuccess: () => {},
-        displayError: () => {},
-        displayInfo: () => {},
-      },
-    });
+    const workflowService = this.createWorkflowService(absolutePath);
 
     if (!(await workflowService.hasWorkflow())) {
       throw new Error(this.deps.t('errors.report.noWorkflow'));
     }
 
-    const status = await workflowService.getStatus();
-    const summary = await workflowService.getSummary();
-    const actions = await workflowService.getRecommendedActions();
+    const [status, summary, actions] = await Promise.all([
+      workflowService.getStatus(),
+      workflowService.getSummary(),
+      workflowService.getRecommendedActions(),
+    ]);
 
     const report: WorkflowReport = {
       generated: new Date().toISOString(),
@@ -123,16 +121,8 @@ export class ReportService {
       recommendations: actions,
     };
 
-    // Include stack info if requested
     if (options.includeStack) {
-      const stackDetector = new StackDetector();
-      const stack = await stackDetector.detect(absolutePath);
-      report.stack = {
-        primaryLanguage: stack.primaryLanguage,
-        languages: stack.languages,
-        frameworks: stack.frameworks,
-        testFrameworks: stack.testFrameworks,
-      };
+      report.stack = await this.detectStack(absolutePath);
     }
 
     return report;
@@ -143,98 +133,103 @@ export class ReportService {
    */
   async output(report: WorkflowReport, options: ReportOptions = {}): Promise<void> {
     const format = options.format || 'console';
+    const outputFn = {
+      json: () => this.outputJson(report, options),
+      markdown: () => this.outputMarkdown(report, options),
+      console: () => this.outputConsole(report),
+    }[format];
 
-    switch (format) {
-      case 'json':
-        await this.outputJson(report, options);
-        break;
-      case 'markdown':
-        await this.outputMarkdown(report, options);
-        break;
-      case 'console':
-      default:
-        this.outputConsole(report);
-        break;
-    }
+    await outputFn?.();
+  }
+
+  /**
+   * Create a silent workflow service instance
+   */
+  private createWorkflowService(repoPath: string): WorkflowService {
+    return new WorkflowService(repoPath, {
+      ui: {
+        displaySuccess: () => {},
+        displayError: () => {},
+        displayInfo: () => {},
+      },
+    });
+  }
+
+  /**
+   * Detect technology stack
+   */
+  private async detectStack(repoPath: string): Promise<StackReport> {
+    const detector = new StackDetector();
+    const stack = await detector.detect(repoPath);
+    return {
+      primaryLanguage: stack.primaryLanguage,
+      languages: stack.languages,
+      frameworks: stack.frameworks,
+      testFrameworks: stack.testFrameworks,
+    };
   }
 
   /**
    * Build phases report from status
    */
-  private buildPhasesReport(status: PrevcStatus): WorkflowReport['phases'] {
-    const phases: WorkflowReport['phases'] = [];
+  private buildPhasesReport(status: PrevcStatus): PhaseReport[] {
+    return Object.entries(status.phases).map(([phase, phaseStatus]) => ({
+      phase,
+      name: PHASE_NAMES_EN[phase as PrevcPhase] || phase,
+      status: phaseStatus.status,
+      startedAt: phaseStatus.started_at,
+      completedAt: phaseStatus.completed_at,
+      outputs: this.mapOutputs(phaseStatus.outputs),
+      roles: this.buildRolesForPhase(status, phase),
+    }));
+  }
 
-    for (const [phase, phaseStatus] of Object.entries(status.phases)) {
-      const roles: WorkflowReport['phases'][0]['roles'] = [];
+  /**
+   * Build roles for a specific phase
+   */
+  private buildRolesForPhase(status: PrevcStatus, phase: string): RoleReport[] {
+    return Object.entries(status.roles || {})
+      .filter(([, roleStatus]) => roleStatus?.phase === phase)
+      .map(([role, roleStatus]) => ({
+        role,
+        name: ROLE_DISPLAY_NAMES_EN[role as keyof typeof ROLE_DISPLAY_NAMES_EN] || role,
+        status: roleStatus?.status || 'pending',
+        outputs: roleStatus?.outputs || [],
+      }));
+  }
 
-      // Get role status from the main roles object for this phase
-      for (const [role, roleStatus] of Object.entries(status.roles || {})) {
-        if (roleStatus && roleStatus.phase === phase) {
-          roles.push({
-            role,
-            name: ROLE_DISPLAY_NAMES_EN[role as keyof typeof ROLE_DISPLAY_NAMES_EN] || role,
-            status: roleStatus.status || 'pending',
-            outputs: roleStatus.outputs || [],
-          });
-        }
-      }
-
-      // Map outputs to string array
-      const outputPaths = (phaseStatus.outputs || []).map(o =>
-        typeof o === 'string' ? o : o.path
-      );
-
-      phases.push({
-        phase,
-        name: PHASE_NAMES_EN[phase as PrevcPhase] || phase,
-        status: phaseStatus.status,
-        startedAt: phaseStatus.started_at,
-        completedAt: phaseStatus.completed_at,
-        outputs: outputPaths,
-        roles,
-      });
-    }
-
-    return phases;
+  /**
+   * Map outputs to string array
+   */
+  private mapOutputs(outputs?: Array<{ path: string } | string>): string[] {
+    return (outputs || []).map(o => (typeof o === 'string' ? o : o.path));
   }
 
   /**
    * Build timeline from status
    */
-  private buildTimeline(status: PrevcStatus): WorkflowReport['timeline'] {
-    const timeline: WorkflowReport['timeline'] = [];
+  private buildTimeline(status: PrevcStatus): TimelineEvent[] {
+    const events: TimelineEvent[] = [];
 
-    // Add workflow start
+    // Workflow start
     if (status.project.started) {
-      timeline.push({
-        timestamp: status.project.started,
-        event: 'Workflow started',
-      });
+      events.push({ timestamp: status.project.started, event: 'Workflow started' });
     }
 
-    // Add phase transitions
+    // Phase events
     for (const [phase, phaseStatus] of Object.entries(status.phases)) {
       if (phaseStatus.started_at) {
-        timeline.push({
-          timestamp: phaseStatus.started_at,
-          event: `Phase ${phase} started`,
-          phase,
-        });
+        events.push({ timestamp: phaseStatus.started_at, event: `Phase ${phase} started`, phase });
       }
-
       if (phaseStatus.completed_at) {
-        timeline.push({
-          timestamp: phaseStatus.completed_at,
-          event: `Phase ${phase} completed`,
-          phase,
-        });
+        events.push({ timestamp: phaseStatus.completed_at, event: `Phase ${phase} completed`, phase });
       }
     }
 
-    // Add role events from roles object
+    // Role events
     for (const [role, roleStatus] of Object.entries(status.roles || {})) {
-      if (roleStatus && roleStatus.last_active) {
-        timeline.push({
+      if (roleStatus?.last_active) {
+        events.push({
           timestamp: roleStatus.last_active,
           event: `Role ${role} active`,
           phase: roleStatus.phase,
@@ -243,10 +238,7 @@ export class ReportService {
       }
     }
 
-    // Sort by timestamp
-    timeline.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-
-    return timeline;
+    return events.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   }
 
   /**
@@ -254,13 +246,7 @@ export class ReportService {
    */
   private async outputJson(report: WorkflowReport, options: ReportOptions): Promise<void> {
     const json = JSON.stringify(report, null, 2);
-
-    if (options.output) {
-      await fs.writeFile(options.output, json, 'utf-8');
-      this.deps.ui.displaySuccess(this.deps.t('success.report.saved', { path: options.output }));
-    } else {
-      console.log(json);
-    }
+    await this.writeOutput(json, options);
   }
 
   /**
@@ -268,12 +254,18 @@ export class ReportService {
    */
   private async outputMarkdown(report: WorkflowReport, options: ReportOptions): Promise<void> {
     const md = this.generateMarkdown(report);
+    await this.writeOutput(md, options);
+  }
 
+  /**
+   * Write output to file or console
+   */
+  private async writeOutput(content: string, options: ReportOptions): Promise<void> {
     if (options.output) {
-      await fs.writeFile(options.output, md, 'utf-8');
+      await fs.writeFile(options.output, content, 'utf-8');
       this.deps.ui.displaySuccess(this.deps.t('success.report.saved', { path: options.output }));
     } else {
-      console.log(md);
+      console.log(content);
     }
   }
 
@@ -281,216 +273,171 @@ export class ReportService {
    * Output report to console with visual dashboard
    */
   private outputConsole(report: WorkflowReport): void {
-    console.log('');
-    console.log(this.generateVisualDashboard(report));
-    console.log('');
+    console.log('\n' + this.generateVisualDashboard(report) + '\n');
   }
 
   /**
    * Generate visual dashboard string
    */
   generateVisualDashboard(report: WorkflowReport): string {
-    const lines: string[] = [];
     const width = 50;
+    const innerWidth = width - 2;
 
-    // Header box
-    lines.push('╭' + '─'.repeat(width) + '╮');
-    lines.push('│' + this.centerText(`${report.project.name}`, width) + '│');
-    lines.push('│' + this.centerText(`[${report.project.scale}]`, width) + '│');
-    lines.push('├' + '─'.repeat(width) + '┤');
+    // Build phase status line
+    const phaseDisplay = report.phases
+      .map(p => `${this.getStatusIcon(p.status)} ${p.phase}`)
+      .join(' → ');
 
-    // Progress bar
-    const progressBar = this.generateProgressBar(report.progress.percentage, width - 4);
-    lines.push('│' + this.centerText(progressBar, width) + '│');
-    lines.push(
-      '│' +
-        this.centerText(
-          `Progress: ${report.progress.percentage}% (${report.progress.completed}/${report.progress.total} phases)`,
-          width
-        ) +
-        '│'
-    );
-    lines.push('├' + '─'.repeat(width) + '┤');
-
-    // Phase status line
-    const phaseIcons = report.phases.map((p) => {
-      if (p.status === 'completed') return '✓';
-      if (p.status === 'in_progress') return '●';
-      if (p.status === 'skipped') return '⊘';
-      return '○';
-    });
-
-    const phaseNames = report.phases.map((p) => p.phase);
-    const phaseDisplay = phaseNames.map((name, i) => `${phaseIcons[i]} ${name}`).join(' → ');
-    lines.push('│' + this.centerText(phaseDisplay, width) + '│');
+    // Build content lines
+    const content = [
+      this.centerText(report.project.name, innerWidth),
+      this.centerText(`[${report.project.scale}]`, innerWidth),
+      '─'.repeat(innerWidth),
+      this.centerText(displayProgressBar(report.progress.completed, report.progress.total, { width: innerWidth - 10 }), innerWidth),
+      this.centerText(`Progress: ${report.progress.percentage}% (${report.progress.completed}/${report.progress.total} phases)`, innerWidth),
+      '─'.repeat(innerWidth),
+      this.centerText(phaseDisplay, innerWidth),
+    ];
 
     // Current phase indicator
     if (!report.progress.isComplete) {
-      const currentIdx = report.phases.findIndex((p) => p.status === 'in_progress');
-      if (currentIdx >= 0) {
-        const current = report.phases[currentIdx];
-        lines.push('│' + this.centerText(`↑ Current: ${current.name}`, width) + '│');
+      const current = report.phases.find(p => p.status === 'in_progress');
+      if (current) {
+        content.push(this.centerText(`↑ Current: ${current.name}`, innerWidth));
       }
     }
 
-    lines.push('├' + '─'.repeat(width) + '┤');
-
-    // Phase details
+    // Add phase details
+    content.push('─'.repeat(innerWidth));
     for (const phase of report.phases) {
-      const icon =
-        phase.status === 'completed'
-          ? '✅'
-          : phase.status === 'in_progress'
-          ? '🔄'
-          : phase.status === 'skipped'
-          ? '⏭️'
-          : '⏸️';
-      lines.push('│' + this.padText(` ${icon} ${phase.phase}: ${phase.name}`, width) + '│');
-
+      const icon = this.getStatusEmoji(phase.status);
+      content.push(this.padText(` ${icon} ${phase.phase}: ${phase.name}`, innerWidth));
       if (phase.outputs.length > 0 && phase.status === 'completed') {
-        lines.push('│' + this.padText(`    Outputs: ${phase.outputs.length} file(s)`, width) + '│');
+        content.push(this.padText(`    Outputs: ${phase.outputs.length} file(s)`, innerWidth));
       }
     }
 
     // Recommendations
     if (report.recommendations.length > 0) {
-      lines.push('├' + '─'.repeat(width) + '┤');
-      lines.push('│' + this.padText(' 💡 Next Actions:', width) + '│');
+      content.push('─'.repeat(innerWidth));
+      content.push(this.padText(' Next Actions:', innerWidth));
       for (const action of report.recommendations.slice(0, 3)) {
-        lines.push('│' + this.padText(`    • ${action.slice(0, width - 8)}`, width) + '│');
+        content.push(this.padText(`  - ${action.slice(0, innerWidth - 6)}`, innerWidth));
       }
     }
 
-    // Footer
-    lines.push('╰' + '─'.repeat(width) + '╯');
-
-    if (report.progress.isComplete) {
-      lines.push('');
-      lines.push('✨ Workflow Complete!');
-    }
-
-    return lines.join('\n');
+    const box = createBox(content, { width, title: 'Workflow Dashboard' });
+    return report.progress.isComplete ? box + '\n\n✨ Workflow Complete!' : box;
   }
 
-  /**
-   * Generate progress bar
-   */
-  private generateProgressBar(percentage: number, width: number): string {
-    const filled = Math.round((percentage / 100) * width);
-    const empty = width - filled;
-    return '█'.repeat(filled) + '░'.repeat(empty);
+  private getStatusIcon(status: string): string {
+    const icons: Record<string, string> = {
+      completed: '✓',
+      in_progress: '●',
+      skipped: '⊘',
+      pending: '○',
+    };
+    return icons[status] || '○';
   }
 
-  /**
-   * Center text within width
-   */
+  private getStatusEmoji(status: string): string {
+    const emojis: Record<string, string> = {
+      completed: '✅',
+      in_progress: '🔄',
+      skipped: '⏭️',
+      pending: '⏸️',
+    };
+    return emojis[status] || '⏸️';
+  }
+
   private centerText(text: string, width: number): string {
     const padding = Math.max(0, width - text.length);
     const left = Math.floor(padding / 2);
-    const right = padding - left;
-    return ' '.repeat(left) + text + ' '.repeat(right);
+    return ' '.repeat(left) + text + ' '.repeat(padding - left);
   }
 
-  /**
-   * Pad text to width
-   */
   private padText(text: string, width: number): string {
-    if (text.length >= width) return text.slice(0, width);
-    return text + ' '.repeat(width - text.length);
+    return text.length >= width ? text.slice(0, width) : text + ' '.repeat(width - text.length);
   }
 
   /**
    * Generate Markdown report
    */
   private generateMarkdown(report: WorkflowReport): string {
-    const lines: string[] = [];
+    const sections = [
+      `# Workflow Report: ${report.project.name}`,
+      '',
+      `> Generated: ${new Date(report.generated).toLocaleString()}`,
+      '',
+      this.generateSummaryTable(report),
+      this.generatePhasesSection(report.phases),
+      this.generateTimelineSection(report.timeline),
+      report.stack ? this.generateStackSection(report.stack) : '',
+      this.generateRecommendationsSection(report.recommendations),
+    ];
 
-    lines.push(`# Workflow Report: ${report.project.name}`);
-    lines.push('');
-    lines.push(`> Generated: ${new Date(report.generated).toLocaleString()}`);
-    lines.push('');
+    return sections.filter(Boolean).join('\n');
+  }
 
-    // Summary
-    lines.push('## Summary');
-    lines.push('');
-    lines.push(`| Property | Value |`);
-    lines.push(`|----------|-------|`);
-    lines.push(`| Scale | ${report.project.scale} |`);
-    lines.push(`| Progress | ${report.progress.percentage}% |`);
-    lines.push(`| Current Phase | ${report.progress.currentPhase} |`);
-    lines.push(`| Status | ${report.progress.isComplete ? 'Complete' : 'In Progress'} |`);
-    lines.push('');
+  private generateSummaryTable(report: WorkflowReport): string {
+    return [
+      '## Summary',
+      '',
+      '| Property | Value |',
+      '|----------|-------|',
+      `| Scale | ${report.project.scale} |`,
+      `| Progress | ${report.progress.percentage}% |`,
+      `| Current Phase | ${report.progress.currentPhase} |`,
+      `| Status | ${report.progress.isComplete ? 'Complete' : 'In Progress'} |`,
+      '',
+    ].join('\n');
+  }
 
-    // Phases
-    lines.push('## Phases');
-    lines.push('');
+  private generatePhasesSection(phases: PhaseReport[]): string {
+    return [
+      '## Phases',
+      '',
+      ...phases.flatMap(phase => [
+        `### ${this.getStatusEmoji(phase.status)} ${phase.phase} - ${phase.name}`,
+        '',
+        `**Status:** ${phase.status}`,
+        phase.startedAt ? `**Started:** ${new Date(phase.startedAt).toLocaleString()}` : '',
+        phase.completedAt ? `**Completed:** ${new Date(phase.completedAt).toLocaleString()}` : '',
+        phase.outputs.length > 0 ? `\n**Outputs:**\n${phase.outputs.map(o => `- ${o}`).join('\n')}` : '',
+        '',
+      ].filter(Boolean)),
+    ].join('\n');
+  }
 
-    for (const phase of report.phases) {
-      const icon =
-        phase.status === 'completed' ? '✅' : phase.status === 'in_progress' ? '🔄' : '⏸️';
-      lines.push(`### ${icon} ${phase.phase} - ${phase.name}`);
-      lines.push('');
-      lines.push(`**Status:** ${phase.status}`);
+  private generateTimelineSection(timeline: TimelineEvent[]): string {
+    if (timeline.length === 0) return '';
+    return [
+      '## Timeline',
+      '',
+      ...timeline.map(e => `- **${new Date(e.timestamp).toLocaleString()}**: ${e.event}`),
+      '',
+    ].join('\n');
+  }
 
-      if (phase.startedAt) {
-        lines.push(`**Started:** ${new Date(phase.startedAt).toLocaleString()}`);
-      }
-      if (phase.completedAt) {
-        lines.push(`**Completed:** ${new Date(phase.completedAt).toLocaleString()}`);
-      }
+  private generateStackSection(stack: StackReport): string {
+    return [
+      '## Technology Stack',
+      '',
+      `- **Primary Language:** ${stack.primaryLanguage || 'Unknown'}`,
+      `- **Languages:** ${stack.languages.join(', ') || 'None detected'}`,
+      `- **Frameworks:** ${stack.frameworks.join(', ') || 'None detected'}`,
+      `- **Test Frameworks:** ${stack.testFrameworks.join(', ') || 'None detected'}`,
+      '',
+    ].join('\n');
+  }
 
-      if (phase.outputs.length > 0) {
-        lines.push('');
-        lines.push('**Outputs:**');
-        for (const output of phase.outputs) {
-          lines.push(`- ${output}`);
-        }
-      }
-
-      if (phase.roles.length > 0) {
-        lines.push('');
-        lines.push('**Roles:**');
-        for (const role of phase.roles) {
-          const roleIcon = role.status === 'completed' ? '✓' : role.status === 'active' ? '●' : '○';
-          lines.push(`- ${roleIcon} ${role.name}: ${role.status}`);
-        }
-      }
-
-      lines.push('');
-    }
-
-    // Timeline
-    if (report.timeline.length > 0) {
-      lines.push('## Timeline');
-      lines.push('');
-      for (const event of report.timeline) {
-        const time = new Date(event.timestamp).toLocaleString();
-        lines.push(`- **${time}**: ${event.event}`);
-      }
-      lines.push('');
-    }
-
-    // Stack
-    if (report.stack) {
-      lines.push('## Technology Stack');
-      lines.push('');
-      lines.push(`- **Primary Language:** ${report.stack.primaryLanguage || 'Unknown'}`);
-      lines.push(`- **Languages:** ${report.stack.languages.join(', ') || 'None detected'}`);
-      lines.push(`- **Frameworks:** ${report.stack.frameworks.join(', ') || 'None detected'}`);
-      lines.push(`- **Test Frameworks:** ${report.stack.testFrameworks.join(', ') || 'None detected'}`);
-      lines.push('');
-    }
-
-    // Recommendations
-    if (report.recommendations.length > 0) {
-      lines.push('## Recommended Actions');
-      lines.push('');
-      for (const action of report.recommendations) {
-        lines.push(`- [ ] ${action}`);
-      }
-      lines.push('');
-    }
-
-    return lines.join('\n');
+  private generateRecommendationsSection(recommendations: string[]): string {
+    if (recommendations.length === 0) return '';
+    return [
+      '## Recommended Actions',
+      '',
+      ...recommendations.map(a => `- [ ] ${a}`),
+      '',
+    ].join('\n');
   }
 }
