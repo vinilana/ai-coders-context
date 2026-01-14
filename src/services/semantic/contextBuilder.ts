@@ -78,9 +78,6 @@ export class SemanticContextBuilder {
     // Header
     sections.push('# Codebase Context for Documentation\n');
 
-    // Stats
-    sections.push(this.formatStats(context));
-
     // Architecture overview
     sections.push(this.formatArchitectureOverview(context));
 
@@ -113,9 +110,6 @@ export class SemanticContextBuilder {
 
     // Header
     sections.push(`# Codebase Context for ${agentType} Agent\n`);
-
-    // Stats
-    sections.push(this.formatStats(context));
 
     // Relevant layers for this agent type
     const relevantLayers = this.getRelevantLayersForAgent(agentType, context);
@@ -150,9 +144,6 @@ export class SemanticContextBuilder {
       sections.push(`**Plan Goal**: ${planGoal}\n`);
     }
 
-    // Stats
-    sections.push(this.formatStats(context));
-
     // Full architecture overview
     sections.push(this.formatFullArchitecture(context, projectPath));
 
@@ -179,7 +170,6 @@ export class SemanticContextBuilder {
     const sections: string[] = [];
 
     sections.push('# Codebase Summary\n');
-    sections.push(this.formatStats(context));
     sections.push(this.formatArchitectureOverview(context));
     sections.push(this.formatCompactSymbolList(context, projectPath));
 
@@ -200,9 +190,6 @@ export class SemanticContextBuilder {
 
     // Header
     sections.push(`# Codebase Context for ${skillType} Skill\n`);
-
-    // Stats
-    sections.push(this.formatStats(context));
 
     // Relevant patterns for this skill
     const relevantPatterns = this.getRelevantPatternsForSkill(skillType, context);
@@ -241,20 +228,6 @@ export class SemanticContextBuilder {
   }
 
   // ============ Formatting Methods ============
-
-  private formatStats(context: SemanticContext): string {
-    const { stats } = context;
-    const lines = [
-      '## Overview\n',
-      `- **Files**: ${stats.totalFiles}`,
-      `- **Symbols**: ${stats.totalSymbols}`,
-      `- **Languages**: ${Object.entries(stats.languageBreakdown)
-        .map(([ext, count]) => `${ext}(${count})`)
-        .join(', ')}`,
-      '',
-    ];
-    return lines.join('\n');
-  }
 
   private formatArchitectureOverview(context: SemanticContext): string {
     const { architecture } = context;

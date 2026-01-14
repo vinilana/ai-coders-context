@@ -966,7 +966,22 @@ type InteractiveAction = 'scaffold' | 'fill' | 'plan' | 'syncAgents' | 'update' 
 type StateAction = 'create' | 'fill' | 'menu' | 'exit' | 'scaffold';
 
 async function runInteractive(): Promise<void> {
-  await selectLocale(true);
+  await selectLocale(false); // Don't show welcome yet
+
+  // Show welcome screen with PREVC explanation
+  ui.displayWelcome(VERSION);
+  ui.displayPrevcExplanation();
+
+  // Wait for user to press Enter
+  await inquirer.prompt([
+    {
+      type: 'input',
+      name: 'continue',
+      message: 'Press Enter to continue...',
+    },
+  ]);
+
+  console.log('\n');
 
   const projectPath = process.cwd();
   const detector = new StateDetector({ projectPath });

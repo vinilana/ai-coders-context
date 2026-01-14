@@ -85,34 +85,6 @@ function renderEntryPoints(context: DocumentationTemplateContext): string {
   }).join('\n');
 }
 
-function renderSemanticStats(context: DocumentationTemplateContext): string {
-  const { semantics } = context;
-  if (!semantics) {
-    return '';
-  }
-
-  const { stats, symbols } = semantics;
-  const lines: string[] = [
-    `- **Total Files Analyzed**: ${stats.totalFiles}`,
-    `- **Total Symbols**: ${stats.totalSymbols}`,
-    `- **Classes**: ${symbols.classes.length}`,
-    `- **Interfaces**: ${symbols.interfaces.length}`,
-    `- **Functions**: ${symbols.functions.length}`,
-    `- **Types**: ${symbols.types.length}`,
-    `- **Enums**: ${symbols.enums.length}`,
-    `- **Analysis Time**: ${stats.analysisTimeMs}ms`,
-  ];
-
-  if (Object.keys(stats.languageBreakdown).length > 0) {
-    lines.push('', '**Languages**:');
-    for (const [ext, count] of Object.entries(stats.languageBreakdown)) {
-      lines.push(`- ${ext}: ${count} files`);
-    }
-  }
-
-  return lines.join('\n');
-}
-
 export function renderArchitectureNotes(context: DocumentationTemplateContext): string {
   const directorySnapshot = formatDirectoryStats(context.directoryStats);
   const hasSemantics = !!context.semantics;
@@ -134,14 +106,8 @@ export function renderArchitectureNotes(context: DocumentationTemplateContext): 
     ? renderEntryPoints(context)
     : '- *Document the main entry points of the application.*';
 
-  const statsSection = hasSemantics
-    ? renderSemanticStats(context)
-    : '';
-
-  const semanticSection = hasSemantics ? `
-## Codebase Analysis
-${statsSection}
-` : '';
+  // Stats section removed - technical info not suitable for documentation
+  const semanticSection = '';
 
   const content = `# Architecture Notes
 
