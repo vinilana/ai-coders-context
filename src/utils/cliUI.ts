@@ -69,6 +69,10 @@ export class CLIInterface {
   }
 
   startSpinner(text: string): void {
+    // Stop any existing spinner to prevent orphaned spinners
+    if (this.spinner) {
+      this.spinner.stop();
+    }
     this.spinner = ora({
       text: colors.secondary(text),
       spinner: 'dots',
