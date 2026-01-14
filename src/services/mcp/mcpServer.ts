@@ -24,7 +24,11 @@ import {
 import { getToolDescription } from '../ai/toolRegistry';
 import { SemanticContextBuilder, type ContextFormat } from '../semantic/contextBuilder';
 import { VERSION } from '../../version';
+import { DEFAULT_MODELS } from '../ai/providerFactory';
 import { WorkflowService } from '../workflow';
+
+// Default model for MCP tools that require LLM
+const DEFAULT_MODEL = DEFAULT_MODELS.google || 'gemini-3-flash-preview';
 import { StartService } from '../start';
 import { ReportService } from '../report';
 import { ExportRulesService, EXPORT_PRESETS } from '../export';
@@ -1918,7 +1922,77 @@ export class AIContextMCPServer {
       }
     });
 
-    this.log('Registered 5 skill tools');
+    // fillSkills - Fill/personalize skill files with AI
+    this.server.registerTool('fillSkills', {
+      description: 'Fill/personalize skill files using AI analysis of the codebase. Reads docs and agents for context.',
+      inputSchema: {
+        skills: z.array(z.string()).optional().describe('Specific skills to fill (default: all scaffolded)'),
+        force: z.boolean().optional().describe('Overwrite existing content'),
+        useSemanticContext: z.boolean().default(true).optional().describe('Use semantic context mode (more token efficient)'),
+        useLsp: z.boolean().optional().describe('Enable LSP for deeper analysis'),
+      }
+    }, async ({ skills, force, useSemanticContext, useLsp }) => {
+      try {
+        const { SkillFillService } = require('../fill/skillFillService');
+
+        const skillFillService = new SkillFillService({
+          ui: {
+            displayWelcome: () => {},
+            displayProjectInfo: () => {},
+            displayStep: () => {},
+            displaySuccess: () => {},
+            displayError: () => {},
+            displayWarning: () => {},
+            displayInfo: () => {},
+            startSpinner: () => {},
+            stopSpinner: () => {},
+            updateSpinner: () => {},
+            createAgentCallbacks: () => ({
+              onAgentStart: () => {},
+              onAgentStep: () => {},
+              onAgentComplete: () => {},
+              onToolCall: () => {},
+              onToolResult: () => {},
+            }),
+          },
+          t: (key: string) => key,
+          version: VERSION,
+          defaultModel: DEFAULT_MODEL,
+        });
+
+        const result = await skillFillService.run(repoPath, {
+          skills,
+          force,
+          semantic: useSemanticContext ?? true,
+          useLsp,
+        });
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              filled: result.filled,
+              skipped: result.skipped,
+              failed: result.failed,
+              model: result.model,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    this.log('Registered 6 skill tools');
   }
 
   /**

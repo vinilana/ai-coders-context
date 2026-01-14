@@ -5,5 +5,6 @@ export {
   getToolAvailabilityPrompt,
   getDocumentationAgentPrompt,
   getPlaybookAgentPrompt,
-  getPlanAgentPrompt
+  getPlanAgentPrompt,
+  getSkillAgentPrompt
 } from './sharedPrompts';

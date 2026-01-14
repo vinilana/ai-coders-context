@@ -580,6 +580,55 @@ skillCommand
   });
 
 skillCommand
+  .command('fill')
+  .description(t('commands.skill.fill.description'))
+  .argument('[repo-path]', 'Repository path', process.cwd())
+  .option('-o, --output <dir>', 'Output directory', '.context')
+  .option('-f, --force', 'Overwrite existing content')
+  .option('--skills <skills...>', 'Specific skills to fill')
+  .option('--model <model>', 'LLM model to use')
+  .option('--provider <provider>', 'LLM provider (anthropic, openai, google, openrouter)')
+  .option('--api-key <key>', 'API key for LLM provider')
+  .option('--base-url <url>', 'Base URL for custom LLM endpoint')
+  .option('--no-semantic', 'Disable semantic context mode')
+  .option('--use-lsp', 'Enable LSP for deeper analysis')
+  .option('-v, --verbose', 'Show detailed progress')
+  .option('--limit <number>', 'Limit number of skills to fill', parseInt)
+  .action(async (repoPath: string, options: any) => {
+    try {
+      const { SkillFillService } = await import('./services/fill/skillFillService');
+
+      const skillFillService = new SkillFillService({
+        ui,
+        t,
+        version: VERSION,
+        defaultModel: DEFAULT_MODEL,
+      });
+
+      const result = await skillFillService.run(repoPath, {
+        output: options.output,
+        skills: options.skills,
+        force: options.force,
+        model: options.model,
+        provider: options.provider,
+        apiKey: options.apiKey,
+        baseUrl: options.baseUrl,
+        semantic: options.semantic,
+        useLsp: options.useLsp,
+        verbose: options.verbose,
+        limit: options.limit,
+      });
+
+      if (result.filled.length > 0) {
+        ui.displaySuccess(t('success.skill.filled', { count: result.filled.length }));
+      }
+    } catch (error) {
+      ui.displayError(t('errors.skill.fillFailed'), error as Error);
+      process.exit(1);
+    }
+  });
+
+skillCommand
   .command('list')
   .description(t('commands.skill.list.description'))
   .argument('[repo-path]', 'Repository path', process.cwd())

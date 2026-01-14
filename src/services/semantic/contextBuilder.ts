@@ -187,6 +187,53 @@ export class SemanticContextBuilder {
   }
 
   /**
+   * Build context string for skill personalization
+   */
+  async buildSkillContext(
+    projectPath: string,
+    skillType: string,
+    docsContext?: string,
+    agentsContext?: string
+  ): Promise<string> {
+    const context = await this.analyze(projectPath);
+    const sections: string[] = [];
+
+    // Header
+    sections.push(`# Codebase Context for ${skillType} Skill\n`);
+
+    // Stats
+    sections.push(this.formatStats(context));
+
+    // Relevant patterns for this skill
+    const relevantPatterns = this.getRelevantPatternsForSkill(skillType, context);
+    if (relevantPatterns.length > 0) {
+      sections.push(this.formatRelevantPatterns(relevantPatterns));
+    }
+
+    // Key files for this skill
+    sections.push(this.formatKeyFilesForSkill(skillType, context, projectPath));
+
+    // Relevant symbols for this skill
+    sections.push(this.formatRelevantSymbolsForSkill(skillType, context, projectPath));
+
+    // Include docs context if provided
+    if (docsContext) {
+      sections.push('## Project Documentation\n');
+      sections.push(docsContext);
+      sections.push('');
+    }
+
+    // Include agents context if provided
+    if (agentsContext) {
+      sections.push('## Agent Playbooks\n');
+      sections.push(agentsContext);
+      sections.push('');
+    }
+
+    return this.truncateToLimit(sections.join('\n'));
+  }
+
+  /**
    * Get raw semantic context for custom processing
    */
   async getSemanticContext(projectPath: string): Promise<SemanticContext> {
@@ -651,6 +698,107 @@ export class SemanticContextBuilder {
     };
 
     return patterns[agentType] || [/\.(ts|js)$/];
+  }
+
+  private getRelevantPatternsForSkill(
+    skillType: string,
+    context: SemanticContext
+  ): DetectedPattern[] {
+    const patternPriority: Record<string, string[]> = {
+      'commit-message': ['Service Layer', 'Repository'],
+      'pr-review': ['Service Layer', 'Repository', 'Controller'],
+      'code-review': ['Factory', 'Service Layer', 'Repository'],
+      'test-generation': ['Repository', 'Service Layer'],
+      'documentation': ['Service Layer', 'Controller'],
+      'refactoring': ['Factory', 'Builder', 'Service Layer'],
+      'bug-investigation': ['Service Layer', 'Repository'],
+      'feature-breakdown': ['Service Layer', 'Controller', 'Repository'],
+      'api-design': ['Controller', 'Service Layer'],
+      'security-audit': ['Controller', 'Service Layer'],
+    };
+
+    const priority = patternPriority[skillType];
+    if (!priority) return context.architecture.patterns;
+
+    return context.architecture.patterns.filter((p) =>
+      priority.includes(p.name)
+    );
+  }
+
+  private getKeyPatternsForSkill(skillType: string): RegExp[] {
+    const patterns: Record<string, RegExp[]> = {
+      'commit-message': [/\.git/i, /changelog/i, /package\.json$/i, /\.ts$/],
+      'pr-review': [/\.github/i, /\.ts$/, /\.test\./i, /spec/i],
+      'code-review': [/service/i, /controller/i, /\.ts$/, /eslint/i],
+      'test-generation': [/\.test\./i, /\.spec\./i, /jest/i, /vitest/i],
+      'documentation': [/\.md$/i, /readme/i, /docs/i],
+      'refactoring': [/service/i, /util/i, /helper/i, /\.ts$/],
+      'bug-investigation': [/error/i, /exception/i, /log/i, /\.ts$/],
+      'feature-breakdown': [/service/i, /component/i, /controller/i],
+      'api-design': [/api/i, /route/i, /controller/i, /openapi/i, /swagger/i],
+      'security-audit': [/auth/i, /security/i, /\.env/i, /credential/i],
+    };
+
+    return patterns[skillType] || [/\.(ts|js)$/];
+  }
+
+  private formatKeyFilesForSkill(
+    skillType: string,
+    context: SemanticContext,
+    projectPath: string
+  ): string {
+    const keyPatterns = this.getKeyPatternsForSkill(skillType);
+    const allSymbols = [
+      ...context.symbols.classes,
+      ...context.symbols.interfaces,
+      ...context.symbols.functions,
+    ];
+
+    const relevantFiles = new Set<string>();
+    for (const symbol of allSymbols) {
+      const relPath = path.relative(projectPath, symbol.location.file);
+      if (keyPatterns.some((p) => p.test(relPath) || p.test(symbol.name))) {
+        relevantFiles.add(relPath);
+      }
+    }
+
+    if (relevantFiles.size === 0) return '';
+
+    const lines = [`## Key Files for ${skillType}\n`];
+    for (const file of [...relevantFiles].slice(0, 20)) {
+      lines.push(`- \`${file}\``);
+    }
+    lines.push('');
+
+    return lines.join('\n');
+  }
+
+  private formatRelevantSymbolsForSkill(
+    skillType: string,
+    context: SemanticContext,
+    projectPath: string
+  ): string {
+    const keyPatterns = this.getKeyPatternsForSkill(skillType);
+    const allSymbols = [
+      ...context.symbols.classes,
+      ...context.symbols.interfaces,
+      ...context.symbols.functions,
+    ];
+
+    const relevantSymbols = allSymbols.filter((s) => {
+      const relPath = path.relative(projectPath, s.location.file);
+      return keyPatterns.some((p) => p.test(relPath) || p.test(s.name));
+    });
+
+    if (relevantSymbols.length === 0) return '';
+
+    const lines = [`## Relevant Symbols for ${skillType}\n`];
+    for (const symbol of relevantSymbols.slice(0, 25)) {
+      lines.push(this.formatSymbolLine(symbol, projectPath));
+    }
+    lines.push('');
+
+    return lines.join('\n');
   }
 
   private truncateToLimit(content: string): string {

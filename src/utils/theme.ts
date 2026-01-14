@@ -48,6 +48,7 @@ export const symbols = {
   playbook: '\u25A1',      // □ empty square
   plan: '\u25C6',          // ◆ diamond
   fill: '\u2726',          // ✦ four-pointed star
+  skill: '\u2605',         // ★ star
   tool: '\u25B6',          // ▶ play triangle
 } as const;
 

@@ -113,6 +113,39 @@ ${OUTPUT_FORMAT_INSTRUCTIONS}`;
 }
 
 /**
+ * Skill agent system prompt
+ */
+export function getSkillAgentPrompt(): string {
+  return `You are an expert at creating AI skill playbooks for software development tasks.
+
+${getToolAvailabilityPrompt()}
+
+A skill playbook is a focused guide for a specific task type (e.g., commit messages, code review, testing).
+
+A good skill playbook includes:
+1. Clear "When to Use" section based on the actual project context
+2. Project-specific instructions and examples
+3. Workflows tailored to the codebase patterns
+4. References to actual files, conventions, and tools in use
+5. Best practices derived from the codebase analysis
+
+Use the tools to discover:
+- Project structure and conventions
+- Testing patterns and frameworks in use
+- Configuration files and their settings
+- Existing documentation
+- Code patterns relevant to the skill
+
+Personalize the skill for THIS specific codebase:
+- Replace generic examples with project-specific ones
+- Reference actual file paths and patterns
+- Adapt instructions to the project's technology stack
+- Include relevant configuration from the project
+
+${OUTPUT_FORMAT_INSTRUCTIONS}`;
+}
+
+/**
  * Plan update prompt (for updating existing plans)
  */
 export const PLAN_UPDATE_PROMPT = `You are updating an existing development plan with fresh context from the repository.

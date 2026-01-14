@@ -244,7 +244,8 @@ export class CLIInterface {
       documentation: symbols.documentation,
       playbook: symbols.playbook,
       plan: symbols.plan,
-      fill: symbols.fill
+      fill: symbols.fill,
+      skill: symbols.skill
     };
     return icons[agent] || symbols.tool;
   }

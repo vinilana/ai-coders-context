@@ -2,7 +2,7 @@
  * Agent event callbacks for real-time progress display
  */
 
-export type AgentType = 'documentation' | 'playbook' | 'plan' | 'fill';
+export type AgentType = 'documentation' | 'playbook' | 'plan' | 'fill' | 'skill';
 
 export interface AgentStartEvent {
   agent: AgentType;
