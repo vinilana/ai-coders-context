@@ -1256,19 +1256,25 @@ async function runInteractiveScaffold(): Promise<void> {
     }
   ]);
 
-  const { scaffoldType } = await inquirer.prompt<{ scaffoldType: 'both' | 'docs' | 'agents' }>([
+  // Multi-select checkbox for scaffold components
+  const { scaffoldComponents } = await inquirer.prompt<{ scaffoldComponents: string[] }>([
     {
-      type: 'list',
-      name: 'scaffoldType',
-      message: t('prompts.scaffold.type'),
+      type: 'checkbox',
+      name: 'scaffoldComponents',
+      message: t('prompts.scaffold.selectComponents'),
       choices: [
-        { name: t('prompts.scaffold.typeBoth'), value: 'both' },
-        { name: t('prompts.scaffold.typeDocs'), value: 'docs' },
-        { name: t('prompts.scaffold.typeAgents'), value: 'agents' }
-      ],
-      default: 'both'
+        { name: t('prompts.scaffold.componentDocs'), value: 'docs', checked: true },
+        { name: t('prompts.scaffold.componentAgents'), value: 'agents', checked: true },
+        { name: t('prompts.scaffold.componentSkills'), value: 'skills', checked: false }
+      ]
     }
   ]);
+
+  // Validate: at least one component must be selected
+  if (scaffoldComponents.length === 0) {
+    ui.displayWarning(t('warnings.scaffold.noneSelected'));
+    return;
+  }
 
   const { verbose } = await inquirer.prompt<{ verbose: boolean }>([
     {
@@ -1279,11 +1285,67 @@ async function runInteractiveScaffold(): Promise<void> {
     }
   ]);
 
-  await runInit(resolvedRepo, scaffoldType, {
-    output: outputDir,
-    verbose,
-    semantic: true
-  });
+  // Determine what to scaffold
+  const scaffoldDocs = scaffoldComponents.includes('docs');
+  const scaffoldAgents = scaffoldComponents.includes('agents');
+  const scaffoldSkills = scaffoldComponents.includes('skills');
+
+  // Scaffold docs and/or agents if selected
+  if (scaffoldDocs || scaffoldAgents) {
+    let scaffoldType: 'docs' | 'agents' | 'both';
+    if (scaffoldDocs && scaffoldAgents) {
+      scaffoldType = 'both';
+    } else if (scaffoldDocs) {
+      scaffoldType = 'docs';
+    } else {
+      scaffoldType = 'agents';
+    }
+
+    await runInit(resolvedRepo, scaffoldType, {
+      output: outputDir,
+      verbose,
+      semantic: true
+    });
+  }
+
+  // Scaffold skills if selected
+  if (scaffoldSkills) {
+    try {
+      const { createSkillGenerator } = await import('./generators/skills');
+      const generator = createSkillGenerator({
+        repoPath: resolvedRepo,
+        outputDir
+      });
+
+      // Display step for skills scaffolding
+      const stepNumber = (scaffoldDocs || scaffoldAgents) ? 4 : 1;
+      const totalSteps = (scaffoldDocs || scaffoldAgents) ? 4 : 1;
+
+      ui.displayStep(stepNumber, totalSteps, t('steps.init.skills'));
+      ui.startSpinner(t('spinner.skills.creating'));
+
+      const result = await generator.generate({});
+
+      ui.updateSpinner(
+        t('spinner.skills.created', { count: result.generatedSkills.length }),
+        'success'
+      );
+
+      // If only skills were selected, show success message
+      if (!scaffoldDocs && !scaffoldAgents) {
+        ui.displaySuccess(t('success.skill.initialized', { path: result.skillsDir }));
+      }
+
+      if (result.generatedSkills.length > 0) {
+        ui.displayInfo(t('info.skill.generated'), result.generatedSkills.join(', '));
+      }
+      if (result.skippedSkills.length > 0) {
+        ui.displayInfo(t('info.skill.skipped'), result.skippedSkills.join(', '));
+      }
+    } catch (error) {
+      ui.displayError(t('errors.skill.initFailed'), error as Error);
+    }
+  }
 }
 
 async function runInteractiveLlmFill(): Promise<void> {
