@@ -35,6 +35,26 @@ export const SearchCodeInputSchema = z.object({
   maxResults: z.number().optional().default(50)
 });
 
+export const GetCodebaseMapInputSchema = z.object({
+  repoPath: z.string().optional().describe('Repository path (defaults to cwd)'),
+  section: z.enum([
+    'all',
+    'stack',
+    'structure',
+    'architecture',
+    'symbols',
+    'symbols.classes',
+    'symbols.interfaces',
+    'symbols.functions',
+    'symbols.types',
+    'symbols.enums',
+    'publicAPI',
+    'dependencies',
+    'stats'
+  ]).default('all').optional()
+    .describe('Section of the codebase map to retrieve. Use specific sections to reduce token usage.')
+});
+
 // =============================================================================
 // Tool Output Schemas
 // =============================================================================
@@ -117,6 +137,14 @@ export const SearchCodeOutputSchema = z.object({
   matches: z.array(CodeMatchSchema).optional(),
   totalMatches: z.number().optional(),
   truncated: z.boolean().optional(),
+  error: z.string().optional()
+});
+
+export const GetCodebaseMapOutputSchema = z.object({
+  success: z.boolean(),
+  section: z.string(),
+  data: z.unknown().optional().describe('The requested section data from codebase-map.json'),
+  mapPath: z.string().optional().describe('Path to the codebase-map.json file'),
   error: z.string().optional()
 });
 
@@ -224,6 +252,32 @@ export const DevelopmentPlanSchema = z.object({
 // MCP Scaffolding Tool Schemas
 // =============================================================================
 
+/**
+ * Project type enum for scaffold filtering
+ */
+export const ProjectTypeEnum = z.enum([
+  'cli',
+  'web-frontend',
+  'web-backend',
+  'full-stack',
+  'mobile',
+  'library',
+  'monorepo',
+  'desktop',
+  'unknown',
+]);
+
+export type ProjectTypeSchema = z.infer<typeof ProjectTypeEnum>;
+
+/**
+ * Project classification output schema
+ */
+export const ProjectClassificationSchema = z.object({
+  projectType: ProjectTypeEnum,
+  confidence: z.enum(['high', 'medium', 'low']),
+  reasoning: z.array(z.string()),
+});
+
 export const CheckScaffoldingInputSchema = z.object({
   repoPath: z.string().optional().describe('Repository path to check (defaults to cwd)')
 });
@@ -244,7 +298,11 @@ export const InitializeContextInputSchema = z.object({
   semantic: z.boolean().default(true).optional()
     .describe('Enable semantic analysis for richer templates'),
   include: z.array(z.string()).optional().describe('Include patterns'),
-  exclude: z.array(z.string()).optional().describe('Exclude patterns')
+  exclude: z.array(z.string()).optional().describe('Exclude patterns'),
+  projectType: ProjectTypeEnum.optional()
+    .describe('Override auto-detected project type (e.g., "cli", "web-frontend", "library")'),
+  disableFiltering: z.boolean().default(false).optional()
+    .describe('Generate all agents/docs regardless of project type'),
 });
 
 export const InitializeContextOutputSchema = z.object({
@@ -254,6 +312,8 @@ export const InitializeContextOutputSchema = z.object({
   outputDir: z.string(),
   generatedFiles: z.array(z.string()).optional().describe('List of generated template files that need to be filled'),
   nextSteps: z.array(z.string()).optional().describe('Instructions for the AI agent to fill the templates'),
+  classification: ProjectClassificationSchema.optional()
+    .describe('Detected project type and classification confidence'),
   error: z.string().optional()
 });
 
@@ -293,6 +353,8 @@ export type GetFileStructureInput = z.infer<typeof GetFileStructureInputSchema>;
 export type GetFileStructureOutput = z.infer<typeof GetFileStructureOutputSchema>;
 export type SearchCodeInput = z.infer<typeof SearchCodeInputSchema>;
 export type SearchCodeOutput = z.infer<typeof SearchCodeOutputSchema>;
+export type GetCodebaseMapInput = z.infer<typeof GetCodebaseMapInputSchema>;
+export type GetCodebaseMapOutput = z.infer<typeof GetCodebaseMapOutputSchema>;
 export type DocumentationOutput = z.infer<typeof DocumentationOutputSchema>;
 export type AgentPlaybook = z.infer<typeof AgentPlaybookSchema>;
 export type DevelopmentPlan = z.infer<typeof DevelopmentPlanSchema>;

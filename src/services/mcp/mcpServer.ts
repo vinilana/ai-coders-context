@@ -19,11 +19,35 @@ import {
   scaffoldPlanTool,
   fillScaffoldingTool,
   listFilesToFillTool,
-  fillSingleFileTool
+  fillSingleFileTool,
+  getCodebaseMapTool
 } from '../ai/tools';
 import { getToolDescription } from '../ai/toolRegistry';
 import { SemanticContextBuilder, type ContextFormat } from '../semantic/contextBuilder';
 import { VERSION } from '../../version';
+import { DEFAULT_MODELS } from '../ai/providerFactory';
+import { WorkflowService } from '../workflow';
+
+// Default model for MCP tools that require LLM
+const DEFAULT_MODEL = DEFAULT_MODELS.google || 'gemini-3-flash-preview';
+import { StartService } from '../start';
+import { ReportService } from '../report';
+import { ExportRulesService, EXPORT_PRESETS } from '../export';
+import { StackDetector } from '../stack';
+import {
+  PREVC_ROLES,
+  PHASE_NAMES_EN,
+  ROLE_DISPLAY_NAMES,
+  getScaleName,
+  ProjectScale,
+  PrevcPhase,
+  PrevcRole,
+  agentOrchestrator,
+  documentLinker,
+  AgentType,
+  AGENT_TYPES,
+  createPlanLinker,
+} from '../../workflow';
 
 export interface MCPServerOptions {
   /** Default repository path for tools */
@@ -401,7 +425,927 @@ export class AIContextMCPServer {
       };
     });
 
-    this.log('Registered 12 tools');
+    // getCodebaseMap tool - retrieve sections of the codebase map JSON
+    this.server.registerTool('getCodebaseMap', {
+      description: getToolDescription('getCodebaseMap', true),
+      inputSchema: {
+        repoPath: z.string().optional().describe('Repository path (defaults to cwd)'),
+        section: z.enum([
+          'all',
+          'stack',
+          'structure',
+          'architecture',
+          'symbols',
+          'symbols.classes',
+          'symbols.interfaces',
+          'symbols.functions',
+          'symbols.types',
+          'symbols.enums',
+          'publicAPI',
+          'dependencies',
+          'stats'
+        ]).default('all').optional()
+          .describe('Section of the codebase map to retrieve. Use specific sections to reduce token usage.')
+      }
+    }, async ({ repoPath, section }) => {
+      const result = await getCodebaseMapTool.execute!(
+        {
+          repoPath: repoPath || this.options.repoPath || process.cwd(),
+          section
+        },
+        { toolCallId: '', messages: [] }
+      );
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify(result, null, 2)
+        }]
+      };
+    });
+
+    this.log('Registered 13 tools');
+
+    // Register PREVC workflow tools
+    this.registerWorkflowTools();
+  }
+
+  /**
+   * Register PREVC workflow tools
+   */
+  private registerWorkflowTools(): void {
+    const repoPath = this.options.repoPath || process.cwd();
+
+    // workflowInit - Initialize a PREVC workflow
+    this.server.registerTool('workflowInit', {
+      description: 'Initialize a PREVC workflow with automatic scale detection. PREVC = Planejamento, Revisão, Execução, Validação, Confirmação.',
+      inputSchema: {
+        name: z.string().describe('Name of the project/feature'),
+        description: z.string().optional().describe('Description for scale detection'),
+        scale: z.enum(['QUICK', 'SMALL', 'MEDIUM', 'LARGE', 'ENTERPRISE']).optional()
+          .describe('Project scale (auto-detected if not provided)')
+      }
+    }, async ({ name, description, scale }) => {
+      try {
+        const service = new WorkflowService(repoPath);
+        const status = await service.init({
+          name,
+          description,
+          scale: scale as string | undefined,
+        });
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              message: `Workflow initialized: ${name}`,
+              scale: getScaleName(status.project.scale as ProjectScale),
+              currentPhase: status.project.current_phase,
+              phases: Object.keys(status.phases).filter(
+                (p) => status.phases[p as PrevcPhase].status !== 'skipped'
+              ),
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // workflowStatus - Get current workflow status
+    this.server.registerTool('workflowStatus', {
+      description: 'Get the current status of the PREVC workflow including phases, roles, and progress.',
+      inputSchema: {}
+    }, async () => {
+      try {
+        const service = new WorkflowService(repoPath);
+
+        if (!(await service.hasWorkflow())) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                success: false,
+                error: 'No workflow found. Run workflowInit first.'
+              }, null, 2)
+            }]
+          };
+        }
+
+        const summary = await service.getSummary();
+        const status = await service.getStatus();
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              name: summary.name,
+              scale: getScaleName(summary.scale as ProjectScale),
+              currentPhase: {
+                code: summary.currentPhase,
+                name: PHASE_NAMES_EN[summary.currentPhase],
+              },
+              progress: summary.progress,
+              isComplete: summary.isComplete,
+              phases: status.phases,
+              roles: status.roles,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // workflowAdvance - Advance to the next phase
+    this.server.registerTool('workflowAdvance', {
+      description: 'Complete the current phase and advance to the next phase in the PREVC workflow.',
+      inputSchema: {
+        outputs: z.array(z.string()).optional()
+          .describe('List of artifact paths generated in the current phase')
+      }
+    }, async ({ outputs }) => {
+      try {
+        const service = new WorkflowService(repoPath);
+
+        if (!(await service.hasWorkflow())) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                success: false,
+                error: 'No workflow found. Run workflowInit first.'
+              }, null, 2)
+            }]
+          };
+        }
+
+        const nextPhase = await service.advance(outputs);
+
+        if (nextPhase) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                success: true,
+                message: `Advanced to ${PHASE_NAMES_EN[nextPhase]} phase`,
+                nextPhase: {
+                  code: nextPhase,
+                  name: PHASE_NAMES_EN[nextPhase],
+                }
+              }, null, 2)
+            }]
+          };
+        } else {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                success: true,
+                message: 'Workflow completed!',
+                isComplete: true
+              }, null, 2)
+            }]
+          };
+        }
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // workflowHandoff - Handoff between roles
+    this.server.registerTool('workflowHandoff', {
+      description: 'Perform a handoff from one role to another within the PREVC workflow.',
+      inputSchema: {
+        from: z.enum(PREVC_ROLES as unknown as [string, ...string[]])
+          .describe('Role handing off'),
+        to: z.enum(PREVC_ROLES as unknown as [string, ...string[]])
+          .describe('Role receiving handoff'),
+        artifacts: z.array(z.string()).describe('Artifacts being handed off')
+      }
+    }, async ({ from, to, artifacts }) => {
+      try {
+        const service = new WorkflowService(repoPath);
+
+        if (!(await service.hasWorkflow())) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                success: false,
+                error: 'No workflow found. Run workflowInit first.'
+              }, null, 2)
+            }]
+          };
+        }
+
+        await service.handoff(from as PrevcRole, to as PrevcRole, artifacts);
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              message: `Handoff complete: ${ROLE_DISPLAY_NAMES[from as PrevcRole]} → ${ROLE_DISPLAY_NAMES[to as PrevcRole]}`,
+              from: { role: from, displayName: ROLE_DISPLAY_NAMES[from as PrevcRole] },
+              to: { role: to, displayName: ROLE_DISPLAY_NAMES[to as PrevcRole] },
+              artifacts
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // workflowCollaborate - Start a collaboration session
+    this.server.registerTool('workflowCollaborate', {
+      description: 'Start a multi-role collaboration session for complex decisions or brainstorming.',
+      inputSchema: {
+        topic: z.string().describe('Topic for the collaboration session'),
+        participants: z.array(z.enum(PREVC_ROLES as unknown as [string, ...string[]]))
+          .optional()
+          .describe('Roles to participate (auto-selected if not provided)')
+      }
+    }, async ({ topic, participants }) => {
+      try {
+        const service = new WorkflowService(repoPath);
+        const session = await service.startCollaboration(
+          topic,
+          participants as PrevcRole[] | undefined
+        );
+        const status = session.getStatus();
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              message: `Collaboration session started: ${topic}`,
+              sessionId: status.id,
+              topic: status.topic,
+              participants: status.participants.map((p) => ({
+                role: p,
+                displayName: ROLE_DISPLAY_NAMES[p],
+              })),
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // workflowCreateDoc - Create a document for the current phase
+    this.server.registerTool('workflowCreateDoc', {
+      description: 'Create a document template for the current phase of the PREVC workflow.',
+      inputSchema: {
+        type: z.enum(['prd', 'tech-spec', 'architecture', 'adr', 'test-plan', 'changelog'])
+          .describe('Type of document to create'),
+        name: z.string().describe('Name/title for the document')
+      }
+    }, async ({ type, name }) => {
+      try {
+        const service = new WorkflowService(repoPath);
+
+        if (!(await service.hasWorkflow())) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                success: false,
+                error: 'No workflow found. Run workflowInit first.'
+              }, null, 2)
+            }]
+          };
+        }
+
+        // For now, return the document path that should be created
+        const docPath = `.context/workflow/docs/${type}-${name.toLowerCase().replace(/\s+/g, '-')}.md`;
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              message: `Document template ready: ${type}`,
+              documentType: type,
+              suggestedPath: docPath,
+              name,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    this.log('Registered 6 workflow tools');
+
+    // Register extended workflow tools (start, report, export, stack detection)
+    this.registerExtendedWorkflowTools();
+  }
+
+  /**
+   * Register extended workflow tools (start, report, export, stack detection)
+   */
+  private registerExtendedWorkflowTools(): void {
+    const repoPath = this.options.repoPath || process.cwd();
+
+    // projectStart - Unified start command
+    this.server.registerTool('projectStart', {
+      description: 'Start a new project with unified setup: scaffolding + context fill + workflow initialization. Supports workflow templates (hotfix, feature, mvp).',
+      inputSchema: {
+        featureName: z.string().describe('Feature/project name'),
+        template: z.enum(['hotfix', 'feature', 'mvp', 'auto']).optional()
+          .describe('Workflow template (hotfix=quick fix, feature=standard, mvp=complete)'),
+        skipFill: z.boolean().optional().describe('Skip AI-assisted context filling'),
+        skipWorkflow: z.boolean().optional().describe('Skip workflow initialization'),
+      }
+    }, async ({ featureName, template, skipFill, skipWorkflow }) => {
+      try {
+        const startService = new StartService({
+          ui: {
+            displayOutput: () => {},
+            displaySuccess: () => {},
+            displayError: () => {},
+            displayInfo: () => {},
+            displayWarning: () => {},
+            startSpinner: () => {},
+            stopSpinner: () => {},
+            updateSpinner: () => {},
+            prompt: async () => '',
+            confirm: async () => true,
+          } as any,
+          t: (key: string) => key,
+          version: VERSION,
+          defaultModel: 'claude-3-5-sonnet-20241022',
+        });
+
+        const result = await startService.run(repoPath, {
+          featureName,
+          template: template as any,
+          skipFill,
+          skipWorkflow,
+        });
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: result.workflowStarted || result.initialized,
+              initialized: result.initialized,
+              filled: result.filled,
+              workflowStarted: result.workflowStarted,
+              scale: result.scale ? getScaleName(result.scale) : null,
+              featureName: result.featureName,
+              stack: result.stackDetected ? {
+                primaryLanguage: result.stackDetected.primaryLanguage,
+                frameworks: result.stackDetected.frameworks,
+              } : null,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // projectReport - Generate visual reports
+    this.server.registerTool('projectReport', {
+      description: 'Generate a visual progress report for the current PREVC workflow. Shows phases, roles, deliverables, and a visual dashboard.',
+      inputSchema: {
+        format: z.enum(['json', 'markdown', 'dashboard']).default('dashboard').optional()
+          .describe('Output format: json (raw data), markdown (formatted), dashboard (visual)'),
+        includeStack: z.boolean().optional().describe('Include technology stack info'),
+      }
+    }, async ({ format, includeStack }) => {
+      try {
+        const reportService = new ReportService({
+          ui: {
+            displayOutput: () => {},
+            displaySuccess: () => {},
+            displayError: () => {},
+            displayInfo: () => {},
+            displayWarning: () => {},
+            startSpinner: () => {},
+            stopSpinner: () => {},
+            updateSpinner: () => {},
+          } as any,
+          t: (key: string) => key,
+          version: VERSION,
+        });
+
+        const report = await reportService.generate(repoPath, { includeStack });
+
+        let output: string;
+        if (format === 'json') {
+          output = JSON.stringify(report, null, 2);
+        } else if (format === 'dashboard') {
+          output = reportService.generateVisualDashboard(report);
+        } else {
+          // Markdown format - use visual dashboard as fallback
+          output = reportService.generateVisualDashboard(report);
+        }
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: output
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // exportRules - Export rules to AI tools
+    this.server.registerTool('exportRules', {
+      description: 'Export context rules to AI tool directories (Cursor, Claude, GitHub Copilot, Windsurf, Cline, Aider, Codex). Bidirectional rules sync.',
+      inputSchema: {
+        preset: z.enum(['cursor', 'claude', 'github', 'windsurf', 'cline', 'aider', 'codex', 'all']).default('all')
+          .describe('Target AI tool preset or "all" for all supported tools'),
+        force: z.boolean().optional().describe('Overwrite existing files'),
+        dryRun: z.boolean().optional().describe('Preview changes without writing'),
+      }
+    }, async ({ preset, force, dryRun }) => {
+      try {
+        const exportService = new ExportRulesService({
+          ui: {
+            displayOutput: () => {},
+            displaySuccess: () => {},
+            displayError: () => {},
+            displayInfo: () => {},
+            displayWarning: () => {},
+            startSpinner: () => {},
+            stopSpinner: () => {},
+            updateSpinner: () => {},
+          } as any,
+          t: (key: string) => key,
+          version: VERSION,
+        });
+
+        const result = await exportService.run(repoPath, { preset, force, dryRun });
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              filesCreated: result.filesCreated,
+              filesSkipped: result.filesSkipped,
+              filesFailed: result.filesFailed,
+              targets: result.targets,
+              errors: result.errors,
+              dryRun: dryRun || false,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // detectStack - Detect project technology stack
+    this.server.registerTool('detectStack', {
+      description: 'Detect the project technology stack including languages, frameworks, build tools, and test frameworks. Useful for intelligent defaults.',
+      inputSchema: {}
+    }, async () => {
+      try {
+        const detector = new StackDetector();
+        const stackInfo = await detector.detect(repoPath);
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              stack: stackInfo,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    this.log('Registered 4 extended workflow tools');
+
+    // Register plan-workflow integration tools
+    this.registerPlanTools();
+  }
+
+  /**
+   * Register plan-workflow integration tools
+   */
+  private registerPlanTools(): void {
+    const repoPath = this.options.repoPath || process.cwd();
+
+    // linkPlan - Link a plan to the current workflow
+    this.server.registerTool('linkPlan', {
+      description: 'Link an implementation plan to the current PREVC workflow. Plans provide detailed steps mapped to workflow phases.',
+      inputSchema: {
+        planSlug: z.string().describe('Plan slug/identifier (filename without .md)'),
+      }
+    }, async ({ planSlug }) => {
+      try {
+        const linker = createPlanLinker(repoPath);
+        const ref = await linker.linkPlan(planSlug);
+
+        if (!ref) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                success: false,
+                error: `Plan not found: ${planSlug}`,
+              }, null, 2)
+            }]
+          };
+        }
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              plan: ref,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // getLinkedPlans - Get all plans linked to the workflow
+    this.server.registerTool('getLinkedPlans', {
+      description: 'Get all implementation plans linked to the current PREVC workflow.',
+      inputSchema: {}
+    }, async () => {
+      try {
+        const linker = createPlanLinker(repoPath);
+        const plans = await linker.getLinkedPlans();
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              plans,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // getPlanDetails - Get detailed plan with PREVC mapping
+    this.server.registerTool('getPlanDetails', {
+      description: 'Get detailed plan information including phases mapped to PREVC, agents, and documentation.',
+      inputSchema: {
+        planSlug: z.string().describe('Plan slug/identifier'),
+      }
+    }, async ({ planSlug }) => {
+      try {
+        const linker = createPlanLinker(repoPath);
+        const plan = await linker.getLinkedPlan(planSlug);
+
+        if (!plan) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                success: false,
+                error: `Plan not found or not linked: ${planSlug}`,
+              }, null, 2)
+            }]
+          };
+        }
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              plan: {
+                ...plan,
+                phasesWithPrevc: plan.phases.map(p => ({
+                  ...p,
+                  prevcPhaseName: PHASE_NAMES_EN[p.prevcPhase],
+                })),
+              },
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // getPlansForPhase - Get plans relevant to current PREVC phase
+    this.server.registerTool('getPlansForPhase', {
+      description: 'Get all plans that have work items for a specific PREVC phase.',
+      inputSchema: {
+        phase: z.enum(['P', 'R', 'E', 'V', 'C']).describe('PREVC phase'),
+      }
+    }, async ({ phase }) => {
+      try {
+        const linker = createPlanLinker(repoPath);
+        const plans = await linker.getPlansForPhase(phase as PrevcPhase);
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              phase,
+              phaseName: PHASE_NAMES_EN[phase as PrevcPhase],
+              plans: plans.map(p => ({
+                slug: p.ref.slug,
+                title: p.ref.title,
+                phasesInThisPrevc: p.phases
+                  .filter(ph => ph.prevcPhase === phase)
+                  .map(ph => ({ id: ph.id, name: ph.name, status: ph.status })),
+                hasPendingWork: linker.hasPendingWorkForPhase(p, phase as PrevcPhase),
+              })),
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // updatePlanPhase - Update plan phase status
+    this.server.registerTool('updatePlanPhase', {
+      description: 'Update the status of a plan phase (syncs with PREVC workflow tracking).',
+      inputSchema: {
+        planSlug: z.string().describe('Plan slug/identifier'),
+        phaseId: z.string().describe('Phase ID within the plan (e.g., "phase-1")'),
+        status: z.enum(['pending', 'in_progress', 'completed', 'skipped']).describe('New status'),
+      }
+    }, async ({ planSlug, phaseId, status }) => {
+      try {
+        const linker = createPlanLinker(repoPath);
+        const success = await linker.updatePlanPhase(planSlug, phaseId, status as any);
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success,
+              planSlug,
+              phaseId,
+              status,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // recordDecision - Record a decision in a plan
+    this.server.registerTool('recordDecision', {
+      description: 'Record a decision made during plan execution. Decisions are tracked and can be referenced later.',
+      inputSchema: {
+        planSlug: z.string().describe('Plan slug/identifier'),
+        title: z.string().describe('Decision title'),
+        description: z.string().describe('Decision description and rationale'),
+        phase: z.enum(['P', 'R', 'E', 'V', 'C']).optional().describe('Related PREVC phase'),
+        alternatives: z.array(z.string()).optional().describe('Alternatives that were considered'),
+      }
+    }, async ({ planSlug, title, description, phase, alternatives }) => {
+      try {
+        const linker = createPlanLinker(repoPath);
+        const decision = await linker.recordDecision(planSlug, {
+          title,
+          description,
+          phase: phase as PrevcPhase | undefined,
+          alternatives,
+          status: 'accepted',
+        });
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              decision,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // discoverAgents - Discover all available agents (built-in + custom)
+    this.server.registerTool('discoverAgents', {
+      description: 'Discover all available agents including custom ones. Scans .context/agents/ for custom agent playbooks.',
+      inputSchema: {}
+    }, async () => {
+      try {
+        const linker = createPlanLinker(repoPath);
+        const agents = await linker.discoverAgents();
+
+        const builtIn = agents.filter(a => !a.isCustom);
+        const custom = agents.filter(a => a.isCustom);
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              totalAgents: agents.length,
+              builtInCount: builtIn.length,
+              customCount: custom.length,
+              agents: {
+                builtIn: builtIn.map(a => a.type),
+                custom: custom.map(a => ({ type: a.type, path: a.path })),
+              },
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // getAgentInfo - Get detailed info about a specific agent
+    this.server.registerTool('getAgentInfo', {
+      description: 'Get detailed information about a specific agent (built-in or custom). Returns path, existence status, title, and description.',
+      inputSchema: {
+        agentType: z.string().describe('Agent type/identifier (e.g., "code-reviewer" or "agente-de-marketing")'),
+      }
+    }, async ({ agentType }) => {
+      try {
+        const linker = createPlanLinker(repoPath);
+        const info = await linker.getAgentInfo(agentType);
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              agent: info,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    this.log('Registered 8 plan-workflow tools');
   }
 
   /**
@@ -480,6 +1424,615 @@ export class AIContextMCPServer {
     );
 
     this.log('Registered 2 resource templates');
+
+    // Register PREVC workflow resources
+    this.registerWorkflowResources();
+
+    // Register orchestration tools
+    this.registerOrchestrationTools();
+  }
+
+  /**
+   * Register PREVC workflow resources
+   */
+  private registerWorkflowResources(): void {
+    const repoPath = this.options.repoPath || process.cwd();
+
+    // workflow://status - Current workflow status
+    this.server.registerResource(
+      'workflow-status',
+      'workflow://status',
+      {
+        description: 'Current PREVC workflow status including phases, roles, and progress',
+        mimeType: 'application/json'
+      },
+      async () => {
+        try {
+          const service = new WorkflowService(repoPath);
+
+          if (!(await service.hasWorkflow())) {
+            return {
+              contents: [{
+                uri: 'workflow://status',
+                mimeType: 'application/json',
+                text: JSON.stringify({ error: 'No workflow found' }, null, 2)
+              }]
+            };
+          }
+
+          const summary = await service.getSummary();
+          const status = await service.getStatus();
+
+          return {
+            contents: [{
+              uri: 'workflow://status',
+              mimeType: 'application/json',
+              text: JSON.stringify({
+                name: summary.name,
+                scale: getScaleName(summary.scale as ProjectScale),
+                currentPhase: summary.currentPhase,
+                progress: summary.progress,
+                isComplete: summary.isComplete,
+                phases: status.phases,
+                roles: status.roles,
+              }, null, 2)
+            }]
+          };
+        } catch (error) {
+          return {
+            contents: [{
+              uri: 'workflow://status',
+              mimeType: 'application/json',
+              text: JSON.stringify({
+                error: error instanceof Error ? error.message : String(error)
+              }, null, 2)
+            }]
+          };
+        }
+      }
+    );
+
+    this.log('Registered 1 workflow resource');
+  }
+
+  /**
+   * Register agent orchestration tools
+   */
+  private registerOrchestrationTools(): void {
+    // orchestrateAgents - Select agents for a task, phase, or role
+    this.server.registerTool('orchestrateAgents', {
+      description: 'Select appropriate agents based on task description, PREVC phase, or role. Returns recommended agents with their descriptions and relevant documentation.',
+      inputSchema: {
+        task: z.string().optional().describe('Task description for intelligent agent selection'),
+        phase: z.enum(['P', 'R', 'E', 'V', 'C']).optional().describe('PREVC phase to get agents for'),
+        role: z.enum(PREVC_ROLES).optional().describe('PREVC role to get agents for'),
+      },
+    }, async ({ task, phase, role }) => {
+      try {
+        let agents: AgentType[] = [];
+        let source = '';
+
+        if (task) {
+          agents = agentOrchestrator.selectAgentsByTask(task);
+          source = `task: "${task}"`;
+        } else if (phase) {
+          agents = agentOrchestrator.getAgentsForPhase(phase as PrevcPhase);
+          source = `phase: ${phase} (${PHASE_NAMES_EN[phase as PrevcPhase]})`;
+        } else if (role) {
+          agents = agentOrchestrator.getAgentsForRole(role as PrevcRole);
+          source = `role: ${ROLE_DISPLAY_NAMES[role as PrevcRole]}`;
+        } else {
+          return {
+            content: [{ type: 'text', text: 'Error: Provide task, phase, or role parameter' }],
+          };
+        }
+
+        const agentDetails = agents.map((agent) => ({
+          type: agent,
+          description: agentOrchestrator.getAgentDescription(agent),
+          docs: documentLinker.getDocPathsForAgent(agent),
+        }));
+
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              source,
+              agents: agentDetails,
+              count: agents.length,
+            }, null, 2),
+          }],
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text',
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          }],
+        };
+      }
+    });
+
+    // getAgentSequence - Get recommended agent sequence for a task
+    this.server.registerTool('getAgentSequence', {
+      description: 'Get recommended sequence of agents for a task, including handoff order. Useful for planning multi-agent workflows.',
+      inputSchema: {
+        task: z.string().describe('Task description'),
+        includeReview: z.boolean().optional().describe('Include code review in sequence (default: true)'),
+        phases: z.array(z.enum(['P', 'R', 'E', 'V', 'C'])).optional().describe('PREVC phases to include (for phase-based sequencing)'),
+      },
+    }, async ({ task, includeReview, phases }) => {
+      try {
+        let sequence: AgentType[];
+
+        if (phases && phases.length > 0) {
+          sequence = agentOrchestrator.getAgentHandoffSequence(phases as PrevcPhase[]);
+        } else {
+          sequence = agentOrchestrator.getTaskAgentSequence(
+            task,
+            includeReview !== false
+          );
+        }
+
+        const sequenceDetails = sequence.map((agent, index) => ({
+          order: index + 1,
+          agent,
+          description: agentOrchestrator.getAgentDescription(agent),
+          primaryDoc: documentLinker.getPrimaryDocForAgent(agent)?.path || null,
+        }));
+
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              task,
+              sequence: sequenceDetails,
+              totalAgents: sequence.length,
+            }, null, 2),
+          }],
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text',
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          }],
+        };
+      }
+    });
+
+    // getAgentDocs - Get documentation relevant to an agent
+    this.server.registerTool('getAgentDocs', {
+      description: 'Get documentation guides relevant to a specific agent type. Helps agents find the right context.',
+      inputSchema: {
+        agent: z.enum(AGENT_TYPES).describe('Agent type to get documentation for'),
+      },
+    }, async ({ agent }) => {
+      try {
+        if (!agentOrchestrator.isValidAgentType(agent)) {
+          return {
+            content: [{
+              type: 'text',
+              text: `Error: Invalid agent type "${agent}". Valid types: ${AGENT_TYPES.join(', ')}`,
+            }],
+          };
+        }
+
+        const docs = documentLinker.getDocsForAgent(agent as AgentType);
+        const agentDesc = agentOrchestrator.getAgentDescription(agent as AgentType);
+
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              agent,
+              description: agentDesc,
+              documentation: docs.map((doc) => ({
+                type: doc.type,
+                title: doc.title,
+                path: doc.path,
+                description: doc.description,
+              })),
+            }, null, 2),
+          }],
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text',
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          }],
+        };
+      }
+    });
+
+    // getPhaseDocs - Get documentation for a PREVC phase
+    this.server.registerTool('getPhaseDocs', {
+      description: 'Get documentation relevant to a PREVC workflow phase. Helps understand what documentation is needed at each phase.',
+      inputSchema: {
+        phase: z.enum(['P', 'R', 'E', 'V', 'C']).describe('PREVC phase (P=Planning, R=Review, E=Execution, V=Validation, C=Confirmation)'),
+      },
+    }, async ({ phase }) => {
+      try {
+        const docs = documentLinker.getDocsForPhase(phase as PrevcPhase);
+        const agents = agentOrchestrator.getAgentsForPhase(phase as PrevcPhase);
+
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              phase,
+              phaseName: PHASE_NAMES_EN[phase as PrevcPhase],
+              documentation: docs.map((doc) => ({
+                type: doc.type,
+                title: doc.title,
+                path: doc.path,
+                description: doc.description,
+              })),
+              recommendedAgents: agents.map((agent) => ({
+                type: agent,
+                description: agentOrchestrator.getAgentDescription(agent),
+              })),
+            }, null, 2),
+          }],
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text',
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          }],
+        };
+      }
+    });
+
+    // listAgentTypes - List all available agent types
+    this.server.registerTool('listAgentTypes', {
+      description: 'List all available agent types with their descriptions. Use this to understand what agents are available.',
+      inputSchema: {},
+    }, async () => {
+      const agents = agentOrchestrator.getAllAgentTypes().map((agent) => ({
+        type: agent,
+        description: agentOrchestrator.getAgentDescription(agent),
+        primaryDoc: documentLinker.getPrimaryDocForAgent(agent)?.title || null,
+      }));
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            agents,
+            total: agents.length,
+          }, null, 2),
+        }],
+      };
+    });
+
+    this.log('Registered 5 orchestration tools');
+
+    // Register skill tools
+    this.registerSkillTools();
+  }
+
+  /**
+   * Register skill tools for on-demand expertise
+   */
+  private registerSkillTools(): void {
+    const repoPath = this.options.repoPath || process.cwd();
+
+    // Import skill registry
+    const { createSkillRegistry, BUILT_IN_SKILLS, SKILL_TO_PHASES } = require('../../workflow/skills');
+
+    // listSkills - List all available skills
+    this.server.registerTool('listSkills', {
+      description: 'List all available skills (built-in + custom). Skills are on-demand expertise for specific tasks.',
+      inputSchema: {
+        includeContent: z.boolean().optional().describe('Include full skill content in response'),
+      }
+    }, async ({ includeContent }) => {
+      try {
+        const registry = createSkillRegistry(repoPath);
+        const discovered = await registry.discoverAll();
+
+        const format = (skill: any) => ({
+          slug: skill.slug,
+          name: skill.metadata.name,
+          description: skill.metadata.description,
+          phases: skill.metadata.phases || [],
+          isBuiltIn: skill.isBuiltIn,
+          ...(includeContent ? { content: skill.content } : {}),
+        });
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              totalSkills: discovered.all.length,
+              builtInCount: discovered.builtIn.length,
+              customCount: discovered.custom.length,
+              skills: {
+                builtIn: discovered.builtIn.map(format),
+                custom: discovered.custom.map(format),
+              },
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // getSkillContent - Get full content of a specific skill
+    this.server.registerTool('getSkillContent', {
+      description: 'Get the full content of a skill by slug. Returns the SKILL.md content with instructions.',
+      inputSchema: {
+        skillSlug: z.string().describe('Skill slug/identifier (e.g., "commit-message", "pr-review")'),
+      }
+    }, async ({ skillSlug }) => {
+      try {
+        const registry = createSkillRegistry(repoPath);
+        const content = await registry.getSkillContent(skillSlug);
+
+        if (!content) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                success: false,
+                error: `Skill not found: ${skillSlug}`,
+                availableSkills: BUILT_IN_SKILLS,
+              }, null, 2)
+            }]
+          };
+        }
+
+        const skill = await registry.getSkillMetadata(skillSlug);
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              skill: {
+                slug: skillSlug,
+                name: skill?.metadata.name,
+                description: skill?.metadata.description,
+                phases: skill?.metadata.phases,
+                isBuiltIn: skill?.isBuiltIn,
+              },
+              content,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // getSkillsForPhase - Get skills relevant to a PREVC phase
+    this.server.registerTool('getSkillsForPhase', {
+      description: 'Get all skills relevant to a specific PREVC phase. Useful for knowing which skills to activate during workflow execution.',
+      inputSchema: {
+        phase: z.enum(['P', 'R', 'E', 'V', 'C']).describe('PREVC phase'),
+      }
+    }, async ({ phase }) => {
+      try {
+        const registry = createSkillRegistry(repoPath);
+        const skills = await registry.getSkillsForPhase(phase);
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              phase,
+              phaseName: PHASE_NAMES_EN[phase as PrevcPhase],
+              skills: skills.map((s: any) => ({
+                slug: s.slug,
+                name: s.metadata.name,
+                description: s.metadata.description,
+                isBuiltIn: s.isBuiltIn,
+              })),
+              count: skills.length,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // scaffoldSkills - Generate skill files
+    this.server.registerTool('scaffoldSkills', {
+      description: 'Scaffold skill files in .context/skills/. Creates SKILL.md files for built-in or custom skills.',
+      inputSchema: {
+        skills: z.array(z.string()).optional().describe('Specific skills to scaffold (default: all built-in)'),
+        force: z.boolean().optional().describe('Overwrite existing skill files'),
+      }
+    }, async ({ skills, force }) => {
+      try {
+        const { createSkillGenerator } = require('../../generators/skills');
+        const generator = createSkillGenerator({ repoPath });
+        const result = await generator.generate({ skills, force });
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              skillsDir: result.skillsDir,
+              generated: result.generatedSkills,
+              skipped: result.skippedSkills,
+              indexPath: result.indexPath,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // exportSkills - Export skills to AI tool directories
+    this.server.registerTool('exportSkills', {
+      description: 'Export skills to AI tool directories (Claude Code, Gemini CLI, Codex). Copies skills to .claude/skills/, .gemini/skills/, etc.',
+      inputSchema: {
+        preset: z.enum(['claude', 'gemini', 'codex', 'all']).default('all')
+          .describe('Target AI tool or "all" for all supported tools'),
+        includeBuiltIn: z.boolean().optional().describe('Include built-in skills even if not scaffolded'),
+        force: z.boolean().optional().describe('Overwrite existing files'),
+      }
+    }, async ({ preset, includeBuiltIn, force }) => {
+      try {
+        const { SkillExportService } = require('../export/skillExportService');
+        const exportService = new SkillExportService({
+          ui: {
+            displayOutput: () => {},
+            displaySuccess: () => {},
+            displayError: () => {},
+            displayWarning: () => {},
+            startSpinner: () => {},
+            stopSpinner: () => {},
+            updateSpinner: () => {},
+          },
+          t: (key: string) => key,
+          version: VERSION,
+        });
+
+        const result = await exportService.run(repoPath, {
+          preset,
+          includeBuiltIn,
+          force,
+        });
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: result.filesCreated > 0,
+              targets: result.targets,
+              skillsExported: result.skillsExported,
+              filesCreated: result.filesCreated,
+              filesSkipped: result.filesSkipped,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // fillSkills - Fill/personalize skill files with AI
+    this.server.registerTool('fillSkills', {
+      description: 'Fill/personalize skill files using AI analysis of the codebase. Reads docs and agents for context.',
+      inputSchema: {
+        skills: z.array(z.string()).optional().describe('Specific skills to fill (default: all scaffolded)'),
+        force: z.boolean().optional().describe('Overwrite existing content'),
+        useSemanticContext: z.boolean().default(true).optional().describe('Use semantic context mode (more token efficient)'),
+        useLsp: z.boolean().optional().describe('Enable LSP for deeper analysis'),
+      }
+    }, async ({ skills, force, useSemanticContext, useLsp }) => {
+      try {
+        const { SkillFillService } = require('../fill/skillFillService');
+
+        const skillFillService = new SkillFillService({
+          ui: {
+            displayWelcome: () => {},
+            displayProjectInfo: () => {},
+            displayStep: () => {},
+            displaySuccess: () => {},
+            displayError: () => {},
+            displayWarning: () => {},
+            displayInfo: () => {},
+            startSpinner: () => {},
+            stopSpinner: () => {},
+            updateSpinner: () => {},
+            createAgentCallbacks: () => ({
+              onAgentStart: () => {},
+              onAgentStep: () => {},
+              onAgentComplete: () => {},
+              onToolCall: () => {},
+              onToolResult: () => {},
+            }),
+          },
+          t: (key: string) => key,
+          version: VERSION,
+          defaultModel: DEFAULT_MODEL,
+        });
+
+        const result = await skillFillService.run(repoPath, {
+          skills,
+          force,
+          semantic: useSemanticContext ?? true,
+          useLsp,
+        });
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              filled: result.filled,
+              skipped: result.skipped,
+              failed: result.failed,
+              model: result.model,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    this.log('Registered 6 skill tools');
   }
 
   /**

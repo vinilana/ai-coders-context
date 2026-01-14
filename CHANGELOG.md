@@ -5,6 +5,147 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-01-14
+
+### Added
+
+- **Quick Sync Service**: Unified synchronization of agents, skills, and documentation
+  - New `quick-sync` command for one-click export to all AI tools
+  - Component selection: choose agents, skills, docs, or all
+  - Target selection: export to specific tools or all at once
+  - **Selective doc targets**: Choose which rules files to export (cursorrules, CLAUDE.md, AGENTS.md, windsurfrules, clinerules, CONVENTIONS.md)
+  - **AGENTS.md universal export**: New preset for tools that support universal agent files
+  - CLI: `npx @ai-coders/context quick-sync [--components agents,skills,docs] [--targets claude,cursor]`
+  - Interactive mode with per-component target selection (agents, skills, docs separately)
+
+- **getCodebaseMap MCP Tool**: Retrieve structured codebase data
+  - Access pre-analyzed codebase information from `.context/docs/codebase-map.json`
+  - Sections: `stack`, `structure`, `architecture`, `symbols`, `publicAPI`, `dependencies`, `stats`
+  - Token-efficient retrieval with specific section queries
+  - Reduces need for repeated codebase analysis
+
+- **Project Type Classification**: Smart filtering for agents and documentation
+  - Automatic project type detection (backend, frontend, fullstack, api, library, cli, mobile)
+  - Filter agent playbooks based on project type
+  - Filter documentation templates based on relevance
+  - `scaffoldFilter` service for intelligent scaffolding selection
+
+- **Interactive Mode Enhancements**:
+  - Welcome screen with PREVC visual explanation
+  - User prompt input on startup
+  - Multi-select component options for scaffolding (docs, agents, skills)
+  - Target selection with presets for AI tools
+
+- **Front Matter Wrapping**: Enhanced options for generated files
+  - Additional front matter options: `wrap`, `template`, `source`
+  - Better metadata management for scaffolded files
+
+- **Agent Front Matter Enhancement**: Agent playbooks now include name and description
+  - `name` field auto-populated from agent title
+  - `description` field auto-populated from first responsibility
+  - Improves agent discovery and metadata for AI tools
+
+- **Skills System**: On-demand expertise for AI agents (Claude Code, Gemini CLI, Codex)
+  - 10 built-in skills: commit-message, pr-review, code-review, test-generation, documentation, refactoring, bug-investigation, feature-breakdown, api-design, security-audit
+  - `SkillRegistry` class for skill discovery and management
+  - `SkillGenerator` for scaffolding SKILL.md files
+  - `SkillExportService` for exporting to `.claude/skills/`, `.gemini/skills/`, `.codex/skills/`
+  - CLI commands: `skill init`, `skill list`, `skill export`, `skill create`, `skill fill`
+  - MCP tools: `listSkills`, `getSkillContent`, `getSkillsForPhase`, `scaffoldSkills`, `exportSkills`, `fillSkills`
+  - Skills are mapped to PREVC phases for workflow integration
+
+- **Skill Fill Feature**: AI-powered skill personalization
+  - `skill fill` CLI command personalizes skills with project-specific content
+  - `fillSkills` MCP tool for programmatic skill filling
+  - `SkillAgent` - New AI agent for skill personalization (follows PlaybookAgent pattern)
+  - `buildSkillContext()` method in SemanticContextBuilder for skill-specific context
+  - Uses docs and agents context for richer personalization
+  - Semantic analysis mode for token-efficient generation
+  - i18n support for English and Portuguese
+
+- **Plan-Workflow Integration**: Link plans to PREVC workflow phases
+  - `PlanLinker` class for managing plan-workflow relationships
+  - Plans now include PREVC phase mapping in frontmatter
+  - Track plan status, decisions, and risks per workflow phase
+  - MCP tools: `linkPlan`, `getLinkedPlans`, `getPlanDetails`, `getPlansForPhase`, `updatePlanPhase`, `recordDecision`
+
+- **Agent Lineup in Plans**: Plans now include recommended agents in frontmatter
+  - AI agents can discover which agents to use for each plan step
+  - `AgentLineupEntry` type with phase mapping
+  - Frontmatter parsing extracts agent lineup automatically
+
+- **Custom Agent Discovery**: Support for custom agent playbooks
+  - Discover agents from `.context/agents/` directory
+  - Support for both built-in and custom agents (e.g., `marketing-agent.md`)
+  - MCP tools: `discoverAgents`, `getAgentInfo`
+
+- **Centralized Agent Registry**: Single source of truth for agent management
+  - `AgentRegistry` class with caching and metadata retrieval
+  - `BUILT_IN_AGENTS` constant with type-safe agent types
+  - `isBuiltInAgent()` helper for validation
+  - Exported from `workflow/agents` module
+
+- **New MCP Tools for Plan Management**:
+  - `linkPlan` - Link a plan file to the current workflow
+  - `getLinkedPlans` - Get all linked plans for current workflow
+  - `getPlanDetails` - Get detailed information about a linked plan
+  - `getPlansForPhase` - Get plans relevant to a PREVC phase
+  - `updatePlanPhase` - Update plan phase status
+  - `recordDecision` - Record a decision for a plan
+  - `discoverAgents` - Discover all available agents (built-in + custom)
+  - `getAgentInfo` - Get metadata for a specific agent
+
+### Changed
+
+- **UI/UX Minimalist**: Removed emoticons from all UI components
+  - Report service uses text indicators: `[x]`, `[>]`, `[ ]`, `[-]`
+  - Menu choices use simple text without emoji prefixes
+  - Cleaner, more professional interface
+
+- **PlanLinker Refactored**: Now delegates agent operations to AgentRegistry (SRP)
+
+### Fixed
+
+- **Orphaned Spinners**: Fixed CLI spinners not stopping properly in certain conditions
+  - Prevents visual artifacts when operations complete or fail
+
+- **Skills Path Construction**: Fixed Quick Sync creating incorrect folder paths for skills
+  - Now uses absolute paths consistent with agents sync behavior
+  - Skills correctly exported to `.claude/skills/`, `.gemini/skills/`, etc.
+
+### Technical Details
+
+#### New Files
+- `src/services/quickSync/quickSyncService.ts` - Quick Sync service for unified synchronization
+- `src/services/quickSync/index.ts` - Quick Sync module exports
+- `src/services/ai/tools/getCodebaseMapTool.ts` - MCP tool for codebase map retrieval
+- `src/services/stack/projectTypeClassifier.ts` - Project type classification service
+- `src/services/stack/scaffoldFilter.ts` - Intelligent scaffold filtering
+- `src/generators/documentation/codebaseMapGenerator.ts` - Codebase map generation
+- `src/services/ai/agents/skillAgent.ts` - AI agent for skill personalization
+- `src/services/fill/skillFillService.ts` - Service orchestrating skill fill operations
+- `src/workflow/plans/types.ts` - Plan-workflow integration types
+- `src/workflow/plans/planLinker.ts` - Plan-workflow linking service
+- `src/workflow/plans/index.ts` - Plans module exports
+- `src/workflow/agents/agentRegistry.ts` - Centralized agent registry
+- `src/workflow/agents/index.ts` - Agents module exports
+
+#### Modified Files
+- `src/services/semantic/contextBuilder.ts` - Added `buildSkillContext()` method
+- `src/services/ai/prompts/sharedPrompts.ts` - Added `getSkillAgentPrompt()`
+- `src/services/ai/agentEvents.ts` - Added 'skill' to AgentType
+- `src/services/mcp/mcpServer.ts` - Added `fillSkills` MCP tool
+- `src/utils/i18n.ts` - Added skill fill translations (EN/PT)
+
+#### New Exports from `workflow` module
+```typescript
+// Plan Integration
+export { PlanLinker, createPlanLinker, PlanReference, LinkedPlan, ... } from './plans';
+
+// Agent Registry
+export { BUILT_IN_AGENTS, AgentRegistry, createAgentRegistry, ... } from './agents';
+```
+
 ## [0.5.2] - 2026-01-09
 
 ### Fixed

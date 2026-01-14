@@ -17,6 +17,8 @@ import {
 } from './templates';
 import { getGuidesByKeys } from './guideRegistry';
 import { CodebaseAnalyzer, SemanticContext } from '../../services/semantic';
+import { StackDetector } from '../../services/stack';
+import { CodebaseMapGenerator } from './codebaseMapGenerator';
 
 interface DocSection {
   fileName: string;
@@ -26,6 +28,8 @@ interface DocSection {
 interface DocumentationGenerationConfig {
   selectedDocs?: string[];
   semantic?: boolean;
+  /** Filtered list of docs based on project type classification */
+  filteredDocs?: string[];
 }
 
 export class DocumentationGenerator {
@@ -58,7 +62,31 @@ export class DocumentationGenerator {
       }
     }
 
-    const guidesToGenerate = getGuidesByKeys(config.selectedDocs);
+    // Generate codebase map JSON if semantic analysis succeeded
+    if (semantics) {
+      try {
+        GeneratorUtils.logProgress('Generating codebase map...', verbose);
+        const stackDetector = new StackDetector();
+        const stackInfo = await stackDetector.detect(repoStructure.rootPath);
+
+        const mapGenerator = new CodebaseMapGenerator();
+        const codebaseMap = mapGenerator.generate(repoStructure, semantics, stackInfo);
+
+        const mapPath = path.join(docsDir, 'codebase-map.json');
+        await GeneratorUtils.writeFileWithLogging(
+          mapPath,
+          JSON.stringify(codebaseMap, null, 2),
+          verbose,
+          'Created codebase-map.json'
+        );
+      } catch (error) {
+        GeneratorUtils.logError('Codebase map generation failed, continuing without it', error, verbose);
+      }
+    }
+
+    // Prioritize explicitly selected docs, then filtered by project type
+    const docKeys = config.selectedDocs ?? config.filteredDocs;
+    const guidesToGenerate = getGuidesByKeys(docKeys);
     const context = this.buildContext(repoStructure, guidesToGenerate, semantics);
     const sections = this.getDocSections(guidesToGenerate);
 

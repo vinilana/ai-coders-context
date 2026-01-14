@@ -6,10 +6,15 @@ import type { ExtractedSymbol } from '../../../services/semantic/types';
  * Wrap template content with YAML front matter for status detection.
  * This allows instant detection of unfilled files by reading only the first line.
  */
-export function wrapWithFrontMatter(content: string): string {
+export function wrapWithFrontMatter(
+  content: string,
+  options?: { name?: string; description?: string }
+): string {
   const date = new Date().toISOString().split('T')[0];
+  const nameLine = options?.name ? `name: ${options.name}\n` : '';
+  const descLine = options?.description ? `description: ${options.description}\n` : '';
   return `---
-status: unfilled
+${nameLine}${descLine}status: unfilled
 generated: ${date}
 ---
 
