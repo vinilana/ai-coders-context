@@ -5,6 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **The Ultimate MCP for AI Agent Orchestration, Context Engineering, and Spec-Driven Development.**
+Context engineering for AI now is stupidly simple.
 
 Stop letting LLMs run on autopilot. PREVC is a universal process that improves AI output through 5 simple steps: **Planning, Review, Execution, Validation, and Confirmation**. Context-oriented. Spec-driven. No guesswork.
 
@@ -64,6 +65,10 @@ npx @ai-coders/context
 ```
 
 That's it. The wizard detects what needs to be done.
+
+
+PT-BR Tutorial
+https://www.youtube.com/watch?v=5BPrfZAModk
 
 ## What it does
 
