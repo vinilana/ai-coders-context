@@ -4,8 +4,18 @@
 [![CI](https://github.com/vinilana/ai-coders-context/actions/workflows/ci.yml/badge.svg)](https://github.com/vinilana/ai-coders-context/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+**The Ultimate MCP for AI Agent Orchestration, Context Engineering, and Spec-Driven Development.**
 
-Context engineering for AI should be stupidly simple.
+Stop letting LLMs run on autopilot. PREVC is a universal process that improves AI output through 5 simple steps: **Planning, Review, Execution, Validation, and Confirmation**. Context-oriented. Spec-driven. No guesswork.
+
+## Why PREVC?
+
+LLMs produce better results when they follow a structured process instead of generating code blindly. PREVC ensures:
+
+- **Specifications before code** — AI understands what to build before building it
+- **Context awareness** — Each phase has the right documentation and agent
+- **Human checkpoints** — Review and validate at each step, not just at the end
+- **Reproducible quality** — Same process, consistent results across projects
 
 ## Usage
 
@@ -47,15 +57,33 @@ npx @ai-coders/context export-rules        # Export rules to AI tools
 
 ## PREVC Workflow System
 
-A structured workflow for software development with 5 phases:
+A universal 5-phase process designed to improve LLM output quality through structured, spec-driven development:
 
-| Phase | Name | Description |
-|-------|------|-------------|
-| **P** | Planning | Discovery, requirements, specifications |
-| **R** | Review | Architecture, technical decisions, design |
-| **E** | Execution | Implementation, development |
-| **V** | Validation | Tests, QA, code review |
-| **C** | Confirmation | Deploy, documentation, handoff |
+| Phase | Name | Purpose |
+|-------|------|---------|
+| **P** | Planning | Define what to build. Gather requirements, write specs, identify scope. No code yet. |
+| **R** | Review | Validate the approach. Architecture decisions, technical design, risk assessment. |
+| **E** | Execution | Build it. Implementation follows the approved specs and design. |
+| **V** | Validation | Verify it works. Tests, QA, code review against original specs. |
+| **C** | Confirmation | Ship it. Documentation, deployment, stakeholder handoff. |
+
+### The Problem with Autopilot AI
+
+Most AI coding workflows look like this:
+```
+User: "Add authentication"
+AI: *generates 500 lines of code*
+User: "That's not what I wanted..."
+```
+
+PREVC fixes this:
+```
+P: What type of auth? OAuth, JWT, session? What providers?
+R: Here's the architecture. Dependencies: X, Y. Risks: Z. Approve?
+E: Implementing approved design...
+V: All 15 tests pass. Security audit complete.
+C: Deployed. Docs updated. Ready for review.
+```
 
 ### Workflow Commands
 
