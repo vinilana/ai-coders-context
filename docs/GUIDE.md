@@ -311,11 +311,12 @@ Different AI tools store context in different locations:
 |------|--------|--------|-------|
 | Claude | `.claude/agents/` | `.claude/skills/` | `CLAUDE.md` |
 | Cursor | `.cursor/agents/` | - | `.cursorrules` |
-| GitHub Copilot | `.github/agents/` | - | `.github/copilot-instructions.md` |
 | Windsurf | `.windsurf/agents/` | - | `.windsurfrules` |
 | Cline | `.cline/agents/` | - | `.clinerules` |
-| Codex | - | `.codex/skills/` | `AGENTS.md` |
-| Aider | - | - | `.aider.conf.yml` |
+| Codex | - | `.codex/skills/` | - |
+| Gemini | - | `.gemini/skills/` | - |
+| Aider | - | - | `CONVENTIONS.md` |
+| Universal | - | - | `AGENTS.md` |
 
 Quick Sync handles all of this automatically.
 
@@ -347,8 +348,16 @@ npx @ai-coders/context quick-sync --dry-run
 When running interactively, Quick Sync offers:
 
 1. **Component Selection** - Multi-select which components to sync (agents, skills, docs)
-2. **Target Selection** - Choose destination AI tools
-3. **Preview** - See what will be synced before confirming
+2. **Agent Target Selection** - Choose where to sync agents (claude, cursor, github, windsurf, cline)
+3. **Skill Target Selection** - Choose where to export skills (claude, gemini, codex)
+4. **Doc Target Selection** - Choose rule export targets:
+   - `.cursorrules` (Cursor AI)
+   - `CLAUDE.md` (Claude Code)
+   - `AGENTS.md` (Universal - supported by most AI tools)
+   - `.windsurfrules` (Windsurf)
+   - `.clinerules` (Cline)
+   - `CONVENTIONS.md` (Aider)
+5. **Preview** - See what will be synced before confirming
 
 ### Components
 
@@ -369,6 +378,7 @@ When running interactively, Quick Sync offers:
 | `cline` | Cline VS Code extension |
 | `codex` | OpenAI Codex CLI |
 | `aider` | Aider |
+| `agents` | Universal AGENTS.md (works with most AI tools) |
 | `all` | All supported tools |
 
 ---

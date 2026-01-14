@@ -13,8 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - New `quick-sync` command for one-click export to all AI tools
   - Component selection: choose agents, skills, docs, or all
   - Target selection: export to specific tools or all at once
+  - **Selective doc targets**: Choose which rules files to export (cursorrules, CLAUDE.md, AGENTS.md, windsurfrules, clinerules, CONVENTIONS.md)
+  - **AGENTS.md universal export**: New preset for tools that support universal agent files
   - CLI: `npx @ai-coders/context quick-sync [--components agents,skills,docs] [--targets claude,cursor]`
-  - Interactive mode integration with multi-select options
+  - Interactive mode with per-component target selection (agents, skills, docs separately)
 
 - **getCodebaseMap MCP Tool**: Retrieve structured codebase data
   - Access pre-analyzed codebase information from `.context/docs/codebase-map.json`
@@ -37,6 +39,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Front Matter Wrapping**: Enhanced options for generated files
   - Additional front matter options: `wrap`, `template`, `source`
   - Better metadata management for scaffolded files
+
+- **Agent Front Matter Enhancement**: Agent playbooks now include name and description
+  - `name` field auto-populated from agent title
+  - `description` field auto-populated from first responsibility
+  - Improves agent discovery and metadata for AI tools
 
 - **Skills System**: On-demand expertise for AI agents (Claude Code, Gemini CLI, Codex)
   - 10 built-in skills: commit-message, pr-review, code-review, test-generation, documentation, refactoring, bug-investigation, feature-breakdown, api-design, security-audit
@@ -101,6 +108,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Orphaned Spinners**: Fixed CLI spinners not stopping properly in certain conditions
   - Prevents visual artifacts when operations complete or fail
+
+- **Skills Path Construction**: Fixed Quick Sync creating incorrect folder paths for skills
+  - Now uses absolute paths consistent with agents sync behavior
+  - Skills correctly exported to `.claude/skills/`, `.gemini/skills/`, etc.
 
 ### Technical Details
 
