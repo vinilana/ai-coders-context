@@ -1228,7 +1228,80 @@ export class AIContextMCPServer {
       }
     });
 
-    this.log('Registered 6 plan-workflow tools');
+    // discoverAgents - Discover all available agents (built-in + custom)
+    this.server.registerTool('discoverAgents', {
+      description: 'Discover all available agents including custom ones. Scans .context/agents/ for custom agent playbooks.',
+      inputSchema: {}
+    }, async () => {
+      try {
+        const linker = createPlanLinker(repoPath);
+        const agents = await linker.discoverAgents();
+
+        const builtIn = agents.filter(a => !a.isCustom);
+        const custom = agents.filter(a => a.isCustom);
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              totalAgents: agents.length,
+              builtInCount: builtIn.length,
+              customCount: custom.length,
+              agents: {
+                builtIn: builtIn.map(a => a.type),
+                custom: custom.map(a => ({ type: a.type, path: a.path })),
+              },
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // getAgentInfo - Get detailed info about a specific agent
+    this.server.registerTool('getAgentInfo', {
+      description: 'Get detailed information about a specific agent (built-in or custom). Returns path, existence status, title, and description.',
+      inputSchema: {
+        agentType: z.string().describe('Agent type/identifier (e.g., "code-reviewer" or "agente-de-marketing")'),
+      }
+    }, async ({ agentType }) => {
+      try {
+        const linker = createPlanLinker(repoPath);
+        const info = await linker.getAgentInfo(agentType);
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              agent: info,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    this.log('Registered 8 plan-workflow tools');
   }
 
   /**

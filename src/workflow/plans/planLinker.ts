@@ -25,12 +25,120 @@ export class PlanLinker {
   private contextPath: string;
   private plansPath: string;
   private workflowPath: string;
+  private agentsPath: string;
 
   constructor(repoPath: string) {
     this.repoPath = repoPath;
     this.contextPath = path.join(repoPath, '.context');
     this.plansPath = path.join(this.contextPath, 'plans');
     this.workflowPath = path.join(this.contextPath, 'workflow');
+    this.agentsPath = path.join(this.contextPath, 'agents');
+  }
+
+  /**
+   * Discover all available agents (built-in + custom)
+   * Scans .context/agents/ directory for .md files
+   */
+  async discoverAgents(): Promise<Array<{ type: string; path: string; isCustom: boolean }>> {
+    const builtInAgents = [
+      'code-reviewer',
+      'bug-fixer',
+      'feature-developer',
+      'refactoring-specialist',
+      'test-writer',
+      'documentation-writer',
+      'performance-optimizer',
+      'security-auditor',
+      'backend-specialist',
+      'frontend-specialist',
+      'architect-specialist',
+      'devops-specialist',
+      'database-specialist',
+      'mobile-specialist',
+    ];
+
+    const agents: Array<{ type: string; path: string; isCustom: boolean }> = [];
+
+    // Add built-in agents
+    for (const agent of builtInAgents) {
+      agents.push({
+        type: agent,
+        path: `agents/${agent}.md`,
+        isCustom: false,
+      });
+    }
+
+    // Scan for custom agents in .context/agents/
+    if (await fs.pathExists(this.agentsPath)) {
+      const files = await fs.readdir(this.agentsPath);
+      for (const file of files) {
+        if (file.endsWith('.md') && file !== 'README.md') {
+          const agentType = file.replace('.md', '');
+          // Only add if not already in built-in list
+          if (!builtInAgents.includes(agentType)) {
+            agents.push({
+              type: agentType,
+              path: `agents/${file}`,
+              isCustom: true,
+            });
+          }
+        }
+      }
+    }
+
+    return agents;
+  }
+
+  /**
+   * Get agent info including custom agents
+   */
+  async getAgentInfo(agentType: string): Promise<{
+    type: string;
+    path: string;
+    exists: boolean;
+    isCustom: boolean;
+    title?: string;
+    description?: string;
+  }> {
+    const builtInAgents = [
+      'code-reviewer', 'bug-fixer', 'feature-developer', 'refactoring-specialist',
+      'test-writer', 'documentation-writer', 'performance-optimizer', 'security-auditor',
+      'backend-specialist', 'frontend-specialist', 'architect-specialist',
+      'devops-specialist', 'database-specialist', 'mobile-specialist',
+    ];
+
+    const agentPath = path.join(this.agentsPath, `${agentType}.md`);
+    const exists = await fs.pathExists(agentPath);
+    const isCustom = !builtInAgents.includes(agentType);
+
+    const result: {
+      type: string;
+      path: string;
+      exists: boolean;
+      isCustom: boolean;
+      title?: string;
+      description?: string;
+    } = {
+      type: agentType,
+      path: `agents/${agentType}.md`,
+      exists,
+      isCustom,
+    };
+
+    // If file exists, try to extract title and description
+    if (exists) {
+      try {
+        const content = await fs.readFile(agentPath, 'utf-8');
+        const titleMatch = content.match(/^#\s+(.+)$/m);
+        const descMatch = content.match(/^>\s*(.+)$/m);
+        if (titleMatch) result.title = titleMatch[1];
+        if (descMatch) result.description = descMatch[1];
+      } catch {
+        // Ignore read errors
+      }
+    }
+
+    return result;
   }
 
   /**
