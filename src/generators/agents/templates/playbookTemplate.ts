@@ -177,7 +177,10 @@ ${touchpointList}
 Summarize outcomes, remaining risks, and suggested follow-up actions after the agent completes its work.
 `;
 
-  return wrapWithFrontMatter(content);
+  // Get first responsibility as description for front matter
+  const description = responsibilities[0] || 'Agent playbook';
+
+  return wrapWithFrontMatter(content, { name: title, description });
 }
 
 function formatTitle(agentType: string): string {
