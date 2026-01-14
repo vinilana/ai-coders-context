@@ -126,3 +126,18 @@ export {
   AgentRegistry,
   createAgentRegistry,
 } from './agents';
+
+// Skills
+export {
+  Skill,
+  SkillMetadata,
+  SkillReference,
+  DiscoveredSkills,
+  BUILT_IN_SKILLS,
+  BuiltInSkillType,
+  isBuiltInSkill,
+  SKILL_TO_PHASES,
+  SkillRegistry,
+  createSkillRegistry,
+  getBuiltInSkillTemplates,
+} from './skills';

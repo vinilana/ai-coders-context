@@ -31,15 +31,15 @@ One `.context/` directory. Works everywhere.
 .context/
 ├── docs/           # Your documentation (architecture, patterns, decisions)
 ├── agents/         # Agent playbooks (code-reviewer, feature-developer, etc.)
-└── plans/          # Work plans linked to PREVC workflow
+├── plans/          # Work plans linked to PREVC workflow
+└── skills/         # On-demand expertise (commit-message, pr-review, etc.)
 ```
 
 Export to any tool with a single command:
 
 ```bash
 npx @ai-coders/context export-rules --preset all    # Export to all tools
-npx @ai-coders/context export-rules --preset cursor # Just Cursor
-npx @ai-coders/context export-rules --preset claude # Just Claude
+npx @ai-coders/context skill export --preset all    # Export skills to Claude/Gemini/Codex
 ```
 
 **Write once. Use anywhere. No boilerplate.**
@@ -370,6 +370,40 @@ Once configured, your AI assistant will have access to:
 | `recordDecision` | Record a plan decision |
 | `discoverAgents` | Discover all agents (built-in + custom) |
 | `getAgentInfo` | Get metadata for a specific agent |
+
+#### Skill Tools
+
+| Tool | Description |
+|------|-------------|
+| `listSkills` | List all available skills (built-in + custom) |
+| `getSkillContent` | Get full SKILL.md content by slug |
+| `getSkillsForPhase` | Get skills relevant to a PREVC phase |
+| `scaffoldSkills` | Generate skill files in .context/skills/ |
+| `exportSkills` | Export skills to Claude/Gemini/Codex directories |
+
+### Skills (On-Demand Expertise)
+
+Skills are task-specific procedures that AI agents activate when needed:
+
+| Skill | Description | Phases |
+|-------|-------------|--------|
+| `commit-message` | Generate conventional commits | E, C |
+| `pr-review` | Review PRs against standards | R, V |
+| `code-review` | Code quality review | R, V |
+| `test-generation` | Generate test cases | E, V |
+| `documentation` | Generate/update docs | P, C |
+| `refactoring` | Safe refactoring steps | E |
+| `bug-investigation` | Bug investigation flow | E, V |
+| `feature-breakdown` | Break features into tasks | P |
+| `api-design` | Design RESTful APIs | P, R |
+| `security-audit` | Security review checklist | R, V |
+
+```bash
+npx @ai-coders/context skill init           # Initialize skills
+npx @ai-coders/context skill list           # List available skills
+npx @ai-coders/context skill export         # Export to AI tools
+npx @ai-coders/context skill create my-skill # Create custom skill
+```
 
 ### Agent Types
 

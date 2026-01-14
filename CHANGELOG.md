@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Skills System**: On-demand expertise for AI agents (Claude Code, Gemini CLI, Codex)
+  - 10 built-in skills: commit-message, pr-review, code-review, test-generation, documentation, refactoring, bug-investigation, feature-breakdown, api-design, security-audit
+  - `SkillRegistry` class for skill discovery and management
+  - `SkillGenerator` for scaffolding SKILL.md files
+  - `SkillExportService` for exporting to `.claude/skills/`, `.gemini/skills/`, `.codex/skills/`
+  - CLI commands: `skill init`, `skill list`, `skill export`, `skill create`
+  - MCP tools: `listSkills`, `getSkillContent`, `getSkillsForPhase`, `scaffoldSkills`, `exportSkills`
+  - Skills are mapped to PREVC phases for workflow integration
+
 - **Plan-Workflow Integration**: Link plans to PREVC workflow phases
   - `PlanLinker` class for managing plan-workflow relationships
   - Plans now include PREVC phase mapping in frontmatter

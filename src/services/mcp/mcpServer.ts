@@ -1665,6 +1665,260 @@ export class AIContextMCPServer {
     });
 
     this.log('Registered 5 orchestration tools');
+
+    // Register skill tools
+    this.registerSkillTools();
+  }
+
+  /**
+   * Register skill tools for on-demand expertise
+   */
+  private registerSkillTools(): void {
+    const repoPath = this.options.repoPath || process.cwd();
+
+    // Import skill registry
+    const { createSkillRegistry, BUILT_IN_SKILLS, SKILL_TO_PHASES } = require('../../workflow/skills');
+
+    // listSkills - List all available skills
+    this.server.registerTool('listSkills', {
+      description: 'List all available skills (built-in + custom). Skills are on-demand expertise for specific tasks.',
+      inputSchema: {
+        includeContent: z.boolean().optional().describe('Include full skill content in response'),
+      }
+    }, async ({ includeContent }) => {
+      try {
+        const registry = createSkillRegistry(repoPath);
+        const discovered = await registry.discoverAll();
+
+        const format = (skill: any) => ({
+          slug: skill.slug,
+          name: skill.metadata.name,
+          description: skill.metadata.description,
+          phases: skill.metadata.phases || [],
+          isBuiltIn: skill.isBuiltIn,
+          ...(includeContent ? { content: skill.content } : {}),
+        });
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              totalSkills: discovered.all.length,
+              builtInCount: discovered.builtIn.length,
+              customCount: discovered.custom.length,
+              skills: {
+                builtIn: discovered.builtIn.map(format),
+                custom: discovered.custom.map(format),
+              },
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // getSkillContent - Get full content of a specific skill
+    this.server.registerTool('getSkillContent', {
+      description: 'Get the full content of a skill by slug. Returns the SKILL.md content with instructions.',
+      inputSchema: {
+        skillSlug: z.string().describe('Skill slug/identifier (e.g., "commit-message", "pr-review")'),
+      }
+    }, async ({ skillSlug }) => {
+      try {
+        const registry = createSkillRegistry(repoPath);
+        const content = await registry.getSkillContent(skillSlug);
+
+        if (!content) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                success: false,
+                error: `Skill not found: ${skillSlug}`,
+                availableSkills: BUILT_IN_SKILLS,
+              }, null, 2)
+            }]
+          };
+        }
+
+        const skill = await registry.getSkillMetadata(skillSlug);
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              skill: {
+                slug: skillSlug,
+                name: skill?.metadata.name,
+                description: skill?.metadata.description,
+                phases: skill?.metadata.phases,
+                isBuiltIn: skill?.isBuiltIn,
+              },
+              content,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // getSkillsForPhase - Get skills relevant to a PREVC phase
+    this.server.registerTool('getSkillsForPhase', {
+      description: 'Get all skills relevant to a specific PREVC phase. Useful for knowing which skills to activate during workflow execution.',
+      inputSchema: {
+        phase: z.enum(['P', 'R', 'E', 'V', 'C']).describe('PREVC phase'),
+      }
+    }, async ({ phase }) => {
+      try {
+        const registry = createSkillRegistry(repoPath);
+        const skills = await registry.getSkillsForPhase(phase);
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              phase,
+              phaseName: PHASE_NAMES_EN[phase as PrevcPhase],
+              skills: skills.map((s: any) => ({
+                slug: s.slug,
+                name: s.metadata.name,
+                description: s.metadata.description,
+                isBuiltIn: s.isBuiltIn,
+              })),
+              count: skills.length,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // scaffoldSkills - Generate skill files
+    this.server.registerTool('scaffoldSkills', {
+      description: 'Scaffold skill files in .context/skills/. Creates SKILL.md files for built-in or custom skills.',
+      inputSchema: {
+        skills: z.array(z.string()).optional().describe('Specific skills to scaffold (default: all built-in)'),
+        force: z.boolean().optional().describe('Overwrite existing skill files'),
+      }
+    }, async ({ skills, force }) => {
+      try {
+        const { createSkillGenerator } = require('../../generators/skills');
+        const generator = createSkillGenerator({ repoPath });
+        const result = await generator.generate({ skills, force });
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              skillsDir: result.skillsDir,
+              generated: result.generatedSkills,
+              skipped: result.skippedSkills,
+              indexPath: result.indexPath,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // exportSkills - Export skills to AI tool directories
+    this.server.registerTool('exportSkills', {
+      description: 'Export skills to AI tool directories (Claude Code, Gemini CLI, Codex). Copies skills to .claude/skills/, .gemini/skills/, etc.',
+      inputSchema: {
+        preset: z.enum(['claude', 'gemini', 'codex', 'all']).default('all')
+          .describe('Target AI tool or "all" for all supported tools'),
+        includeBuiltIn: z.boolean().optional().describe('Include built-in skills even if not scaffolded'),
+        force: z.boolean().optional().describe('Overwrite existing files'),
+      }
+    }, async ({ preset, includeBuiltIn, force }) => {
+      try {
+        const { SkillExportService } = require('../export/skillExportService');
+        const exportService = new SkillExportService({
+          ui: {
+            displayOutput: () => {},
+            displaySuccess: () => {},
+            displayError: () => {},
+            displayWarning: () => {},
+            startSpinner: () => {},
+            stopSpinner: () => {},
+            updateSpinner: () => {},
+          },
+          t: (key: string) => key,
+          version: VERSION,
+        });
+
+        const result = await exportService.run(repoPath, {
+          preset,
+          includeBuiltIn,
+          force,
+        });
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: result.filesCreated > 0,
+              targets: result.targets,
+              skillsExported: result.skillsExported,
+              filesCreated: result.filesCreated,
+              filesSkipped: result.filesSkipped,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    this.log('Registered 5 skill tools');
   }
 
   /**
