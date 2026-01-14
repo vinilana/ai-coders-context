@@ -15,6 +15,8 @@ interface AgentContext {
 interface AgentGenerationConfig {
   selectedAgents?: string[];
   semantic?: boolean;
+  /** Filtered list of agents based on project type classification */
+  filteredAgents?: AgentType[];
 }
 
 export class AgentGenerator {
@@ -64,7 +66,10 @@ export class AgentGenerator {
     }
 
     const context = this.buildContext(repoStructure, semantics);
-    const agentTypes = this.resolveAgentSelection(normalizedConfig.selectedAgents);
+    const agentTypes = this.resolveAgentSelection(
+      normalizedConfig.selectedAgents,
+      normalizedConfig.filteredAgents
+    );
 
     let created = 0;
     for (const agentType of agentTypes) {
@@ -181,14 +186,24 @@ export class AgentGenerator {
     }));
   }
 
-  private resolveAgentSelection(selected?: string[]): readonly AgentType[] {
-    if (!selected || selected.length === 0) {
-      return AGENT_TYPES;
+  private resolveAgentSelection(
+    selected?: string[],
+    filteredByProjectType?: AgentType[]
+  ): readonly AgentType[] {
+    // If explicitly selected agents are provided, use those
+    if (selected && selected.length > 0) {
+      const allowed = new Set<AgentType>(AGENT_TYPES);
+      const filtered = selected.filter((agent): agent is AgentType => allowed.has(agent as AgentType));
+      return (filtered.length > 0 ? filtered : AGENT_TYPES) as readonly AgentType[];
     }
 
-    const allowed = new Set<AgentType>(AGENT_TYPES);
-    const filtered = selected.filter((agent): agent is AgentType => allowed.has(agent as AgentType));
-    return (filtered.length > 0 ? filtered : AGENT_TYPES) as readonly AgentType[];
+    // If filtered by project type, use those
+    if (filteredByProjectType && filteredByProjectType.length > 0) {
+      return filteredByProjectType;
+    }
+
+    // Default: all agents
+    return AGENT_TYPES;
   }
 
   private buildContext(repoStructure: RepoStructure, semantics?: SemanticContext): AgentContext {

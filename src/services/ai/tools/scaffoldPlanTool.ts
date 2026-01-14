@@ -3,6 +3,12 @@ import * as path from 'path';
 import * as fs from 'fs-extra';
 import { ScaffoldPlanInputSchema, type ScaffoldPlanInput } from '../schemas';
 import { PlanGenerator } from '../../../generators/plans/planGenerator';
+import {
+  StackDetector,
+  classifyProject,
+  getAgentsForProjectType,
+  getDocsForProjectType,
+} from '../../stack';
 
 export const scaffoldPlanTool = tool({
   description: 'Create a plan template in .context/plans/',
@@ -23,6 +29,15 @@ export const scaffoldPlanTool = tool({
       : path.resolve(repoPath, '.context');
 
     try {
+      // Detect project type for intelligent agent/doc filtering
+      const stackDetector = new StackDetector();
+      const stackInfo = await stackDetector.detect(repoPath);
+      const classification = classifyProject(stackInfo);
+
+      // Get filtered agents and docs based on project type
+      const filteredAgents = getAgentsForProjectType(classification.primaryType);
+      const filteredDocs = getDocsForProjectType(classification.primaryType);
+
       const planGenerator = new PlanGenerator();
 
       const result = await planGenerator.generatePlan({
@@ -34,8 +49,8 @@ export const scaffoldPlanTool = tool({
         verbose: false,
         semantic,
         projectPath: semantic ? repoPath : undefined,
-        selectedAgentTypes: undefined, // Include all agents
-        selectedDocKeys: undefined // Include all docs
+        selectedAgentTypes: filteredAgents,
+        selectedDocKeys: filteredDocs,
       });
 
       // Read the generated content to return
@@ -44,7 +59,12 @@ export const scaffoldPlanTool = tool({
       return {
         success: true,
         planPath: result.planPath,
-        planContent
+        planContent,
+        classification: {
+          projectType: classification.primaryType,
+          confidence: classification.confidence,
+          reasoning: classification.reasoning,
+        },
       };
     } catch (error) {
       return {

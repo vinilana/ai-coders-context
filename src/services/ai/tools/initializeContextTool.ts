@@ -5,6 +5,14 @@ import { InitializeContextInputSchema, type InitializeContextInput } from '../sc
 import { FileMapper } from '../../../utils/fileMapper';
 import { DocumentationGenerator } from '../../../generators/documentation/documentationGenerator';
 import { AgentGenerator } from '../../../generators/agents/agentGenerator';
+import {
+  StackDetector,
+  classifyProject,
+  getAgentsForProjectType,
+  getDocsForProjectType,
+  ProjectType,
+  ProjectClassification,
+} from '../../stack';
 
 export const initializeContextTool = tool({
   description: `Initialize .context scaffolding and create template files.
@@ -20,7 +28,9 @@ IMPORTANT: After scaffolding, you MUST fill the generated files with actual cont
       outputDir: customOutputDir,
       semantic = true,
       include,
-      exclude = []
+      exclude = [],
+      projectType: overrideProjectType,
+      disableFiltering = false,
     } = input;
 
     const resolvedRepoPath = path.resolve(repoPath);
@@ -48,6 +58,33 @@ IMPORTANT: After scaffolding, you MUST fill the generated files with actual cont
       const fileMapper = new FileMapper(exclude);
       const repoStructure = await fileMapper.mapRepository(resolvedRepoPath, include);
 
+      // Detect stack and classify project type
+      let classification: ProjectClassification | undefined;
+      let projectType: ProjectType = 'unknown';
+
+      if (!disableFiltering) {
+        const stackDetector = new StackDetector();
+        const stackInfo = await stackDetector.detect(resolvedRepoPath);
+
+        // Use override if provided, otherwise classify from stack
+        if (overrideProjectType) {
+          projectType = overrideProjectType;
+          classification = {
+            primaryType: overrideProjectType,
+            secondaryTypes: [],
+            confidence: 'high',
+            reasoning: ['Project type manually specified'],
+          };
+        } else {
+          classification = classifyProject(stackInfo);
+          projectType = classification.primaryType;
+        }
+      }
+
+      // Get filtered agents and docs based on project type
+      const filteredAgents = disableFiltering ? undefined : getAgentsForProjectType(projectType);
+      const filteredDocs = disableFiltering ? undefined : getDocsForProjectType(projectType);
+
       let docsGenerated = 0;
       let agentsGenerated = 0;
 
@@ -57,7 +94,7 @@ IMPORTANT: After scaffolding, you MUST fill the generated files with actual cont
         docsGenerated = await docGenerator.generateDocumentation(
           repoStructure,
           outputDir,
-          { semantic },
+          { semantic, filteredDocs },
           false // verbose
         );
       }
@@ -68,7 +105,7 @@ IMPORTANT: After scaffolding, you MUST fill the generated files with actual cont
         agentsGenerated = await agentGenerator.generateAgentPrompts(
           repoStructure,
           outputDir,
-          { semantic },
+          { semantic, filteredAgents },
           false // verbose
         );
       }
@@ -92,6 +129,11 @@ IMPORTANT: After scaffolding, you MUST fill the generated files with actual cont
         agentsGenerated,
         outputDir,
         generatedFiles,
+        classification: classification ? {
+          projectType: classification.primaryType,
+          confidence: classification.confidence,
+          reasoning: classification.reasoning,
+        } : undefined,
         nextSteps: [
           'Call fillScaffolding tool to get codebase-aware content for each file',
           'Write the suggestedContent to each file path returned',

@@ -19,6 +19,11 @@ export interface StackInfo {
   isMonorepo: boolean;
   hasDocker: boolean;
   hasCI: boolean;
+  // Extended fields for project classification
+  hasBinField?: boolean;
+  hasMainExport?: boolean;
+  hasTypesField?: boolean;
+  cliLibraries?: string[];
 }
 
 interface DetectionRule {
@@ -31,6 +36,11 @@ interface DetectionRule {
 }
 
 const DETECTION_RULES: DetectionRule[] = [
+  // CLI indicators
+  { file: 'bin/**/*', framework: 'cli' },
+  { file: 'cli.js', framework: 'cli' },
+  { file: 'cli.ts', framework: 'cli' },
+
   // JavaScript/TypeScript
   { file: 'package.json', language: 'javascript' },
   { file: 'tsconfig.json', language: 'typescript' },
@@ -103,6 +113,27 @@ const DETECTION_RULES: DetectionRule[] = [
   { file: 'Package.swift', language: 'swift' },
   { file: '*.xcodeproj', language: 'swift' },
 
+  // Mobile frameworks
+  { file: 'app.json', framework: 'react-native' },
+  { file: 'metro.config.js', framework: 'react-native' },
+  { file: 'metro.config.ts', framework: 'react-native' },
+  { file: 'react-native.config.js', framework: 'react-native' },
+  { file: 'pubspec.yaml', framework: 'flutter' },
+  { file: 'android/app/build.gradle', framework: 'android-native' },
+  { file: 'ios/*.xcworkspace', framework: 'ios-native' },
+  { file: 'capacitor.config.ts', framework: 'capacitor' },
+  { file: 'capacitor.config.json', framework: 'capacitor' },
+  { file: 'ionic.config.json', framework: 'ionic' },
+
+  // Desktop frameworks
+  { file: 'electron.config.js', framework: 'electron' },
+  { file: 'electron-builder.yml', framework: 'electron' },
+  { file: 'electron-builder.json', framework: 'electron' },
+  { file: 'forge.config.js', framework: 'electron' },
+  { file: 'tauri.conf.json', framework: 'tauri' },
+  { file: 'src-tauri/tauri.conf.json', framework: 'tauri' },
+  { file: 'neutralino.config.json', framework: 'neutralino' },
+
   // Elixir
   { file: 'mix.exs', language: 'elixir' },
   { file: 'config/config.exs', framework: 'phoenix' },
@@ -164,6 +195,11 @@ export class StackDetector {
       isMonorepo: false,
       hasDocker: false,
       hasCI: false,
+      // Extended fields
+      hasBinField: false,
+      hasMainExport: false,
+      hasTypesField: false,
+      cliLibraries: [],
     };
 
     // Check detection rules
@@ -218,6 +254,15 @@ export class StackDetector {
 
     // Check for CI
     result.hasCI = await this.hasCI(absolutePath);
+
+    // Analyze package.json for additional indicators
+    const packageInfo = await this.analyzePackageJson(absolutePath);
+    if (packageInfo) {
+      result.hasBinField = packageInfo.hasBin;
+      result.hasMainExport = packageInfo.hasMain;
+      result.hasTypesField = packageInfo.hasTypes;
+      result.cliLibraries = packageInfo.cliLibraries;
+    }
 
     return result;
   }
@@ -346,5 +391,70 @@ export class StackDetector {
     }
 
     return false;
+  }
+
+  /**
+   * Analyze package.json for CLI, library, and other indicators
+   */
+  private async analyzePackageJson(basePath: string): Promise<{
+    hasBin: boolean;
+    hasMain: boolean;
+    hasTypes: boolean;
+    cliLibraries: string[];
+  } | null> {
+    const packageJsonPath = path.join(basePath, 'package.json');
+
+    try {
+      if (!await fs.pathExists(packageJsonPath)) {
+        return null;
+      }
+
+      const packageJson = await fs.readJson(packageJsonPath);
+
+      // Check for bin field (CLI indicator)
+      const hasBin = !!packageJson.bin;
+
+      // Check for main/exports (library indicator)
+      const hasMain = !!(packageJson.main || packageJson.exports || packageJson.module);
+
+      // Check for types field (TypeScript library indicator)
+      const hasTypes = !!(packageJson.types || packageJson.typings);
+
+      // Check for CLI libraries in dependencies
+      const allDeps = {
+        ...packageJson.dependencies,
+        ...packageJson.devDependencies,
+      };
+
+      const CLI_LIBRARIES = [
+        'commander',
+        'yargs',
+        'meow',
+        'inquirer',
+        'prompts',
+        'chalk',
+        'ora',
+        'listr',
+        'listr2',
+        'oclif',
+        'clipanion',
+        'cac',
+        'arg',
+        'minimist',
+        'caporal',
+        'vorpal',
+      ];
+
+      const cliLibraries = CLI_LIBRARIES.filter(lib => lib in allDeps);
+
+      return {
+        hasBin,
+        hasMain,
+        hasTypes,
+        cliLibraries,
+      };
+    } catch {
+      return null;
+    }
   }
 }
