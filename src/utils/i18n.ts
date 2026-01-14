@@ -410,7 +410,45 @@ const englishMessages = {
   'warnings.skill.noTargets': 'No skills found to fill. Run "skill init" first.',
   'info.skill.generated': 'Generated',
   'info.skill.skipped': 'Skipped (already exist)',
-  'info.skill.path': 'Path'
+  'info.skill.path': 'Path',
+  // Quick Sync translations
+  'prompts.main.choice.quickSync': 'Quick Sync',
+  'prompts.quickSync.syncing.agents': 'Syncing agents...',
+  'prompts.quickSync.syncing.skills': 'Exporting skills...',
+  'prompts.quickSync.syncing.docs': 'Checking docs...',
+  'prompts.quickSync.docsOutdated': '{days} days old',
+  'prompts.quickSync.updateDocs': 'Update docs too?',
+  'success.quickSync.complete': 'Sync complete',
+  // Manage submenus
+  'prompts.main.choice.manageSkills': 'Manage Skills',
+  'prompts.main.choice.manageAgents': 'Manage Agents',
+  'prompts.main.choice.settings': 'Settings',
+  'prompts.main.choice.startWorkflow': 'Start Workflow',
+  'prompts.main.choice.createPlan': 'Create Plan',
+  'prompts.main.choice.scaffoldOnly': 'Scaffold only (no AI fill)',
+  'prompts.main.choice.quickSetup': 'Quick Setup (init + fill with AI)',
+  // Agents submenu
+  'prompts.agents.action': 'Agents:',
+  'prompts.agents.choice.sync': 'Sync to targets',
+  'prompts.agents.choice.create': 'Create custom agent',
+  'prompts.agents.choice.list': 'List agents',
+  'prompts.agents.choice.back': 'Back',
+  // Create custom agent
+  'prompts.agent.name': 'Agent name:',
+  'prompts.agent.description': 'Agent description:',
+  'prompts.agent.role': 'Agent role/specialty:',
+  'success.agent.created': 'Created agent: {name}',
+  'spinner.agent.creating': 'Creating agent with AI...',
+  'spinner.agent.created': 'Agent created',
+  // Settings submenu
+  'prompts.settings.action': 'Settings:',
+  'prompts.settings.choice.language': 'Change language',
+  'prompts.settings.choice.back': 'Back',
+  // Compact status
+  'status.compact': 'Docs: {docs} | Agents: {agents} synced | Skills: {skills} active',
+  'status.outdated': 'Docs: {docs} ({days}d old) | Agents: {agents} | Skills: {skills}',
+  'status.new': 'No context found.',
+  'status.unfilled': 'Context: {count} files need filling'
 } as const;
 
 export type TranslationKey = keyof typeof englishMessages;
@@ -824,7 +862,45 @@ const portugueseMessages: TranslationDictionary = {
   'warnings.skill.noTargets': 'Nenhuma skill encontrada para preencher. Execute "skill init" primeiro.',
   'info.skill.generated': 'Geradas',
   'info.skill.skipped': 'Puladas (já existem)',
-  'info.skill.path': 'Caminho'
+  'info.skill.path': 'Caminho',
+  // Quick Sync translations
+  'prompts.main.choice.quickSync': 'Quick Sync',
+  'prompts.quickSync.syncing.agents': 'Sincronizando agents...',
+  'prompts.quickSync.syncing.skills': 'Exportando skills...',
+  'prompts.quickSync.syncing.docs': 'Verificando docs...',
+  'prompts.quickSync.docsOutdated': '{days} dias atrás',
+  'prompts.quickSync.updateDocs': 'Atualizar docs também?',
+  'success.quickSync.complete': 'Sincronização completa',
+  // Manage submenus
+  'prompts.main.choice.manageSkills': 'Gerenciar Skills',
+  'prompts.main.choice.manageAgents': 'Gerenciar Agents',
+  'prompts.main.choice.settings': 'Configurações',
+  'prompts.main.choice.startWorkflow': 'Iniciar Workflow',
+  'prompts.main.choice.createPlan': 'Criar Plano',
+  'prompts.main.choice.scaffoldOnly': 'Apenas scaffold (sem IA)',
+  'prompts.main.choice.quickSetup': 'Setup Rápido (init + fill com IA)',
+  // Agents submenu
+  'prompts.agents.action': 'Agents:',
+  'prompts.agents.choice.sync': 'Sincronizar para targets',
+  'prompts.agents.choice.create': 'Criar agent personalizado',
+  'prompts.agents.choice.list': 'Listar agents',
+  'prompts.agents.choice.back': 'Voltar',
+  // Create custom agent
+  'prompts.agent.name': 'Nome do agent:',
+  'prompts.agent.description': 'Descrição do agent:',
+  'prompts.agent.role': 'Role/especialidade do agent:',
+  'success.agent.created': 'Agent criado: {name}',
+  'spinner.agent.creating': 'Criando agent com IA...',
+  'spinner.agent.created': 'Agent criado',
+  // Settings submenu
+  'prompts.settings.action': 'Configurações:',
+  'prompts.settings.choice.language': 'Mudar idioma',
+  'prompts.settings.choice.back': 'Voltar',
+  // Compact status
+  'status.compact': 'Docs: {docs} | Agents: {agents} synced | Skills: {skills} ativos',
+  'status.outdated': 'Docs: {docs} ({days}d atrás) | Agents: {agents} | Skills: {skills}',
+  'status.new': 'Nenhum contexto encontrado.',
+  'status.unfilled': 'Contexto: {count} arquivos precisam preenchimento'
 };
 
 const dictionaries: Record<Locale, TranslationDictionary> = {
