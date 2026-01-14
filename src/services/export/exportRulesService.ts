@@ -64,16 +64,10 @@ export const EXPORT_PRESETS: Record<string, ExportTarget[]> = {
     { name: 'copilot-instructions', path: '.github/copilot-instructions.md', format: 'single', description: 'GitHub Copilot instructions' },
   ],
   windsurf: [
-    { name: 'windsurfrules', path: '.windsurfrules', format: 'single', description: 'Windsurf rules file' },
+    { name: 'windsurf-rules-dir', path: '.windsurf/rules', format: 'single', description: 'Windsurf rules file' },
   ],
-  cline: [
-    { name: 'clinerules', path: '.clinerules', format: 'single', description: 'Cline rules file' },
-  ],
-  aider: [
-    { name: 'conventions', path: 'CONVENTIONS.md', format: 'single', description: 'Aider conventions file' },
-  ],
-  codex: [
-    { name: 'codex-instructions', path: '.codex/instructions.md', format: 'single', description: 'Codex CLI instructions' },
+  agents: [
+    { name: 'agents-md', path: 'AGENTS.md', format: 'single', description: 'Universal AGENTS.md file' },
   ],
   all: [], // Populated dynamically below
 };

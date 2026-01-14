@@ -2199,6 +2199,7 @@ async function runQuickSync(): Promise<void> {
 
   let agentTargets: string[] | undefined;
   let skillTargets: string[] | undefined;
+  let docTargets: string[] | undefined;
 
   // Step 2: If agents selected, choose targets
   if (components.includes('agents')) {
@@ -2237,6 +2238,26 @@ async function runQuickSync(): Promise<void> {
     skillTargets = targets.length > 0 ? targets : undefined;
   }
 
+  // Step 4: If docs selected, choose targets
+  if (components.includes('docs')) {
+    const { targets } = await inquirer.prompt<{ targets: string[] }>([
+      {
+        type: 'checkbox',
+        name: 'targets',
+        message: t('prompts.quickSync.selectDocTargets'),
+        choices: [
+          { name: '.cursorrules (Cursor AI)', value: 'cursor', checked: true },
+          { name: 'CLAUDE.md (Claude Code)', value: 'claude', checked: true },
+          { name: 'AGENTS.md (Universal)', value: 'agents', checked: true },
+          { name: '.windsurfrules (Windsurf)', value: 'windsurf', checked: false },
+          { name: '.clinerules (Cline)', value: 'cline', checked: false },
+          { name: 'CONVENTIONS.md (Aider)', value: 'aider', checked: false },
+        ],
+      },
+    ]);
+    docTargets = targets.length > 0 ? targets : undefined;
+  }
+
   // Build options based on selections
   const options: QuickSyncOptions = {
     skipAgents: !components.includes('agents'),
@@ -2244,6 +2265,7 @@ async function runQuickSync(): Promise<void> {
     skipDocs: !components.includes('docs'),
     agentTargets,
     skillTargets,
+    docTargets,
     force: false,
     dryRun: false,
     verbose: false,

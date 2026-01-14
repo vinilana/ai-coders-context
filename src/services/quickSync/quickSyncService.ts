@@ -10,7 +10,7 @@ import * as fs from 'fs-extra';
 import type { CLIInterface } from '../../utils/cliUI';
 import type { TranslateFn } from '../../utils/i18n';
 import { SyncService } from '../sync';
-import { SkillExportService } from '../export';
+import { SkillExportService, ExportRulesService } from '../export';
 import { StateDetector } from '../state';
 import { createSkillRegistry } from '../../workflow/skills';
 
@@ -38,6 +38,8 @@ export interface QuickSyncOptions {
   agentTargets?: string[];
   /** Selected skill export targets (e.g., ['claude', 'gemini']). If not set, exports to all. */
   skillTargets?: string[];
+  /** Selected doc export targets (e.g., ['cursor', 'claude']). If not set, exports to all. */
+  docTargets?: string[];
   /** LLM config for docs update */
   llmConfig?: {
     provider?: string;
@@ -143,7 +145,7 @@ export class QuickSyncService {
           // Use selected targets or default to 'all' preset
           const hasCustomTargets = options.skillTargets && options.skillTargets.length > 0;
           const customTargetPaths = hasCustomTargets
-            ? options.skillTargets!.map(t => `.${t}/skills`)
+            ? options.skillTargets!.map(t => path.join(absolutePath, `.${t}`, 'skills'))
             : undefined;
 
           const exportResult = await skillExportService.run(absolutePath, {
@@ -171,7 +173,45 @@ export class QuickSyncService {
       }
     }
 
-    // Step 3: Check docs status
+    // Step 3: Export docs/rules
+    if (!options.skipDocs) {
+      try {
+        this.ui.startSpinner(this.t('prompts.quickSync.syncing.rules'));
+
+        const docsPath = path.join(absolutePath, '.context', 'docs');
+        if (await fs.pathExists(docsPath)) {
+          const exportRulesService = new ExportRulesService({
+            ui: this.ui,
+            t: this.t,
+            version: this.version,
+          });
+
+          const hasCustomTargets = options.docTargets && options.docTargets.length > 0;
+
+          await exportRulesService.run(absolutePath, {
+            source: docsPath,
+            preset: hasCustomTargets ? undefined : 'all',
+            targets: hasCustomTargets ? options.docTargets : undefined,
+            force: options.force,
+            dryRun: options.dryRun,
+          });
+
+          const targetInfo = hasCustomTargets
+            ? `to ${options.docTargets!.join(', ')}`
+            : 'to all targets';
+          this.ui.updateSpinner(`Rules exported ${targetInfo}`, 'success');
+        } else {
+          this.ui.updateSpinner('No docs to export', 'info');
+        }
+      } catch (error) {
+        this.ui.updateSpinner('Failed to export rules', 'fail');
+        result.errors.push(error instanceof Error ? error.message : String(error));
+      } finally {
+        this.ui.stopSpinner();
+      }
+    }
+
+    // Step 4: Check docs status
     if (!options.skipDocs) {
       try {
         this.ui.startSpinner(this.t('prompts.quickSync.syncing.docs'));
