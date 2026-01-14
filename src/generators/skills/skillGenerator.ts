@@ -13,6 +13,7 @@ import {
   createSkillRegistry,
   getBuiltInSkillTemplates,
   SKILL_TO_PHASES,
+  wrapWithFrontmatter,
 } from '../../workflow/skills';
 import { generateSkillContent, getDefaultPhases } from './templates/skillTemplate';
 import { generateSkillsIndex } from './templates/indexTemplate';
@@ -85,7 +86,10 @@ export class SkillGenerator {
         const template = templates[skillName as BuiltInSkillType];
         const phases = SKILL_TO_PHASES[skillName as BuiltInSkillType];
 
-        content = this.wrapWithFrontmatter(skillName, template.description, phases, template.content);
+        content = wrapWithFrontmatter(
+          { name: skillName, description: template.description, phases },
+          template.content
+        );
       } else {
         // Generate empty template for custom skill
         content = generateSkillContent({
@@ -166,25 +170,6 @@ export class SkillGenerator {
     return indexPath;
   }
 
-  /**
-   * Wrap skill content with frontmatter
-   */
-  private wrapWithFrontmatter(
-    name: string,
-    description: string,
-    phases: PrevcPhase[],
-    content: string
-  ): string {
-    const frontmatter = [
-      '---',
-      `name: ${name}`,
-      `description: ${description}`,
-      `phases: [${phases.join(', ')}]`,
-      '---',
-    ].join('\n');
-
-    return `${frontmatter}\n\n${content}`;
-  }
 }
 
 /**

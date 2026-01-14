@@ -15,7 +15,7 @@ import {
   pathExists,
   displayOperationSummary,
 } from '../shared';
-import { createSkillRegistry, Skill, BUILT_IN_SKILLS, getBuiltInSkillTemplates, SKILL_TO_PHASES, BuiltInSkillType } from '../../workflow/skills';
+import { createSkillRegistry, Skill, BUILT_IN_SKILLS, getBuiltInSkillTemplates, SKILL_TO_PHASES, BuiltInSkillType, wrapWithFrontmatter } from '../../workflow/skills';
 
 export type SkillExportServiceDependencies = BaseDependencies;
 
@@ -243,27 +243,7 @@ export class SkillExportService {
    * Generate SKILL.md content with frontmatter
    */
   private generateSkillContent(skill: Skill): string {
-    const frontmatter = [
-      '---',
-      `name: ${skill.metadata.name}`,
-      `description: ${skill.metadata.description}`,
-    ];
-
-    if (skill.metadata.phases?.length) {
-      frontmatter.push(`phases: [${skill.metadata.phases.join(', ')}]`);
-    }
-
-    if (skill.metadata.mode !== undefined) {
-      frontmatter.push(`mode: ${skill.metadata.mode}`);
-    }
-
-    if (skill.metadata.disableModelInvocation !== undefined) {
-      frontmatter.push(`disable-model-invocation: ${skill.metadata.disableModelInvocation}`);
-    }
-
-    frontmatter.push('---');
-
-    return `${frontmatter.join('\n')}\n\n${skill.content}`;
+    return wrapWithFrontmatter(skill.metadata, skill.content);
   }
 
   /**

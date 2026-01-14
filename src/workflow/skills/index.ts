@@ -18,5 +18,15 @@ export {
 export {
   SkillRegistry,
   createSkillRegistry,
-  getBuiltInSkillTemplates,
 } from './skillRegistry';
+
+export {
+  getBuiltInSkillTemplates,
+  SkillTemplate,
+} from './skillTemplates';
+
+export {
+  generateFrontmatter,
+  wrapWithFrontmatter,
+  parseFrontmatter,
+} from './frontmatter';
