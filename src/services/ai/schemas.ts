@@ -35,6 +35,26 @@ export const SearchCodeInputSchema = z.object({
   maxResults: z.number().optional().default(50)
 });
 
+export const GetCodebaseMapInputSchema = z.object({
+  repoPath: z.string().optional().describe('Repository path (defaults to cwd)'),
+  section: z.enum([
+    'all',
+    'stack',
+    'structure',
+    'architecture',
+    'symbols',
+    'symbols.classes',
+    'symbols.interfaces',
+    'symbols.functions',
+    'symbols.types',
+    'symbols.enums',
+    'publicAPI',
+    'dependencies',
+    'stats'
+  ]).default('all').optional()
+    .describe('Section of the codebase map to retrieve. Use specific sections to reduce token usage.')
+});
+
 // =============================================================================
 // Tool Output Schemas
 // =============================================================================
@@ -117,6 +137,14 @@ export const SearchCodeOutputSchema = z.object({
   matches: z.array(CodeMatchSchema).optional(),
   totalMatches: z.number().optional(),
   truncated: z.boolean().optional(),
+  error: z.string().optional()
+});
+
+export const GetCodebaseMapOutputSchema = z.object({
+  success: z.boolean(),
+  section: z.string(),
+  data: z.unknown().optional().describe('The requested section data from codebase-map.json'),
+  mapPath: z.string().optional().describe('Path to the codebase-map.json file'),
   error: z.string().optional()
 });
 
@@ -325,6 +353,8 @@ export type GetFileStructureInput = z.infer<typeof GetFileStructureInputSchema>;
 export type GetFileStructureOutput = z.infer<typeof GetFileStructureOutputSchema>;
 export type SearchCodeInput = z.infer<typeof SearchCodeInputSchema>;
 export type SearchCodeOutput = z.infer<typeof SearchCodeOutputSchema>;
+export type GetCodebaseMapInput = z.infer<typeof GetCodebaseMapInputSchema>;
+export type GetCodebaseMapOutput = z.infer<typeof GetCodebaseMapOutputSchema>;
 export type DocumentationOutput = z.infer<typeof DocumentationOutputSchema>;
 export type AgentPlaybook = z.infer<typeof AgentPlaybookSchema>;
 export type DevelopmentPlan = z.infer<typeof DevelopmentPlanSchema>;

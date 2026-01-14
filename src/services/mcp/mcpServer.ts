@@ -19,7 +19,8 @@ import {
   scaffoldPlanTool,
   fillScaffoldingTool,
   listFilesToFillTool,
-  fillSingleFileTool
+  fillSingleFileTool,
+  getCodebaseMapTool
 } from '../ai/tools';
 import { getToolDescription } from '../ai/toolRegistry';
 import { SemanticContextBuilder, type ContextFormat } from '../semantic/contextBuilder';
@@ -424,7 +425,46 @@ export class AIContextMCPServer {
       };
     });
 
-    this.log('Registered 12 tools');
+    // getCodebaseMap tool - retrieve sections of the codebase map JSON
+    this.server.registerTool('getCodebaseMap', {
+      description: getToolDescription('getCodebaseMap', true),
+      inputSchema: {
+        repoPath: z.string().optional().describe('Repository path (defaults to cwd)'),
+        section: z.enum([
+          'all',
+          'stack',
+          'structure',
+          'architecture',
+          'symbols',
+          'symbols.classes',
+          'symbols.interfaces',
+          'symbols.functions',
+          'symbols.types',
+          'symbols.enums',
+          'publicAPI',
+          'dependencies',
+          'stats'
+        ]).default('all').optional()
+          .describe('Section of the codebase map to retrieve. Use specific sections to reduce token usage.')
+      }
+    }, async ({ repoPath, section }) => {
+      const result = await getCodebaseMapTool.execute!(
+        {
+          repoPath: repoPath || this.options.repoPath || process.cwd(),
+          section
+        },
+        { toolCallId: '', messages: [] }
+      );
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify(result, null, 2)
+        }]
+      };
+    });
+
+    this.log('Registered 13 tools');
 
     // Register PREVC workflow tools
     this.registerWorkflowTools();
