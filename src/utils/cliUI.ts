@@ -31,6 +31,34 @@ export class CLIInterface {
     console.log('');
   }
 
+  /**
+   * Display PREVC workflow explanation with visual diagram
+   */
+  displayPrevcExplanation(): void {
+    const repoUrl = 'https://github.com/ai-coders-academy/ai-coders-context';
+
+    console.log('');
+    console.log(colors.accent(this.t('ui.prevc.title')));
+    console.log(colors.secondaryDim(this.t('ui.prevc.subtitle')));
+    console.log('');
+
+    // Visual PREVC diagram
+    console.log(colors.secondary('  ┌─────────────────────────────────────────────────────────────┐'));
+    console.log(colors.secondary('  │') + colors.primary('  P → R → E → V → C                                         ') + colors.secondary('│'));
+    console.log(colors.secondary('  │                                                             │'));
+    console.log(colors.secondary('  │') + colors.accent('  [P]') + colors.primary('lan      ') + colors.secondaryDim('Define specs before coding                  ') + colors.secondary('│'));
+    console.log(colors.secondary('  │') + colors.accent('  [R]') + colors.primary('eview    ') + colors.secondaryDim('Validate approach with context              ') + colors.secondary('│'));
+    console.log(colors.secondary('  │') + colors.accent('  [E]') + colors.primary('xecute   ') + colors.secondaryDim('Implement following the plan                ') + colors.secondary('│'));
+    console.log(colors.secondary('  │') + colors.accent('  [V]') + colors.primary('alidate  ') + colors.secondaryDim('Test and verify against specs               ') + colors.secondary('│'));
+    console.log(colors.secondary('  │') + colors.accent('  [C]') + colors.primary('onfirm   ') + colors.secondaryDim('Human approval before merge                 ') + colors.secondary('│'));
+    console.log(colors.secondary('  └─────────────────────────────────────────────────────────────┘'));
+    console.log('');
+    console.log(colors.secondaryDim(`  ${this.t('ui.prevc.specDriven')}`));
+    console.log('');
+    console.log(colors.secondaryDim(`  ${symbols.pointer} ${repoUrl}`));
+    console.log('');
+  }
+
   displayProjectInfo(repoPath: string, outputDir: string, mode: string): void {
     console.log(typography.header(this.t('ui.projectConfiguration.title')));
     console.log('');

@@ -908,6 +908,7 @@ async function selectLocale(showWelcome: boolean): Promise<void> {
 
   if (showWelcome) {
     ui.displayWelcome(VERSION);
+    ui.displayPrevcExplanation();
   }
 }
 
