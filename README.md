@@ -379,6 +379,7 @@ Once configured, your AI assistant will have access to:
 | `getSkillContent` | Get full SKILL.md content by slug |
 | `getSkillsForPhase` | Get skills relevant to a PREVC phase |
 | `scaffoldSkills` | Generate skill files in .context/skills/ |
+| `fillSkills` | Fill skills with AI-generated project-specific content |
 | `exportSkills` | Export skills to Claude/Gemini/Codex directories |
 
 ### Skills (On-Demand Expertise)
@@ -400,6 +401,7 @@ Skills are task-specific procedures that AI agents activate when needed:
 
 ```bash
 npx @ai-coders/context skill init           # Initialize skills
+npx @ai-coders/context skill fill           # Fill skills with AI (project-specific content)
 npx @ai-coders/context skill list           # List available skills
 npx @ai-coders/context skill export         # Export to AI tools
 npx @ai-coders/context skill create my-skill # Create custom skill

@@ -14,9 +14,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `SkillRegistry` class for skill discovery and management
   - `SkillGenerator` for scaffolding SKILL.md files
   - `SkillExportService` for exporting to `.claude/skills/`, `.gemini/skills/`, `.codex/skills/`
-  - CLI commands: `skill init`, `skill list`, `skill export`, `skill create`
-  - MCP tools: `listSkills`, `getSkillContent`, `getSkillsForPhase`, `scaffoldSkills`, `exportSkills`
+  - CLI commands: `skill init`, `skill list`, `skill export`, `skill create`, `skill fill`
+  - MCP tools: `listSkills`, `getSkillContent`, `getSkillsForPhase`, `scaffoldSkills`, `exportSkills`, `fillSkills`
   - Skills are mapped to PREVC phases for workflow integration
+
+- **Skill Fill Feature**: AI-powered skill personalization
+  - `skill fill` CLI command personalizes skills with project-specific content
+  - `fillSkills` MCP tool for programmatic skill filling
+  - `SkillAgent` - New AI agent for skill personalization (follows PlaybookAgent pattern)
+  - `buildSkillContext()` method in SemanticContextBuilder for skill-specific context
+  - Uses docs and agents context for richer personalization
+  - Semantic analysis mode for token-efficient generation
+  - i18n support for English and Portuguese
 
 - **Plan-Workflow Integration**: Link plans to PREVC workflow phases
   - `PlanLinker` class for managing plan-workflow relationships
@@ -62,11 +71,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Technical Details
 
 #### New Files
+- `src/services/ai/agents/skillAgent.ts` - AI agent for skill personalization
+- `src/services/fill/skillFillService.ts` - Service orchestrating skill fill operations
 - `src/workflow/plans/types.ts` - Plan-workflow integration types
 - `src/workflow/plans/planLinker.ts` - Plan-workflow linking service
 - `src/workflow/plans/index.ts` - Plans module exports
 - `src/workflow/agents/agentRegistry.ts` - Centralized agent registry
 - `src/workflow/agents/index.ts` - Agents module exports
+
+#### Modified Files
+- `src/services/semantic/contextBuilder.ts` - Added `buildSkillContext()` method
+- `src/services/ai/prompts/sharedPrompts.ts` - Added `getSkillAgentPrompt()`
+- `src/services/ai/agentEvents.ts` - Added 'skill' to AgentType
+- `src/services/mcp/mcpServer.ts` - Added `fillSkills` MCP tool
+- `src/utils/i18n.ts` - Added skill fill translations (EN/PT)
 
 #### New Exports from `workflow` module
 ```typescript

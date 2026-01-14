@@ -9,6 +9,7 @@ A comprehensive guide on how to use `@ai-coders/context` for AI-assisted softwar
 - [Getting Started](#getting-started)
 - [Core Features](#core-features)
 - [PREVC Workflow](#prevc-workflow)
+- [Skills System](#skills-system)
 - [Agent Orchestration](#agent-orchestration)
 - [MCP Integration](#mcp-integration)
 - [Best Practices](#best-practices)
@@ -297,6 +298,112 @@ docs:
 
 ---
 
+## Skills System
+
+Skills are on-demand expertise modules that AI agents can activate when needed. Unlike agent playbooks (which define persistent behavior), skills are task-specific procedures.
+
+### Built-in Skills
+
+| Skill | Description | Phases |
+|-------|-------------|--------|
+| `commit-message` | Generate conventional commit messages | E, C |
+| `pr-review` | Review PRs against coding standards | R, V |
+| `code-review` | Code quality and best practices review | R, V |
+| `test-generation` | Generate test cases and suites | E, V |
+| `documentation` | Generate/update documentation | P, C |
+| `refactoring` | Safe refactoring procedures | E |
+| `bug-investigation` | Bug investigation workflow | E, V |
+| `feature-breakdown` | Break features into tasks | P |
+| `api-design` | Design RESTful APIs | P, R |
+| `security-audit` | Security review checklist | R, V |
+
+### Skill Commands
+
+```bash
+# Initialize skills (creates .context/skills/)
+npx @ai-coders/context skill init
+
+# Fill skills with project-specific content using AI
+npx @ai-coders/context skill fill
+
+# List all available skills
+npx @ai-coders/context skill list
+
+# Export skills to AI tools (.claude/skills/, .gemini/skills/, .codex/skills/)
+npx @ai-coders/context skill export
+
+# Create a custom skill
+npx @ai-coders/context skill create my-skill
+```
+
+### Skill Fill Options
+
+The `skill fill` command personalizes skills with project-specific content:
+
+```bash
+# Fill all skills
+npx @ai-coders/context skill fill .
+
+# Fill specific skills only
+npx @ai-coders/context skill fill . --skills commit-message pr-review
+
+# Use a specific provider/model
+npx @ai-coders/context skill fill . --provider anthropic --model claude-sonnet-4-20250514
+
+# Enable LSP for deeper semantic analysis
+npx @ai-coders/context skill fill . --use-lsp
+
+# Limit number of skills to fill
+npx @ai-coders/context skill fill . --limit 3
+```
+
+### How Skill Fill Works
+
+1. **Discovers scaffolded skills** from `.context/skills/`
+2. **Loads context** from docs (`.context/docs/`) and agents (`.context/agents/`)
+3. **Performs semantic analysis** of your codebase
+4. **Generates personalized content** with project-specific examples and references
+
+### Skill Structure
+
+Each skill is stored in `.context/skills/{skill-name}/SKILL.md`:
+
+```markdown
+---
+name: commit-message
+description: Generate conventional commit messages
+phases: [E, C]
+---
+
+# Commit Message Skill
+
+## When to Use
+Use this skill when creating Git commits...
+
+## Instructions
+1. Analyze the staged changes
+2. Follow conventional commit format
+3. Reference project-specific patterns...
+
+## Examples
+Based on your project's patterns:
+- `feat(auth): add OAuth2 login flow`
+- `fix(api): resolve rate limiting issue`
+```
+
+### MCP Tools for Skills
+
+| Tool | Description |
+|------|-------------|
+| `listSkills` | List all available skills |
+| `getSkillContent` | Get full SKILL.md content |
+| `getSkillsForPhase` | Get skills for a PREVC phase |
+| `scaffoldSkills` | Create skill scaffolds |
+| `fillSkills` | Fill skills with AI-generated content |
+| `exportSkills` | Export to AI tool directories |
+
+---
+
 ## Agent Orchestration
 
 The orchestration system maps tasks to specialized AI agents.
@@ -564,6 +671,12 @@ npx @ai-coders/context plan "feature-name"
 npx @ai-coders/context workflow init "name"
 npx @ai-coders/context workflow status
 npx @ai-coders/context workflow advance
+
+# Skills management
+npx @ai-coders/context skill init
+npx @ai-coders/context skill fill
+npx @ai-coders/context skill list
+npx @ai-coders/context skill export
 
 # Start MCP server
 npx @ai-coders/context mcp
