@@ -294,6 +294,19 @@ Once configured, your AI assistant will have access to:
 | `getPhaseDocs` | Get documentation for a PREVC phase |
 | `listAgentTypes` | List all 14 available agent types |
 
+#### Plan-Workflow Tools
+
+| Tool | Description |
+|------|-------------|
+| `linkPlan` | Link a plan file to current workflow |
+| `getLinkedPlans` | Get all linked plans for workflow |
+| `getPlanDetails` | Get plan details with agent lineup |
+| `getPlansForPhase` | Get plans for a PREVC phase |
+| `updatePlanPhase` | Update plan phase status |
+| `recordDecision` | Record a plan decision |
+| `discoverAgents` | Discover all agents (built-in + custom) |
+| `getAgentInfo` | Get metadata for a specific agent |
+
 ### Agent Types
 
 The orchestration system maps tasks to specialized agents:
