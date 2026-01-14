@@ -551,11 +551,11 @@ program
 // Skill Commands
 const skillCommand = program
   .command('skill')
-  .description('Manage skills (on-demand expertise for AI agents)');
+  .description(t('commands.skill.description'));
 
 skillCommand
   .command('init')
-  .description('Initialize skills directory with built-in skills')
+  .description(t('commands.skill.init.description'))
   .argument('[repo-path]', 'Repository path', process.cwd())
   .option('-f, --force', 'Overwrite existing files')
   .option('--skills <skills...>', 'Specific skills to scaffold')
@@ -581,7 +581,7 @@ skillCommand
 
 skillCommand
   .command('list')
-  .description('List available skills')
+  .description(t('commands.skill.list.description'))
   .argument('[repo-path]', 'Repository path', process.cwd())
   .option('--json', 'Output as JSON')
   .action(async (repoPath: string, options: any) => {
@@ -624,7 +624,7 @@ skillCommand
 
 skillCommand
   .command('export')
-  .description('Export skills to AI tool directories (Claude, Gemini, Codex)')
+  .description(t('commands.skill.export.description'))
   .argument('[repo-path]', 'Repository path', process.cwd())
   .option('-p, --preset <preset>', 'Export preset: claude, gemini, codex, all', 'all')
   .option('-f, --force', 'Overwrite existing files')
@@ -659,7 +659,7 @@ skillCommand
 
 skillCommand
   .command('create <name>')
-  .description('Create a new custom skill')
+  .description(t('commands.skill.create.description'))
   .argument('[repo-path]', 'Repository path', process.cwd())
   .option('-d, --description <text>', 'Skill description')
   .option('--phases <phases...>', 'PREVC phases (P, R, E, V, C)')
@@ -911,7 +911,7 @@ async function selectLocale(showWelcome: boolean): Promise<void> {
   }
 }
 
-type InteractiveAction = 'scaffold' | 'fill' | 'plan' | 'syncAgents' | 'update' | 'workflow' | 'changeLanguage' | 'exit';
+type InteractiveAction = 'scaffold' | 'fill' | 'plan' | 'syncAgents' | 'update' | 'workflow' | 'skills' | 'changeLanguage' | 'exit';
 type StateAction = 'create' | 'fill' | 'menu' | 'exit';
 
 async function runInteractive(): Promise<void> {
@@ -1057,6 +1057,7 @@ async function runFullMenu(daysBehind?: number): Promise<void> {
     const choices = [
       { name: t('prompts.main.choice.plan'), value: 'plan' as InteractiveAction },
       { name: t('prompts.main.choice.workflow'), value: 'workflow' as InteractiveAction },
+      { name: t('prompts.main.choice.skills'), value: 'skills' as InteractiveAction },
       { name: updateLabel, value: 'fill' as InteractiveAction },
       { name: t('prompts.main.choice.syncAgents'), value: 'syncAgents' as InteractiveAction },
       { name: t('prompts.main.choice.rescaffold'), value: 'scaffold' as InteractiveAction },
@@ -1093,6 +1094,8 @@ async function runFullMenu(daysBehind?: number): Promise<void> {
       await runInteractiveSync();
     } else if (action === 'workflow') {
       await runInteractiveWorkflow();
+    } else if (action === 'skills') {
+      await runInteractiveSkills();
     }
 
     ui.displayInfo(
@@ -1801,6 +1804,155 @@ async function runInteractiveWorkflow(): Promise<void> {
       }
     }
     // 'status' just loops and refreshes
+  }
+}
+
+type SkillAction = 'init' | 'list' | 'export' | 'create' | 'back';
+
+async function runInteractiveSkills(): Promise<void> {
+  const projectPath = process.cwd();
+
+  let continueMenu = true;
+  while (continueMenu) {
+    const { action } = await inquirer.prompt<{ action: SkillAction }>([
+      {
+        type: 'list',
+        name: 'action',
+        message: t('prompts.skill.action'),
+        choices: [
+          { name: t('prompts.skill.action.init'), value: 'init' },
+          { name: t('prompts.skill.action.list'), value: 'list' },
+          { name: t('prompts.skill.action.export'), value: 'export' },
+          { name: t('prompts.skill.action.create'), value: 'create' },
+          { name: t('prompts.skill.action.back'), value: 'back' }
+        ]
+      }
+    ]);
+
+    if (action === 'back') {
+      continueMenu = false;
+      break;
+    }
+
+    if (action === 'init') {
+      try {
+        const { createSkillGenerator } = await import('./generators/skills');
+        const generator = createSkillGenerator({ repoPath: projectPath });
+        const result = await generator.generate({});
+
+        ui.displaySuccess(t('success.skill.initialized', { path: result.skillsDir }));
+        ui.displayInfo(t('info.skill.generated'), result.generatedSkills.join(', ') || 'none');
+        if (result.skippedSkills.length > 0) {
+          ui.displayInfo(t('info.skill.skipped'), result.skippedSkills.join(', '));
+        }
+      } catch (error) {
+        ui.displayError(t('errors.skill.initFailed'), error as Error);
+      }
+    } else if (action === 'list') {
+      try {
+        const { createSkillRegistry, BUILT_IN_SKILLS } = await import('./workflow/skills');
+        const registry = createSkillRegistry(projectPath);
+        const discovered = await registry.discoverAll();
+
+        console.log('\nBuilt-in Skills:');
+        for (const skill of discovered.builtIn) {
+          const scaffolded = discovered.all.find(s => s.slug === skill.slug && s.path.includes('.context'));
+          const status = scaffolded ? '[scaffolded]' : '[available]';
+          console.log(`  ${skill.slug} ${status}`);
+          console.log(`    ${skill.metadata.description}`);
+        }
+
+        if (discovered.custom.length > 0) {
+          console.log('\nCustom Skills:');
+          for (const skill of discovered.custom) {
+            console.log(`  ${skill.slug}`);
+            console.log(`    ${skill.metadata.description}`);
+          }
+        }
+
+        console.log(`\nTotal: ${discovered.all.length} skills (${discovered.builtIn.length} built-in, ${discovered.custom.length} custom)\n`);
+      } catch (error) {
+        ui.displayError(t('errors.skill.listFailed'), error as Error);
+      }
+    } else if (action === 'export') {
+      try {
+        const { preset } = await inquirer.prompt<{ preset: string }>([
+          {
+            type: 'list',
+            name: 'preset',
+            message: t('prompts.skill.exportPreset'),
+            choices: [
+              { name: t('prompts.skill.exportPreset.all'), value: 'all' },
+              { name: t('prompts.skill.exportPreset.claude'), value: 'claude' },
+              { name: t('prompts.skill.exportPreset.gemini'), value: 'gemini' },
+              { name: t('prompts.skill.exportPreset.codex'), value: 'codex' }
+            ],
+            default: 'all'
+          }
+        ]);
+
+        const { SkillExportService } = await import('./services/export/skillExportService');
+        const exportService = new SkillExportService({
+          ui,
+          t,
+          version: VERSION,
+        });
+
+        const result = await exportService.run(projectPath, {
+          preset,
+          includeBuiltIn: true,
+        });
+
+        ui.displaySuccess(t('success.skill.exported', {
+          count: String(result.skillsExported.length),
+          targets: String(result.targets.length)
+        }));
+      } catch (error) {
+        ui.displayError(t('errors.skill.exportFailed'), error as Error);
+      }
+    } else if (action === 'create') {
+      try {
+        const { name, description, phases } = await inquirer.prompt<{
+          name: string;
+          description: string;
+          phases: string;
+        }>([
+          {
+            type: 'input',
+            name: 'name',
+            message: t('prompts.skill.name'),
+            validate: (input: string) => input.trim().length > 0 || 'Name is required'
+          },
+          {
+            type: 'input',
+            name: 'description',
+            message: t('prompts.skill.description'),
+            default: ''
+          },
+          {
+            type: 'input',
+            name: 'phases',
+            message: t('prompts.skill.phases'),
+            default: 'E'
+          }
+        ]);
+
+        const phaseArray = phases.split(',').map(p => p.trim().toUpperCase()).filter(p => ['P', 'R', 'E', 'V', 'C'].includes(p));
+
+        const { createSkillGenerator } = await import('./generators/skills');
+        const generator = createSkillGenerator({ repoPath: projectPath });
+        const skillPath = await generator.generateCustomSkill({
+          name: name.trim(),
+          description: description.trim() || `TODO: Describe when to use ${name}`,
+          phases: phaseArray as any,
+        });
+
+        ui.displaySuccess(t('success.skill.created', { name }));
+        ui.displayInfo(t('info.skill.path'), skillPath);
+      } catch (error) {
+        ui.displayError(t('errors.skill.createFailed'), error as Error);
+      }
+    }
   }
 }
 
