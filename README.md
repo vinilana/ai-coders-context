@@ -16,7 +16,7 @@ Every AI coding tool invented its own way to organize context:
 .cursor/rules/          # Cursor
 .claude/                # Claude Code
 .windsurf/rules/        # Windsurf
-.github/copilot/        # Copilot
+.github/agents/         # Copilot
 .cline/                 # Cline
 AGENTS.md               # Codex
 ```
