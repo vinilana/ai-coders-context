@@ -115,3 +115,14 @@ export {
   AgentLineupEntry,
   PLAN_PHASE_TO_PREVC,
 } from './plans';
+
+// Agent Registry
+export {
+  BUILT_IN_AGENTS,
+  BuiltInAgentType,
+  AgentMetadata,
+  DiscoveredAgents,
+  isBuiltInAgent,
+  AgentRegistry,
+  createAgentRegistry,
+} from './agents';
