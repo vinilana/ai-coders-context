@@ -35,14 +35,18 @@ One `.context/` directory. Works everywhere.
 └── skills/         # On-demand expertise (commit-message, pr-review, etc.)
 ```
 
-Export to any tool with a single command:
-
-```bash
-npx @ai-coders/context export-rules --preset all    # Export to all tools
-npx @ai-coders/context skill export --preset all    # Export skills to Claude/Gemini/Codex
-```
-
+Export to any tool.
 **Write once. Use anywhere. No boilerplate.**
+
+
+## Connect with Us
+
+Built by [AI Coders Academy](http://aicoders.academy/) — Learn AI-assisted development and become a more productive developer.
+
+- [AI Coders Academy](http://aicoders.academy/) — Courses and resources for AI-powered coding
+- [YouTube Channel](https://www.youtube.com/@aicodersacademy) — Tutorials, demos, and best practices
+- [Connect with Vini](https://www.linkedin.com/in/viniciuslanadepaula/) — Creator of @ai-coders/context
+
 
 ## Why PREVC?
 
@@ -63,34 +67,30 @@ That's it. The wizard detects what needs to be done.
 
 ## What it does
 
-1. **Creates documentation** — Structured docs from your codebase
-2. **Generates playbooks** — Guides for AI agents (Claude, GPT, etc.)
-3. **Keeps it updated** — Detects code changes and suggests updates
+1. **Creates documentation** — Structured docs from your codebase (architecture, data flow, decisions)
+2. **Generates agent playbooks** — 14 specialized AI agents (code-reviewer, bug-fixer, architect, etc.)
+3. **Manages workflows** — PREVC process with scale detection and visual dashboards
+4. **Provides skills** — On-demand expertise (commit messages, PR reviews, security audits)
+5. **Syncs everywhere** — Export to Cursor, Claude, Copilot, Windsurf, Cline, Codex, and more
+6. **Keeps it updated** — Detects code changes and suggests documentation updates
 
 ## Quick Start
 
+1. Install the MCP
+2. Prompt to the agent:
 ```bash
-npx @ai-coders/context start "my-feature"  # One command does it all
+init the context
 ```
-
-This single command:
-1. Detects your tech stack (TypeScript, Python, etc.)
-2. Creates documentation structure
-3. Fills docs with AI (if API key available)
-4. Starts a PREVC workflow with appropriate scale
-
-## For automation
-
+3. This will setup the context and fill it according the the codebase
+4. With the context ready prompt
 ```bash
-npx @ai-coders/context init .              # Create structure
-npx @ai-coders/context fill .              # Fill with AI
-npx @ai-coders/context update              # Update outdated docs
-npx @ai-coders/context plan name           # Create work plan
-npx @ai-coders/context workflow            # Manage PREVC workflow
-npx @ai-coders/context report              # Visual progress dashboard
-npx @ai-coders/context export-rules        # Export rules to AI tools
-npx @ai-coders/context quick-sync          # Sync all to AI tools at once
+plan [YOUR TASK HERE] using ai-context
 ```
+5. After planned, prompt
+```bash
+start the workflow
+```
+6. That's it!
 
 ## PREVC Workflow System
 
@@ -122,52 +122,10 @@ V: All 15 tests pass. Security audit complete.
 C: Deployed. Docs updated. Ready for review.
 ```
 
-### Workflow Commands
+## Documentation
 
-```bash
-npx @ai-coders/context workflow init "feature-name"  # Start new workflow
-npx @ai-coders/context workflow status               # View current status
-npx @ai-coders/context workflow advance              # Move to next phase
-```
+- [User Guide](./docs/GUIDE.md) — Complete usage guide
 
-### Workflow Templates
-
-Use templates to quickly start common workflows:
-
-```bash
-npx @ai-coders/context start "fix-login" --template hotfix   # Quick fix (E → V)
-npx @ai-coders/context start "add-auth" --template feature   # Feature (P → R → E → V)
-npx @ai-coders/context start "v2.0" --template mvp           # Full (P → R → E → V → C)
-```
-
-### Visual Dashboard
-
-```bash
-npx @ai-coders/context report
-```
-
-```
-╭──────────────────────────────────────────────────╮
-│                   my-feature                     │
-│                    [MEDIUM]                      │
-├──────────────────────────────────────────────────┤
-│       ████████████████████░░░░░░░░░░░░░░░        │
-│       Progress: 40% (2/5 phases)                 │
-├──────────────────────────────────────────────────┤
-│         ✓ P → ✓ R → ● E → ○ V → ○ C              │
-│                     ↑ Current: Execution         │
-╰──────────────────────────────────────────────────╯
-```
-
-### Export Rules (Bidirectional Sync)
-
-Export your `.context/docs` rules to AI tool directories:
-
-```bash
-npx @ai-coders/context export-rules --preset all       # Export to all tools
-npx @ai-coders/context export-rules --preset cursor    # Export to .cursorrules
-npx @ai-coders/context export-rules --preset claude    # Export to CLAUDE.md
-```
 
 ### Scale-Adaptive Routing
 
@@ -181,23 +139,13 @@ The system automatically detects project scale and adjusts the workflow:
 | LARGE | P → R → E → V → C | Full products |
 | ENTERPRISE | All + extras | Systems with compliance |
 
-### Quick Sync
-
-Sync agents, skills, and documentation to all AI tools at once:
-
-```bash
-npx @ai-coders/context quick-sync                           # Sync everything
-npx @ai-coders/context quick-sync --components agents       # Sync only agents
-npx @ai-coders/context quick-sync --targets claude,cursor   # Specific tools only
-```
-
-**Components:** `agents`, `skills`, `docs` (or `all`)
-**Targets:** `claude`, `cursor`, `github`, `windsurf`, `cline`, `codex`, `aider` (or `all`)
-
-## Requirements
+## Requirements for the CLI
 
 - Node.js 20+
 - API key from a supported provider (for AI features)
+
+**If you are using throught MCP you don't need to setup an API key from a supported provider, your AI agent will use it's own LLM.**
+
 
 ## Supported Providers
 
@@ -452,10 +400,6 @@ The orchestration system maps tasks to specialized agents:
 | `mobile-specialist` | Mobile applications |
 | `refactoring-specialist` | Code structure improvements |
 
-## Documentation
-
-- [User Guide](./docs/GUIDE.md) — Complete usage guide
-- [Development Guide](./AGENTS.md) — Development guidelines
 
 ## License
 
