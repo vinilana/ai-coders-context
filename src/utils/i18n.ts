@@ -413,6 +413,13 @@ const englishMessages = {
   'info.skill.path': 'Path',
   // Quick Sync translations
   'prompts.main.choice.quickSync': 'Quick Sync',
+  'prompts.quickSync.selectComponents': 'Select components to sync:',
+  'prompts.quickSync.components.agents': 'Agents',
+  'prompts.quickSync.components.skills': 'Skills',
+  'prompts.quickSync.components.docs': 'Documentation',
+  'prompts.quickSync.noComponentsSelected': 'No components selected',
+  'prompts.quickSync.selectAgentTargets': 'Select agent sync targets:',
+  'prompts.quickSync.selectSkillTargets': 'Select skill export targets:',
   'prompts.quickSync.syncing.agents': 'Syncing agents...',
   'prompts.quickSync.syncing.skills': 'Exporting skills...',
   'prompts.quickSync.syncing.docs': 'Checking docs...',
@@ -448,7 +455,9 @@ const englishMessages = {
   'status.compact': 'Docs: {docs} | Agents: {agents} synced | Skills: {skills} active',
   'status.outdated': 'Docs: {docs} ({days}d old) | Agents: {agents} | Skills: {skills}',
   'status.new': 'No context found.',
-  'status.unfilled': 'Context: {count} files need filling'
+  'status.unfilled': 'Context: {count} files need filling',
+  // Hit Enter / Press Enter
+  'prompts.pressEnter': 'Press Enter to continue...'
 } as const;
 
 export type TranslationKey = keyof typeof englishMessages;
@@ -865,6 +874,13 @@ const portugueseMessages: TranslationDictionary = {
   'info.skill.path': 'Caminho',
   // Quick Sync translations
   'prompts.main.choice.quickSync': 'Quick Sync',
+  'prompts.quickSync.selectComponents': 'Selecione os componentes para sincronizar:',
+  'prompts.quickSync.components.agents': 'Agents',
+  'prompts.quickSync.components.skills': 'Skills',
+  'prompts.quickSync.components.docs': 'Documentação',
+  'prompts.quickSync.noComponentsSelected': 'Nenhum componente selecionado',
+  'prompts.quickSync.selectAgentTargets': 'Selecione os destinos para agents:',
+  'prompts.quickSync.selectSkillTargets': 'Selecione os destinos para skills:',
   'prompts.quickSync.syncing.agents': 'Sincronizando agents...',
   'prompts.quickSync.syncing.skills': 'Exportando skills...',
   'prompts.quickSync.syncing.docs': 'Verificando docs...',
@@ -900,7 +916,9 @@ const portugueseMessages: TranslationDictionary = {
   'status.compact': 'Docs: {docs} | Agents: {agents} synced | Skills: {skills} ativos',
   'status.outdated': 'Docs: {docs} ({days}d atrás) | Agents: {agents} | Skills: {skills}',
   'status.new': 'Nenhum contexto encontrado.',
-  'status.unfilled': 'Contexto: {count} arquivos precisam preenchimento'
+  'status.unfilled': 'Contexto: {count} arquivos precisam preenchimento',
+  // Hit Enter / Press Enter
+  'prompts.pressEnter': 'Pressione Enter para continuar...'
 };
 
 const dictionaries: Record<Locale, TranslationDictionary> = {

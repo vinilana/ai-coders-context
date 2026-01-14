@@ -26,7 +26,7 @@ import { StartService } from './services/start';
 import { ExportRulesService, EXPORT_PRESETS } from './services/export';
 import { ReportService } from './services/report';
 import { StackDetector } from './services/stack';
-import { QuickSyncService } from './services/quickSync';
+import { QuickSyncService, QuickSyncOptions } from './services/quickSync';
 import { AutoAdvanceDetector } from './services/workflow/autoAdvance';
 import { getScaleName, PHASE_NAMES_PT, PHASE_NAMES_EN, ROLE_DISPLAY_NAMES, ROLE_DISPLAY_NAMES_EN, type PrevcRole, ProjectScale } from './workflow';
 import { DEFAULT_MODELS, getApiKeyFromEnv } from './services/ai/providerFactory';
@@ -977,7 +977,7 @@ async function runInteractive(): Promise<void> {
     {
       type: 'input',
       name: 'continue',
-      message: 'Press Enter to continue...',
+      message: t('prompts.pressEnter'),
     },
   ]);
 
@@ -2116,6 +2116,77 @@ async function runInteractiveSkills(): Promise<void> {
 async function runQuickSync(): Promise<void> {
   const projectPath = process.cwd();
 
+  // Step 1: Select components to sync
+  const { components } = await inquirer.prompt<{ components: string[] }>([
+    {
+      type: 'checkbox',
+      name: 'components',
+      message: t('prompts.quickSync.selectComponents'),
+      choices: [
+        { name: t('prompts.quickSync.components.agents'), value: 'agents', checked: true },
+        { name: t('prompts.quickSync.components.skills'), value: 'skills', checked: true },
+        { name: t('prompts.quickSync.components.docs'), value: 'docs', checked: true },
+      ],
+    },
+  ]);
+
+  if (components.length === 0) {
+    ui.displayWarning(t('prompts.quickSync.noComponentsSelected'));
+    return;
+  }
+
+  let agentTargets: string[] | undefined;
+  let skillTargets: string[] | undefined;
+
+  // Step 2: If agents selected, choose targets
+  if (components.includes('agents')) {
+    const { targets } = await inquirer.prompt<{ targets: string[] }>([
+      {
+        type: 'checkbox',
+        name: 'targets',
+        message: t('prompts.quickSync.selectAgentTargets'),
+        choices: [
+          { name: '.claude/agents (Claude Code)', value: 'claude', checked: true },
+          { name: '.github/agents (GitHub Copilot)', value: 'github', checked: true },
+          { name: '.cursor/agents (Cursor AI)', value: 'cursor', checked: false },
+          { name: '.windsurf/agents (Windsurf/Codeium)', value: 'windsurf', checked: false },
+          { name: '.cline/agents (Cline)', value: 'cline', checked: false },
+          { name: '.continue/agents (Continue.dev)', value: 'continue', checked: false },
+        ],
+      },
+    ]);
+    agentTargets = targets.length > 0 ? targets : undefined;
+  }
+
+  // Step 3: If skills selected, choose targets
+  if (components.includes('skills')) {
+    const { targets } = await inquirer.prompt<{ targets: string[] }>([
+      {
+        type: 'checkbox',
+        name: 'targets',
+        message: t('prompts.quickSync.selectSkillTargets'),
+        choices: [
+          { name: '.claude/skills (Claude Code)', value: 'claude', checked: true },
+          { name: '.gemini/skills (Gemini CLI)', value: 'gemini', checked: true },
+          { name: '.codex/skills (Codex CLI)', value: 'codex', checked: true },
+        ],
+      },
+    ]);
+    skillTargets = targets.length > 0 ? targets : undefined;
+  }
+
+  // Build options based on selections
+  const options: QuickSyncOptions = {
+    skipAgents: !components.includes('agents'),
+    skipSkills: !components.includes('skills'),
+    skipDocs: !components.includes('docs'),
+    agentTargets,
+    skillTargets,
+    force: false,
+    dryRun: false,
+    verbose: false,
+  };
+
   const quickSyncService = new QuickSyncService({
     ui,
     t,
@@ -2123,11 +2194,7 @@ async function runQuickSync(): Promise<void> {
     defaultModel: DEFAULT_MODEL,
   });
 
-  const result = await quickSyncService.run(projectPath, {
-    force: false,
-    dryRun: false,
-    verbose: false,
-  });
+  const result = await quickSyncService.run(projectPath, options);
 
   // If docs are outdated, ask if user wants to update
   if (!result.docsUpdated) {

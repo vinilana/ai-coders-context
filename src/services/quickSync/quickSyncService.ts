@@ -34,6 +34,10 @@ export interface QuickSyncOptions {
   dryRun?: boolean;
   /** Verbose output */
   verbose?: boolean;
+  /** Selected agent sync targets (e.g., ['claude', 'github']). If not set, syncs to all. */
+  agentTargets?: string[];
+  /** Selected skill export targets (e.g., ['claude', 'gemini']). If not set, exports to all. */
+  skillTargets?: string[];
   /** LLM config for docs update */
   llmConfig?: {
     provider?: string;
@@ -89,10 +93,16 @@ export class QuickSyncService {
             version: this.version,
           });
 
-          // Sync to common targets (Claude + GitHub)
+          // Use selected targets or default to 'all' preset
+          const hasCustomTargets = options.agentTargets && options.agentTargets.length > 0;
+          const customTargetPaths = hasCustomTargets
+            ? options.agentTargets!.map(t => path.join(absolutePath, `.${t}`, 'agents'))
+            : undefined;
+
           await syncService.run({
             source: agentsPath,
-            preset: 'all',
+            preset: hasCustomTargets ? undefined : 'all',
+            target: customTargetPaths,
             force: options.force,
             dryRun: options.dryRun,
             verbose: false,
@@ -102,7 +112,10 @@ export class QuickSyncService {
           const files = await fs.readdir(agentsPath);
           result.agentsSynced = files.filter(f => f.endsWith('.md')).length;
 
-          this.ui.updateSpinner(`${result.agentsSynced} agents synced`, 'success');
+          const targetInfo = hasCustomTargets
+            ? `to ${options.agentTargets!.join(', ')}`
+            : 'to all targets';
+          this.ui.updateSpinner(`${result.agentsSynced} agents synced ${targetInfo}`, 'success');
         } else {
           this.ui.updateSpinner('No agents to sync', 'info');
         }
@@ -127,8 +140,15 @@ export class QuickSyncService {
             version: this.version,
           });
 
+          // Use selected targets or default to 'all' preset
+          const hasCustomTargets = options.skillTargets && options.skillTargets.length > 0;
+          const customTargetPaths = hasCustomTargets
+            ? options.skillTargets!.map(t => `.${t}/skills`)
+            : undefined;
+
           const exportResult = await skillExportService.run(absolutePath, {
-            preset: 'all',
+            preset: hasCustomTargets ? undefined : 'all',
+            targets: customTargetPaths,
             force: options.force,
             dryRun: options.dryRun,
             verbose: false,
@@ -136,7 +156,10 @@ export class QuickSyncService {
           });
 
           result.skillsExported = exportResult.skillsExported.length;
-          this.ui.updateSpinner(`${result.skillsExported} skills exported`, 'success');
+          const targetInfo = hasCustomTargets
+            ? `to ${options.skillTargets!.join(', ')}`
+            : 'to all targets';
+          this.ui.updateSpinner(`${result.skillsExported} skills exported ${targetInfo}`, 'success');
         } else {
           this.ui.updateSpinner('No skills to export', 'info');
         }
