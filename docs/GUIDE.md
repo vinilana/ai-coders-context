@@ -9,6 +9,7 @@ A comprehensive guide on how to use `@ai-coders/context` for AI-assisted softwar
 - [Getting Started](#getting-started)
 - [Core Features](#core-features)
 - [PREVC Workflow](#prevc-workflow)
+- [Quick Sync](#quick-sync)
 - [Skills System](#skills-system)
 - [Agent Orchestration](#agent-orchestration)
 - [MCP Integration](#mcp-integration)
@@ -298,6 +299,80 @@ docs:
 
 ---
 
+## Quick Sync
+
+Quick Sync provides a unified way to export agents, skills, and documentation to all your AI tools at once.
+
+### Why Quick Sync?
+
+Different AI tools store context in different locations:
+
+| Tool | Agents | Skills | Rules |
+|------|--------|--------|-------|
+| Claude | `.claude/agents/` | `.claude/skills/` | `CLAUDE.md` |
+| Cursor | `.cursor/agents/` | - | `.cursorrules` |
+| GitHub Copilot | `.github/agents/` | - | `.github/copilot-instructions.md` |
+| Windsurf | `.windsurf/agents/` | - | `.windsurfrules` |
+| Cline | `.cline/agents/` | - | `.clinerules` |
+| Codex | - | `.codex/skills/` | `AGENTS.md` |
+| Aider | - | - | `.aider.conf.yml` |
+
+Quick Sync handles all of this automatically.
+
+### Quick Sync Commands
+
+```bash
+# Sync everything to all tools
+npx @ai-coders/context quick-sync
+
+# Sync specific components
+npx @ai-coders/context quick-sync --components agents
+npx @ai-coders/context quick-sync --components skills
+npx @ai-coders/context quick-sync --components docs
+npx @ai-coders/context quick-sync --components agents,skills
+
+# Sync to specific tools
+npx @ai-coders/context quick-sync --targets claude
+npx @ai-coders/context quick-sync --targets claude,cursor,github
+
+# Combine options
+npx @ai-coders/context quick-sync --components agents --targets claude,github
+
+# Preview changes without writing
+npx @ai-coders/context quick-sync --dry-run
+```
+
+### Interactive Mode
+
+When running interactively, Quick Sync offers:
+
+1. **Component Selection** - Multi-select which components to sync (agents, skills, docs)
+2. **Target Selection** - Choose destination AI tools
+3. **Preview** - See what will be synced before confirming
+
+### Components
+
+| Component | Source | Description |
+|-----------|--------|-------------|
+| `agents` | `.context/agents/` | Agent playbooks |
+| `skills` | `.context/skills/` | Skill definitions |
+| `docs` | `.context/docs/` | Documentation rules |
+
+### Targets
+
+| Target | Description |
+|--------|-------------|
+| `claude` | Claude Code and Claude Desktop |
+| `cursor` | Cursor AI |
+| `github` | GitHub Copilot |
+| `windsurf` | Windsurf |
+| `cline` | Cline VS Code extension |
+| `codex` | OpenAI Codex CLI |
+| `aider` | Aider |
+| `all` | All supported tools |
+
+---
+
 ## Skills System
 
 Skills are on-demand expertise modules that AI agents can activate when needed. Unlike agent playbooks (which define persistent behavior), skills are task-specific procedures.
@@ -545,6 +620,7 @@ For developing/testing locally:
 | `buildSemanticContext` | Build optimized context for prompts |
 | `initializeContext` | Create `.context` scaffolding |
 | `fillScaffolding` | Generate documentation content |
+| `getCodebaseMap` | Get structured codebase data (stack, symbols, architecture) |
 | `analyzeSymbols` | Analyze code symbols |
 | `searchCode` | Search patterns across files |
 | `getFileStructure` | Get directory structure |
@@ -677,6 +753,10 @@ npx @ai-coders/context skill init
 npx @ai-coders/context skill fill
 npx @ai-coders/context skill list
 npx @ai-coders/context skill export
+
+# Quick sync to AI tools
+npx @ai-coders/context quick-sync
+npx @ai-coders/context quick-sync --components agents --targets claude
 
 # Start MCP server
 npx @ai-coders/context mcp

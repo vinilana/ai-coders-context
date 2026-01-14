@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Quick Sync Service**: Unified synchronization of agents, skills, and documentation
+  - New `quick-sync` command for one-click export to all AI tools
+  - Component selection: choose agents, skills, docs, or all
+  - Target selection: export to specific tools or all at once
+  - CLI: `npx @ai-coders/context quick-sync [--components agents,skills,docs] [--targets claude,cursor]`
+  - Interactive mode integration with multi-select options
+
+- **getCodebaseMap MCP Tool**: Retrieve structured codebase data
+  - Access pre-analyzed codebase information from `.context/docs/codebase-map.json`
+  - Sections: `stack`, `structure`, `architecture`, `symbols`, `publicAPI`, `dependencies`, `stats`
+  - Token-efficient retrieval with specific section queries
+  - Reduces need for repeated codebase analysis
+
+- **Project Type Classification**: Smart filtering for agents and documentation
+  - Automatic project type detection (backend, frontend, fullstack, api, library, cli, mobile)
+  - Filter agent playbooks based on project type
+  - Filter documentation templates based on relevance
+  - `scaffoldFilter` service for intelligent scaffolding selection
+
+- **Interactive Mode Enhancements**:
+  - Welcome screen with PREVC visual explanation
+  - User prompt input on startup
+  - Multi-select component options for scaffolding (docs, agents, skills)
+  - Target selection with presets for AI tools
+
+- **Front Matter Wrapping**: Enhanced options for generated files
+  - Additional front matter options: `wrap`, `template`, `source`
+  - Better metadata management for scaffolded files
+
 - **Skills System**: On-demand expertise for AI agents (Claude Code, Gemini CLI, Codex)
   - 10 built-in skills: commit-message, pr-review, code-review, test-generation, documentation, refactoring, bug-investigation, feature-breakdown, api-design, security-audit
   - `SkillRegistry` class for skill discovery and management
@@ -68,9 +97,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **PlanLinker Refactored**: Now delegates agent operations to AgentRegistry (SRP)
 
+### Fixed
+
+- **Orphaned Spinners**: Fixed CLI spinners not stopping properly in certain conditions
+  - Prevents visual artifacts when operations complete or fail
+
 ### Technical Details
 
 #### New Files
+- `src/services/quickSync/quickSyncService.ts` - Quick Sync service for unified synchronization
+- `src/services/quickSync/index.ts` - Quick Sync module exports
+- `src/services/ai/tools/getCodebaseMapTool.ts` - MCP tool for codebase map retrieval
+- `src/services/stack/projectTypeClassifier.ts` - Project type classification service
+- `src/services/stack/scaffoldFilter.ts` - Intelligent scaffold filtering
+- `src/generators/documentation/codebaseMapGenerator.ts` - Codebase map generation
 - `src/services/ai/agents/skillAgent.ts` - AI agent for skill personalization
 - `src/services/fill/skillFillService.ts` - Service orchestrating skill fill operations
 - `src/workflow/plans/types.ts` - Plan-workflow integration types

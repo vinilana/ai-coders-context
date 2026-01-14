@@ -89,6 +89,7 @@ npx @ai-coders/context plan name           # Create work plan
 npx @ai-coders/context workflow            # Manage PREVC workflow
 npx @ai-coders/context report              # Visual progress dashboard
 npx @ai-coders/context export-rules        # Export rules to AI tools
+npx @ai-coders/context quick-sync          # Sync all to AI tools at once
 ```
 
 ## PREVC Workflow System
@@ -179,6 +180,19 @@ The system automatically detects project scale and adjusts the workflow:
 | MEDIUM | P → R → E → V | Regular features |
 | LARGE | P → R → E → V → C | Full products |
 | ENTERPRISE | All + extras | Systems with compliance |
+
+### Quick Sync
+
+Sync agents, skills, and documentation to all AI tools at once:
+
+```bash
+npx @ai-coders/context quick-sync                           # Sync everything
+npx @ai-coders/context quick-sync --components agents       # Sync only agents
+npx @ai-coders/context quick-sync --targets claude,cursor   # Specific tools only
+```
+
+**Components:** `agents`, `skills`, `docs` (or `all`)
+**Targets:** `claude`, `cursor`, `github`, `windsurf`, `cline`, `codex`, `aider` (or `all`)
 
 ## Requirements
 
@@ -332,6 +346,7 @@ Once configured, your AI assistant will have access to:
 | `buildSemanticContext` | Build optimized context for LLM prompts |
 | `initializeContext` | Create `.context` scaffolding |
 | `fillScaffolding` | Generate documentation content |
+| `getCodebaseMap` | Get structured codebase data (stack, symbols, architecture) |
 | `analyzeSymbols` | Analyze code symbols (classes, functions, etc.) |
 | `searchCode` | Search for patterns across files |
 | `getFileStructure` | Get repository directory structure |
@@ -381,6 +396,15 @@ Once configured, your AI assistant will have access to:
 | `scaffoldSkills` | Generate skill files in .context/skills/ |
 | `fillSkills` | Fill skills with AI-generated project-specific content |
 | `exportSkills` | Export skills to Claude/Gemini/Codex directories |
+
+#### Utility Tools
+
+| Tool | Description |
+|------|-------------|
+| `projectStart` | Unified setup: scaffolding + fill + workflow init |
+| `projectReport` | Visual progress report for PREVC workflow |
+| `exportRules` | Export context rules to AI tool directories |
+| `detectStack` | Detect project technology stack |
 
 ### Skills (On-Demand Expertise)
 
