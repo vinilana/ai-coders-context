@@ -16,6 +16,21 @@ export const TARGET_PRESETS: Record<Exclude<PresetName, 'all'>, TargetPreset> = 
     name: 'cursor',
     path: '.cursor/agents',
     description: 'Cursor AI agents directory'
+  },
+  windsurf: {
+    name: 'windsurf',
+    path: '.windsurf/agents',
+    description: 'Windsurf (Codeium) agents directory'
+  },
+  cline: {
+    name: 'cline',
+    path: '.cline/agents',
+    description: 'Cline VS Code extension agents directory'
+  },
+  continue: {
+    name: 'continue',
+    path: '.continue/agents',
+    description: 'Continue.dev agents directory'
   }
 };
 
@@ -44,5 +59,5 @@ export function getPresetByPath(targetPath: string): TargetPreset | undefined {
 }
 
 export function getAllPresetNames(): PresetName[] {
-  return ['claude', 'github', 'cursor', 'all'];
+  return ['claude', 'github', 'cursor', 'windsurf', 'cline', 'continue', 'all'];
 }

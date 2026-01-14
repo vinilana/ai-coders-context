@@ -16,11 +16,20 @@ import { InitService } from './services/init/initService';
 import { FillService } from './services/fill/fillService';
 import { PlanService } from './services/plan/planService';
 import { SyncService } from './services/sync/syncService';
+import { ImportRulesService, ImportAgentsService } from './services/import';
 import { ServeService } from './services/serve';
 import { startMCPServer } from './services/mcp';
 import { StateDetector } from './services/state';
 import { UpdateService } from './services/update';
-import { DEFAULT_MODELS } from './services/ai/providerFactory';
+import { WorkflowService, WorkflowServiceDependencies } from './services/workflow';
+import { StartService } from './services/start';
+import { ExportRulesService, EXPORT_PRESETS } from './services/export';
+import { ReportService } from './services/report';
+import { StackDetector } from './services/stack';
+import { QuickSyncService, QuickSyncOptions } from './services/quickSync';
+import { AutoAdvanceDetector } from './services/workflow/autoAdvance';
+import { getScaleName, PHASE_NAMES_PT, PHASE_NAMES_EN, ROLE_DISPLAY_NAMES, ROLE_DISPLAY_NAMES_EN, type PrevcRole, ProjectScale } from './workflow';
+import { DEFAULT_MODELS, getApiKeyFromEnv } from './services/ai/providerFactory';
 import {
   detectSmartDefaults,
   promptInteractiveMode,
@@ -73,6 +82,18 @@ const planService = new PlanService({
 });
 
 const syncService = new SyncService({
+  ui,
+  t,
+  version: VERSION
+});
+
+const importRulesService = new ImportRulesService({
+  ui,
+  t,
+  version: VERSION
+});
+
+const importAgentsService = new ImportAgentsService({
   ui,
   t,
   version: VERSION
@@ -310,6 +331,60 @@ program
   });
 
 program
+  .command('import-rules')
+  .description(t('commands.importRules.description'))
+  .argument('[repo-path]', 'Repository path to scan', process.cwd())
+  .option('-s, --source <paths...>', t('commands.importRules.options.source'))
+  .option('-t, --target <dir>', t('commands.importRules.options.target'))
+  .option('-f, --format <format>', t('commands.importRules.options.format'), 'markdown')
+  .option('--force', t('commands.importRules.options.force'))
+  .option('--dry-run', t('commands.importRules.options.dryRun'))
+  .option('-v, --verbose', t('commands.importRules.options.verbose'))
+  .option('--no-auto-detect', 'Disable auto-detection')
+  .action(async (repoPath: string, options: any) => {
+    try {
+      await importRulesService.run({
+        source: options.source,
+        target: options.target,
+        format: options.format,
+        force: options.force,
+        dryRun: options.dryRun,
+        verbose: options.verbose,
+        autoDetect: options.autoDetect !== false
+      }, repoPath);
+    } catch (error) {
+      ui.displayError(t('errors.import.failed'), error as Error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('import-agents')
+  .description(t('commands.importAgents.description'))
+  .argument('[repo-path]', 'Repository path to scan', process.cwd())
+  .option('-s, --source <paths...>', t('commands.importAgents.options.source'))
+  .option('-t, --target <dir>', t('commands.importAgents.options.target'))
+  .option('--force', t('commands.importAgents.options.force'))
+  .option('--dry-run', t('commands.importAgents.options.dryRun'))
+  .option('-v, --verbose', t('commands.importAgents.options.verbose'))
+  .option('--no-auto-detect', 'Disable auto-detection')
+  .action(async (repoPath: string, options: any) => {
+    try {
+      await importAgentsService.run({
+        source: options.source,
+        target: options.target,
+        force: options.force,
+        dryRun: options.dryRun,
+        verbose: options.verbose,
+        autoDetect: options.autoDetect !== false
+      }, repoPath);
+    } catch (error) {
+      ui.displayError(t('errors.import.failed'), error as Error);
+      process.exit(1);
+    }
+  });
+
+program
   .command('serve')
   .description('Start passthrough server for external AI agents (stdin/stdout JSON)')
   .option('-r, --repo-path <path>', 'Default repository path for tools')
@@ -358,6 +433,470 @@ program
       if (options.verbose) {
         process.stderr.write(`[mcp] Error: ${error}\n`);
       }
+      process.exit(1);
+    }
+  });
+
+// Smart Start Command
+program
+  .command('start')
+  .description(t('commands.start.description'))
+  .argument('[feature-name]', t('commands.start.arguments.featureName'))
+  .option('-t, --template <template>', t('commands.start.options.template'), 'auto')
+  .option('--skip-fill', t('commands.start.options.skipFill'))
+  .option('--skip-workflow', t('commands.start.options.skipWorkflow'))
+  .option('-k, --api-key <key>', t('commands.fill.options.apiKey'))
+  .option('-m, --model <model>', t('commands.fill.options.model'), DEFAULT_MODEL)
+  .option('-p, --provider <provider>', t('commands.fill.options.provider'))
+  .option('-v, --verbose', t('commands.fill.options.verbose'))
+  .action(async (featureName: string | undefined, options: any) => {
+    try {
+      const startService = new StartService({
+        ui,
+        t,
+        version: VERSION,
+        defaultModel: DEFAULT_MODEL,
+      });
+
+      const result = await startService.run(process.cwd(), {
+        featureName,
+        template: options.template,
+        skipFill: options.skipFill,
+        skipWorkflow: options.skipWorkflow,
+        apiKey: options.apiKey,
+        model: options.model,
+        provider: options.provider,
+        verbose: options.verbose,
+      });
+
+      // Display summary
+      const details: string[] = [];
+      if (result.initialized) details.push('context initialized');
+      if (result.filled) details.push('docs filled');
+      if (result.workflowStarted) details.push(`workflow started (${getScaleName(result.scale!)})`);
+      if (result.stackDetected?.primaryLanguage) {
+        details.push(`stack: ${result.stackDetected.primaryLanguage}`);
+      }
+
+      ui.displaySuccess(t('success.start.complete', { details: details.join(', ') }));
+    } catch (error) {
+      ui.displayError(t('errors.cli.executionFailed'), error as Error);
+      process.exit(1);
+    }
+  });
+
+// Export Rules Command
+program
+  .command('export-rules')
+  .description(t('commands.export.description'))
+  .argument('[repo-path]', 'Repository path', process.cwd())
+  .option('-s, --source <dir>', t('commands.export.options.source'), '.context/docs')
+  .option('-t, --targets <paths...>', t('commands.export.options.targets'))
+  .option('--preset <name>', t('commands.export.options.preset'))
+  .option('--force', t('commands.export.options.force'))
+  .option('--dry-run', t('commands.export.options.dryRun'))
+  .option('-v, --verbose', t('commands.fill.options.verbose'))
+  .action(async (repoPath: string, options: any) => {
+    try {
+      const exportService = new ExportRulesService({
+        ui,
+        t,
+        version: VERSION,
+      });
+
+      await exportService.run(repoPath, {
+        source: options.source,
+        targets: options.targets,
+        preset: options.preset,
+        force: options.force,
+        dryRun: options.dryRun,
+        verbose: options.verbose,
+      });
+    } catch (error) {
+      ui.displayError(t('errors.cli.executionFailed'), error as Error);
+      process.exit(1);
+    }
+  });
+
+// Report Command
+program
+  .command('report')
+  .description(t('commands.report.description'))
+  .argument('[repo-path]', 'Repository path', process.cwd())
+  .option('-f, --format <format>', t('commands.report.options.format'), 'console')
+  .option('-o, --output <path>', t('commands.report.options.output'))
+  .option('--include-stack', t('commands.report.options.includeStack'))
+  .option('-v, --verbose', t('commands.fill.options.verbose'))
+  .action(async (repoPath: string, options: any) => {
+    try {
+      const reportService = new ReportService({
+        ui,
+        t,
+        version: VERSION,
+      });
+
+      const report = await reportService.generate(repoPath, {
+        format: options.format,
+        output: options.output,
+        includeStack: options.includeStack,
+        verbose: options.verbose,
+      });
+
+      await reportService.output(report, options);
+    } catch (error) {
+      ui.displayError(t('errors.cli.executionFailed'), error as Error);
+      process.exit(1);
+    }
+  });
+
+// Skill Commands
+const skillCommand = program
+  .command('skill')
+  .description(t('commands.skill.description'));
+
+skillCommand
+  .command('init')
+  .description(t('commands.skill.init.description'))
+  .argument('[repo-path]', 'Repository path', process.cwd())
+  .option('-f, --force', 'Overwrite existing files')
+  .option('--skills <skills...>', 'Specific skills to scaffold')
+  .action(async (repoPath: string, options: any) => {
+    try {
+      const { createSkillGenerator } = await import('./generators/skills');
+      const generator = createSkillGenerator({ repoPath });
+      const result = await generator.generate({
+        skills: options.skills,
+        force: options.force,
+      });
+
+      ui.displaySuccess(`Skills initialized in ${result.skillsDir}`);
+      ui.displayInfo('Generated', result.generatedSkills.join(', ') || 'none');
+      if (result.skippedSkills.length > 0) {
+        ui.displayInfo('Skipped (already exist)', result.skippedSkills.join(', '));
+      }
+    } catch (error) {
+      ui.displayError('Failed to initialize skills', error as Error);
+      process.exit(1);
+    }
+  });
+
+skillCommand
+  .command('fill')
+  .description(t('commands.skill.fill.description'))
+  .argument('[repo-path]', 'Repository path', process.cwd())
+  .option('-o, --output <dir>', 'Output directory', '.context')
+  .option('-f, --force', 'Overwrite existing content')
+  .option('--skills <skills...>', 'Specific skills to fill')
+  .option('--model <model>', 'LLM model to use')
+  .option('--provider <provider>', 'LLM provider (anthropic, openai, google, openrouter)')
+  .option('--api-key <key>', 'API key for LLM provider')
+  .option('--base-url <url>', 'Base URL for custom LLM endpoint')
+  .option('--no-semantic', 'Disable semantic context mode')
+  .option('--use-lsp', 'Enable LSP for deeper analysis')
+  .option('-v, --verbose', 'Show detailed progress')
+  .option('--limit <number>', 'Limit number of skills to fill', parseInt)
+  .action(async (repoPath: string, options: any) => {
+    try {
+      const { SkillFillService } = await import('./services/fill/skillFillService');
+
+      const skillFillService = new SkillFillService({
+        ui,
+        t,
+        version: VERSION,
+        defaultModel: DEFAULT_MODEL,
+      });
+
+      const result = await skillFillService.run(repoPath, {
+        output: options.output,
+        skills: options.skills,
+        force: options.force,
+        model: options.model,
+        provider: options.provider,
+        apiKey: options.apiKey,
+        baseUrl: options.baseUrl,
+        semantic: options.semantic,
+        useLsp: options.useLsp,
+        verbose: options.verbose,
+        limit: options.limit,
+      });
+
+      if (result.filled.length > 0) {
+        ui.displaySuccess(t('success.skill.filled', { count: result.filled.length }));
+      }
+    } catch (error) {
+      ui.displayError(t('errors.skill.fillFailed'), error as Error);
+      process.exit(1);
+    }
+  });
+
+skillCommand
+  .command('list')
+  .description(t('commands.skill.list.description'))
+  .argument('[repo-path]', 'Repository path', process.cwd())
+  .option('--json', 'Output as JSON')
+  .action(async (repoPath: string, options: any) => {
+    try {
+      const { createSkillRegistry, BUILT_IN_SKILLS } = await import('./workflow/skills');
+      const registry = createSkillRegistry(repoPath);
+      const discovered = await registry.discoverAll();
+
+      if (options.json) {
+        console.log(JSON.stringify({
+          builtIn: discovered.builtIn.map(s => s.slug),
+          custom: discovered.custom.map(s => s.slug),
+          total: discovered.all.length,
+        }, null, 2));
+        return;
+      }
+
+      console.log('\nBuilt-in Skills:');
+      for (const skill of discovered.builtIn) {
+        const scaffolded = discovered.all.find(s => s.slug === skill.slug && s.path.includes('.context'));
+        const status = scaffolded ? '[scaffolded]' : '[available]';
+        console.log(`  ${skill.slug} ${status}`);
+        console.log(`    ${skill.metadata.description}`);
+      }
+
+      if (discovered.custom.length > 0) {
+        console.log('\nCustom Skills:');
+        for (const skill of discovered.custom) {
+          console.log(`  ${skill.slug}`);
+          console.log(`    ${skill.metadata.description}`);
+        }
+      }
+
+      console.log(`\nTotal: ${discovered.all.length} skills (${discovered.builtIn.length} built-in, ${discovered.custom.length} custom)`);
+    } catch (error) {
+      ui.displayError('Failed to list skills', error as Error);
+      process.exit(1);
+    }
+  });
+
+skillCommand
+  .command('export')
+  .description(t('commands.skill.export.description'))
+  .argument('[repo-path]', 'Repository path', process.cwd())
+  .option('-p, --preset <preset>', 'Export preset: claude, gemini, codex, all', 'all')
+  .option('-f, --force', 'Overwrite existing files')
+  .option('--include-builtin', 'Include built-in skills even if not scaffolded')
+  .option('--dry-run', 'Preview changes without writing')
+  .action(async (repoPath: string, options: any) => {
+    try {
+      const { SkillExportService } = await import('./services/export/skillExportService');
+      const exportService = new SkillExportService({
+        ui,
+        t,
+        version: VERSION,
+      });
+
+      const result = await exportService.run(repoPath, {
+        preset: options.preset,
+        force: options.force,
+        includeBuiltIn: options.includeBuiltin,
+        dryRun: options.dryRun,
+      });
+
+      if (options.dryRun) {
+        ui.displayInfo('Dry run', 'No files were written');
+      } else {
+        ui.displaySuccess(`Exported ${result.skillsExported.length} skills to ${result.targets.length} targets`);
+      }
+    } catch (error) {
+      ui.displayError('Failed to export skills', error as Error);
+      process.exit(1);
+    }
+  });
+
+skillCommand
+  .command('create <name>')
+  .description(t('commands.skill.create.description'))
+  .argument('[repo-path]', 'Repository path', process.cwd())
+  .option('-d, --description <text>', 'Skill description')
+  .option('--phases <phases...>', 'PREVC phases (P, R, E, V, C)')
+  .option('-f, --force', 'Overwrite if exists')
+  .action(async (name: string, repoPath: string, options: any) => {
+    try {
+      const { createSkillGenerator } = await import('./generators/skills');
+      const generator = createSkillGenerator({ repoPath });
+      const skillPath = await generator.generateCustomSkill({
+        name,
+        description: options.description || `TODO: Describe when to use ${name}`,
+        phases: options.phases,
+        force: options.force,
+      });
+
+      ui.displaySuccess(`Created skill: ${name}`);
+      ui.displayInfo('Path', skillPath);
+    } catch (error) {
+      ui.displayError('Failed to create skill', error as Error);
+      process.exit(1);
+    }
+  });
+
+// PREVC Workflow Commands
+const workflowCommand = program
+  .command('workflow')
+  .description('PREVC workflow management (Planning, Review, Execution, Validation, Confirmation)');
+
+// Helper to create workflow service dependencies
+const getWorkflowDeps = (): WorkflowServiceDependencies => ({
+  ui: {
+    displaySuccess: (msg: string) => ui.displaySuccess(msg),
+    displayError: (msg: string, err?: Error) => ui.displayError(msg, err),
+    displayInfo: (title: string, detail?: string) => ui.displayInfo(title, detail || '')
+  }
+});
+
+workflowCommand
+  .command('init <name>')
+  .description('Initialize a new PREVC workflow')
+  .option('-d, --description <text>', 'Project description for scale detection')
+  .option('-s, --scale <scale>', 'Project scale: QUICK, SMALL, MEDIUM, LARGE, ENTERPRISE')
+  .option('-r, --repo-path <path>', 'Repository path', process.cwd())
+  .action(async (name: string, options: any) => {
+    try {
+      const workflowService = new WorkflowService(options.repoPath, getWorkflowDeps());
+      const status = await workflowService.init({
+        name,
+        description: options.description,
+        scale: options.scale
+      });
+
+      ui.displaySuccess(`Workflow PREVC initialized: ${name}`);
+      ui.displayInfo('Scale', getScaleName(status.project.scale as any));
+      ui.displayInfo('Current Phase', `${status.project.current_phase} - ${PHASE_NAMES_PT[status.project.current_phase]}`);
+    } catch (error) {
+      ui.displayError('Failed to initialize workflow', error as Error);
+      process.exit(1);
+    }
+  });
+
+workflowCommand
+  .command('status')
+  .description('Show current workflow status')
+  .option('-r, --repo-path <path>', 'Repository path', process.cwd())
+  .action(async (options: any) => {
+    try {
+      const workflowService = new WorkflowService(options.repoPath, getWorkflowDeps());
+
+      if (!await workflowService.hasWorkflow()) {
+        ui.displayError('No workflow found. Run "workflow init <name>" first.');
+        process.exit(1);
+      }
+
+      const formattedStatus = await workflowService.getFormattedStatus();
+      console.log(formattedStatus);
+
+      const actions = await workflowService.getRecommendedActions();
+      if (actions.length > 0) {
+        console.log('\nRecommended actions:');
+        actions.forEach((action, i) => console.log(`  ${i + 1}. ${action}`));
+      }
+    } catch (error) {
+      ui.displayError('Failed to get workflow status', error as Error);
+      process.exit(1);
+    }
+  });
+
+workflowCommand
+  .command('advance')
+  .description('Complete current phase and advance to next')
+  .option('-r, --repo-path <path>', 'Repository path', process.cwd())
+  .option('-o, --outputs <files...>', 'Output files generated in current phase')
+  .action(async (options: any) => {
+    try {
+      const workflowService = new WorkflowService(options.repoPath, getWorkflowDeps());
+
+      if (!await workflowService.hasWorkflow()) {
+        ui.displayError('No workflow found. Run "workflow init <name>" first.');
+        process.exit(1);
+      }
+
+      const nextPhase = await workflowService.advance(options.outputs);
+
+      if (nextPhase) {
+        ui.displaySuccess(`Advanced to phase: ${nextPhase} - ${PHASE_NAMES_PT[nextPhase]}`);
+      } else {
+        ui.displaySuccess('Workflow completed!');
+      }
+    } catch (error) {
+      ui.displayError('Failed to advance workflow', error as Error);
+      process.exit(1);
+    }
+  });
+
+workflowCommand
+  .command('handoff <from> <to>')
+  .description('Perform handoff between roles')
+  .option('-r, --repo-path <path>', 'Repository path', process.cwd())
+  .option('-a, --artifacts <files...>', 'Artifacts to hand off')
+  .action(async (from: string, to: string, options: any) => {
+    try {
+      const workflowService = new WorkflowService(options.repoPath, getWorkflowDeps());
+
+      if (!await workflowService.hasWorkflow()) {
+        ui.displayError('No workflow found. Run "workflow init <name>" first.');
+        process.exit(1);
+      }
+
+      await workflowService.handoff(from as PrevcRole, to as PrevcRole, options.artifacts || []);
+      ui.displaySuccess(`Handoff: ${ROLE_DISPLAY_NAMES[from as PrevcRole]} → ${ROLE_DISPLAY_NAMES[to as PrevcRole]}`);
+    } catch (error) {
+      ui.displayError('Failed to perform handoff', error as Error);
+      process.exit(1);
+    }
+  });
+
+workflowCommand
+  .command('collaborate <topic>')
+  .description('Start a collaboration session between roles')
+  .option('-r, --repo-path <path>', 'Repository path', process.cwd())
+  .option('-p, --participants <roles...>', 'Participating roles')
+  .action(async (topic: string, options: any) => {
+    try {
+      const workflowService = new WorkflowService(options.repoPath, getWorkflowDeps());
+
+      const session = await workflowService.startCollaboration(
+        topic,
+        options.participants as PrevcRole[]
+      );
+
+      ui.displaySuccess(`Collaboration started: ${topic}`);
+      ui.displayInfo('Session ID', session.getId());
+      ui.displayInfo('Participants', session.getParticipantNames().join(', '));
+      console.log('\nUse MCP tools to contribute and synthesize the collaboration.');
+    } catch (error) {
+      ui.displayError('Failed to start collaboration', error as Error);
+      process.exit(1);
+    }
+  });
+
+workflowCommand
+  .command('role <action> <role>')
+  .description('Manage role status (start/complete)')
+  .option('-r, --repo-path <path>', 'Repository path', process.cwd())
+  .option('-o, --outputs <files...>', 'Output files (for complete action)')
+  .action(async (action: string, role: string, options: any) => {
+    try {
+      const workflowService = new WorkflowService(options.repoPath, getWorkflowDeps());
+
+      if (!await workflowService.hasWorkflow()) {
+        ui.displayError('No workflow found. Run "workflow init <name>" first.');
+        process.exit(1);
+      }
+
+      if (action === 'start') {
+        await workflowService.startRole(role as PrevcRole);
+        ui.displaySuccess(`Started role: ${ROLE_DISPLAY_NAMES[role as PrevcRole]}`);
+      } else if (action === 'complete') {
+        await workflowService.completeRole(role as PrevcRole, options.outputs || []);
+        ui.displaySuccess(`Completed role: ${ROLE_DISPLAY_NAMES[role as PrevcRole]}`);
+      } else {
+        ui.displayError(`Unknown action: ${action}. Use 'start' or 'complete'.`);
+        process.exit(1);
+      }
+    } catch (error) {
+      ui.displayError('Failed to manage role', error as Error);
       process.exit(1);
     }
   });
@@ -419,41 +958,78 @@ async function selectLocale(showWelcome: boolean): Promise<void> {
 
   if (showWelcome) {
     ui.displayWelcome(VERSION);
+    ui.displayPrevcExplanation();
   }
 }
 
-type InteractiveAction = 'scaffold' | 'fill' | 'plan' | 'syncAgents' | 'update' | 'changeLanguage' | 'exit';
-type StateAction = 'create' | 'fill' | 'menu' | 'exit';
+type InteractiveAction = 'scaffold' | 'fill' | 'plan' | 'syncAgents' | 'update' | 'workflow' | 'skills' | 'changeLanguage' | 'exit' | 'quickSync' | 'agents' | 'settings';
+type StateAction = 'create' | 'fill' | 'menu' | 'exit' | 'scaffold';
 
 async function runInteractive(): Promise<void> {
-  await selectLocale(true);
+  await selectLocale(false); // Don't show welcome yet
+
+  // Show welcome screen with PREVC explanation
+  ui.displayWelcome(VERSION);
+  ui.displayPrevcExplanation();
+
+  // Wait for user to press Enter
+  await inquirer.prompt([
+    {
+      type: 'input',
+      name: 'continue',
+      message: t('prompts.pressEnter'),
+    },
+  ]);
+
+  console.log('\n');
 
   const projectPath = process.cwd();
   const detector = new StateDetector({ projectPath });
   const result = await detector.detect();
 
-  // Display project info
-  console.log('');
-  ui.displayInfo(
-    `${PACKAGE_NAME} v${VERSION}`,
-    `Project: ${projectPath}`
-  );
+  // Get quick stats for compact status
+  const quickSyncService = new QuickSyncService({
+    ui,
+    t,
+    version: VERSION,
+    defaultModel: DEFAULT_MODEL,
+  });
+  const stats = await quickSyncService.getStats(projectPath);
 
-  // Show state-specific information
+  // Display compact header
+  console.log('');
+  console.log(`${colors.primaryBold(`${PACKAGE_NAME}`)} ${colors.secondary(`v${VERSION}`)}`);
+  console.log(`${colors.secondary('Project:')} ${projectPath}`);
+
+  // Show compact status line based on state
   switch (result.state) {
     case 'new':
-      console.log(colors.secondaryDim('  No context documentation found.\n'));
+      console.log(colors.secondaryDim(t('status.new')));
       break;
     case 'unfilled':
-      console.log(colors.secondaryDim(`  Context: ${result.details.unfilledFiles} files need filling\n`));
+      console.log(colors.secondaryDim(t('status.unfilled', { count: result.details.unfilledFiles })));
       break;
     case 'outdated':
-      console.log(colors.warning(`  Code modified ${result.details.daysBehind} day(s) ago (docs not updated)\n`));
+      console.log(colors.warning(
+        t('status.outdated', {
+          docs: stats.docs,
+          days: result.details.daysBehind || 0,
+          agents: stats.agents,
+          skills: stats.skills
+        })
+      ));
       break;
     case 'ready':
-      console.log(colors.success(`  Context: ${result.details.totalFiles} docs, all up to date\n`));
+      console.log(colors.success(
+        t('status.compact', {
+          docs: stats.docs,
+          agents: stats.agents,
+          skills: stats.skills
+        })
+      ));
       break;
   }
+  console.log('');
 
   // Handle state-based flow
   if (result.state === 'new') {
@@ -463,15 +1039,19 @@ async function runInteractive(): Promise<void> {
         name: 'action',
         message: t('prompts.main.action'),
         choices: [
-          { name: t('prompts.main.choice.create'), value: 'create' },
+          { name: t('prompts.main.choice.quickSetup'), value: 'create' },
+          { name: t('prompts.main.choice.scaffoldOnly'), value: 'scaffold' },
           { name: t('prompts.main.choice.exit'), value: 'exit' }
         ]
       }
     ]);
 
     if (action === 'create') {
-      // Run init + fill automatically
+      // Run init + fill with AI + LSP automatically
       await runQuickSetup(projectPath);
+    } else if (action === 'scaffold') {
+      // Scaffold only without AI fill
+      await runInteractiveScaffold();
     }
     return;
   }
@@ -504,6 +1084,29 @@ async function runInteractive(): Promise<void> {
 }
 
 async function runQuickSetup(projectPath: string): Promise<void> {
+  // AI-first: Detect smart defaults automatically
+  const defaults = await detectSmartDefaults();
+
+  // If no API key found, prompt for one
+  let llmConfig: { provider: AIProvider; model: string; apiKey?: string; baseUrl?: string } | null = null;
+
+  if (defaults.apiKeyConfigured && defaults.provider) {
+    // Auto-detected config
+    llmConfig = {
+      provider: defaults.provider,
+      model: DEFAULT_MODEL,
+      apiKey: getApiKeyFromEnv(defaults.provider!),
+    };
+    console.log(colors.secondary(`  Auto-detected: ${defaults.provider} API key found`));
+  } else {
+    // Need to get API key from user
+    llmConfig = await promptLLMConfig(t);
+    if (!llmConfig) {
+      ui.displayInfo(t('info.setup.incomplete.title'), t('info.setup.incomplete.detail'));
+      return;
+    }
+  }
+
   const { confirm } = await inquirer.prompt<{ confirm: boolean }>([
     {
       type: 'confirm',
@@ -517,11 +1120,11 @@ async function runQuickSetup(projectPath: string): Promise<void> {
     return;
   }
 
-  // Run init
+  // Run init with semantic analysis
   ui.startSpinner(t('spinner.setup.creatingStructure'));
   try {
-    const initService = new InitService({ ui, t, version: VERSION });
-    await initService.run(projectPath, 'both', {
+    const localInitService = new InitService({ ui, t, version: VERSION });
+    await localInitService.run(projectPath, 'both', {
       semantic: true
     });
     ui.stopSpinner();
@@ -531,23 +1134,27 @@ async function runQuickSetup(projectPath: string): Promise<void> {
     return;
   }
 
-  // Prompt for LLM config and run fill
-  const llmConfig = await promptLLMConfig(t);
-  if (!llmConfig) {
-    ui.displayInfo(t('info.setup.incomplete.title'), t('info.setup.incomplete.detail'));
-    return;
+  // Initialize skills too (AI-first)
+  try {
+    const { createSkillGenerator } = await import('./generators/skills');
+    const skillGenerator = createSkillGenerator({ repoPath: projectPath });
+    await skillGenerator.generate({});
+  } catch {
+    // Skills init failure is not critical
   }
 
+  // Fill with AI + LSP (default behavior)
   ui.startSpinner(t('spinner.setup.fillingDocs'));
   try {
-    const fillService = new FillService({ ui, t, version: VERSION, defaultModel: DEFAULT_MODEL });
-    await fillService.run(projectPath, {
+    const localFillService = new FillService({ ui, t, version: VERSION, defaultModel: DEFAULT_MODEL });
+    await localFillService.run(projectPath, {
       model: llmConfig.model,
       provider: llmConfig.provider,
       apiKey: llmConfig.apiKey,
       baseUrl: llmConfig.baseUrl,
       verbose: false,
-      semantic: true
+      semantic: true,
+      useLsp: true  // LSP enabled by default
     });
     ui.stopSpinner();
     ui.displaySuccess(t('success.setup.docsCreated'));
@@ -565,12 +1172,21 @@ async function runFullMenu(daysBehind?: number): Promise<void> {
       ? t('prompts.main.choice.updateDocsBehind', { daysBehind })
       : t('prompts.main.choice.updateDocs');
 
+    // New menu structure with separators - organized by frequency of use
     const choices = [
-      { name: t('prompts.main.choice.plan'), value: 'plan' as InteractiveAction },
+      // Quick Actions (most used)
+      { name: t('prompts.main.choice.quickSync'), value: 'quickSync' as InteractiveAction },
+      { name: t('prompts.main.choice.startWorkflow'), value: 'workflow' as InteractiveAction },
+      { name: t('prompts.main.choice.createPlan'), value: 'plan' as InteractiveAction },
+      new inquirer.Separator(),
+      // Manage
       { name: updateLabel, value: 'fill' as InteractiveAction },
-      { name: t('prompts.main.choice.syncAgents'), value: 'syncAgents' as InteractiveAction },
+      { name: t('prompts.main.choice.manageSkills'), value: 'skills' as InteractiveAction },
+      { name: t('prompts.main.choice.manageAgents'), value: 'agents' as InteractiveAction },
+      new inquirer.Separator(),
+      // Config
       { name: t('prompts.main.choice.rescaffold'), value: 'scaffold' as InteractiveAction },
-      { name: t('prompts.main.choice.changeLanguage'), value: 'changeLanguage' as InteractiveAction },
+      { name: t('prompts.main.choice.settings'), value: 'settings' as InteractiveAction },
       { name: t('prompts.main.choice.exit'), value: 'exit' as InteractiveAction }
     ];
 
@@ -583,8 +1199,8 @@ async function runFullMenu(daysBehind?: number): Promise<void> {
       }
     ]);
 
-    if (action === 'changeLanguage') {
-      await selectLocale(true);
+    if (action === 'settings') {
+      await runSettings();
       continue;
     }
 
@@ -593,14 +1209,20 @@ async function runFullMenu(daysBehind?: number): Promise<void> {
       break;
     }
 
-    if (action === 'scaffold') {
+    if (action === 'quickSync') {
+      await runQuickSync();
+    } else if (action === 'scaffold') {
       await runInteractiveScaffold();
     } else if (action === 'fill') {
       await runInteractiveLlmFill();
     } else if (action === 'plan') {
       await runInteractivePlan();
-    } else if (action === 'syncAgents') {
-      await runInteractiveSync();
+    } else if (action === 'agents') {
+      await runManageAgents();
+    } else if (action === 'workflow') {
+      await runInteractiveWorkflow();
+    } else if (action === 'skills') {
+      await runInteractiveSkills();
     }
 
     ui.displayInfo(
@@ -634,19 +1256,25 @@ async function runInteractiveScaffold(): Promise<void> {
     }
   ]);
 
-  const { scaffoldType } = await inquirer.prompt<{ scaffoldType: 'both' | 'docs' | 'agents' }>([
+  // Multi-select checkbox for scaffold components
+  const { scaffoldComponents } = await inquirer.prompt<{ scaffoldComponents: string[] }>([
     {
-      type: 'list',
-      name: 'scaffoldType',
-      message: t('prompts.scaffold.type'),
+      type: 'checkbox',
+      name: 'scaffoldComponents',
+      message: t('prompts.scaffold.selectComponents'),
       choices: [
-        { name: t('prompts.scaffold.typeBoth'), value: 'both' },
-        { name: t('prompts.scaffold.typeDocs'), value: 'docs' },
-        { name: t('prompts.scaffold.typeAgents'), value: 'agents' }
-      ],
-      default: 'both'
+        { name: t('prompts.scaffold.componentDocs'), value: 'docs', checked: true },
+        { name: t('prompts.scaffold.componentAgents'), value: 'agents', checked: true },
+        { name: t('prompts.scaffold.componentSkills'), value: 'skills', checked: false }
+      ]
     }
   ]);
+
+  // Validate: at least one component must be selected
+  if (scaffoldComponents.length === 0) {
+    ui.displayWarning(t('warnings.scaffold.noneSelected'));
+    return;
+  }
 
   const { verbose } = await inquirer.prompt<{ verbose: boolean }>([
     {
@@ -657,11 +1285,67 @@ async function runInteractiveScaffold(): Promise<void> {
     }
   ]);
 
-  await runInit(resolvedRepo, scaffoldType, {
-    output: outputDir,
-    verbose,
-    semantic: true
-  });
+  // Determine what to scaffold
+  const scaffoldDocs = scaffoldComponents.includes('docs');
+  const scaffoldAgents = scaffoldComponents.includes('agents');
+  const scaffoldSkills = scaffoldComponents.includes('skills');
+
+  // Scaffold docs and/or agents if selected
+  if (scaffoldDocs || scaffoldAgents) {
+    let scaffoldType: 'docs' | 'agents' | 'both';
+    if (scaffoldDocs && scaffoldAgents) {
+      scaffoldType = 'both';
+    } else if (scaffoldDocs) {
+      scaffoldType = 'docs';
+    } else {
+      scaffoldType = 'agents';
+    }
+
+    await runInit(resolvedRepo, scaffoldType, {
+      output: outputDir,
+      verbose,
+      semantic: true
+    });
+  }
+
+  // Scaffold skills if selected
+  if (scaffoldSkills) {
+    try {
+      const { createSkillGenerator } = await import('./generators/skills');
+      const generator = createSkillGenerator({
+        repoPath: resolvedRepo,
+        outputDir
+      });
+
+      // Display step for skills scaffolding
+      const stepNumber = (scaffoldDocs || scaffoldAgents) ? 4 : 1;
+      const totalSteps = (scaffoldDocs || scaffoldAgents) ? 4 : 1;
+
+      ui.displayStep(stepNumber, totalSteps, t('steps.init.skills'));
+      ui.startSpinner(t('spinner.skills.creating'));
+
+      const result = await generator.generate({});
+
+      ui.updateSpinner(
+        t('spinner.skills.created', { count: result.generatedSkills.length }),
+        'success'
+      );
+
+      // If only skills were selected, show success message
+      if (!scaffoldDocs && !scaffoldAgents) {
+        ui.displaySuccess(t('success.skill.initialized', { path: result.skillsDir }));
+      }
+
+      if (result.generatedSkills.length > 0) {
+        ui.displayInfo(t('info.skill.generated'), result.generatedSkills.join(', '));
+      }
+      if (result.skippedSkills.length > 0) {
+        ui.displayInfo(t('info.skill.skipped'), result.skippedSkills.join(', '));
+      }
+    } catch (error) {
+      ui.displayError(t('errors.skill.initFailed'), error as Error);
+    }
+  }
 }
 
 async function runInteractiveLlmFill(): Promise<void> {
@@ -1119,6 +1803,722 @@ async function runInteractiveSync(): Promise<void> {
       });
     } catch (error) {
       ui.displayError(t('errors.sync.failed'), error as Error);
+    }
+  }
+}
+
+type WorkflowAction = 'init' | 'status' | 'advance' | 'back' | 'newWorkflow';
+
+async function createNewWorkflow(workflowService: WorkflowService): Promise<boolean> {
+  const { name, description, scale } = await inquirer.prompt<{
+    name: string;
+    description: string;
+    scale: string;
+  }>([
+    {
+      type: 'input',
+      name: 'name',
+      message: t('prompts.workflow.projectName'),
+      validate: (input: string) => input.trim().length > 0 || t('prompts.workflow.projectNameRequired')
+    },
+    {
+      type: 'input',
+      name: 'description',
+      message: t('prompts.workflow.description'),
+      default: ''
+    },
+    {
+      type: 'list',
+      name: 'scale',
+      message: t('prompts.workflow.scale'),
+      choices: [
+        { name: t('prompts.workflow.scale.auto'), value: '' },
+        { name: t('prompts.workflow.scale.quick'), value: 'QUICK' },
+        { name: t('prompts.workflow.scale.small'), value: 'SMALL' },
+        { name: t('prompts.workflow.scale.medium'), value: 'MEDIUM' },
+        { name: t('prompts.workflow.scale.large'), value: 'LARGE' },
+        { name: t('prompts.workflow.scale.enterprise'), value: 'ENTERPRISE' }
+      ],
+      default: ''
+    }
+  ]);
+
+  try {
+    const status = await workflowService.init({
+      name: name.trim(),
+      description: description.trim() || undefined,
+      scale: scale || undefined
+    });
+
+    ui.displaySuccess(t('success.workflow.initialized', { name }));
+    ui.displayInfo(t('info.workflow.scale'), getScaleName(status.project.scale as any));
+    ui.displayInfo(t('info.workflow.currentPhase'), `${status.project.current_phase} - ${PHASE_NAMES_PT[status.project.current_phase]}`);
+    return true;
+  } catch (error) {
+    ui.displayError(t('errors.workflow.initFailed'), error as Error);
+    return false;
+  }
+}
+
+async function runInteractiveWorkflow(): Promise<void> {
+  const projectPath = process.cwd();
+  const workflowService = new WorkflowService(projectPath, getWorkflowDeps());
+  const hasWorkflow = await workflowService.hasWorkflow();
+
+  if (!hasWorkflow) {
+    // No workflow exists - offer to create one
+    const { createNew } = await inquirer.prompt<{ createNew: boolean }>([
+      {
+        type: 'confirm',
+        name: 'createNew',
+        message: t('prompts.workflow.noWorkflowFound'),
+        default: true
+      }
+    ]);
+
+    if (!createNew) {
+      return;
+    }
+
+    await createNewWorkflow(workflowService);
+    return;
+  }
+
+  // Workflow exists - check if complete
+  const isComplete = await workflowService.isComplete();
+
+  if (isComplete) {
+    // Workflow is complete - offer to start a new one or view status
+    console.log('');
+    const formattedStatus = await workflowService.getFormattedStatus();
+    console.log(formattedStatus);
+
+    const { completeAction } = await inquirer.prompt<{ completeAction: 'newWorkflow' | 'viewStatus' | 'back' }>([
+      {
+        type: 'list',
+        name: 'completeAction',
+        message: t('prompts.workflow.workflowComplete'),
+        choices: [
+          { name: t('prompts.workflow.action.newWorkflow'), value: 'newWorkflow' },
+          { name: t('prompts.workflow.action.viewStatus'), value: 'viewStatus' },
+          { name: t('prompts.workflow.action.back'), value: 'back' }
+        ]
+      }
+    ]);
+
+    if (completeAction === 'newWorkflow') {
+      const { confirmNew } = await inquirer.prompt<{ confirmNew: boolean }>([
+        {
+          type: 'confirm',
+          name: 'confirmNew',
+          message: t('prompts.workflow.confirmNewWorkflow'),
+          default: true
+        }
+      ]);
+
+      if (confirmNew) {
+        await createNewWorkflow(workflowService);
+      }
+    }
+    // 'viewStatus' and 'back' just return
+    return;
+  }
+
+  // Workflow exists and is not complete - show status and actions
+  let continueMenu = true;
+  while (continueMenu) {
+    console.log('');
+    const formattedStatus = await workflowService.getFormattedStatus();
+    console.log(formattedStatus);
+
+    const choices: Array<{ name: string; value: WorkflowAction }> = [];
+
+    choices.push({ name: t('prompts.workflow.action.advance'), value: 'advance' });
+    choices.push({ name: t('prompts.workflow.action.newWorkflow'), value: 'newWorkflow' });
+    choices.push({ name: t('prompts.workflow.action.refresh'), value: 'status' });
+    choices.push({ name: t('prompts.workflow.action.back'), value: 'back' });
+
+    const { action } = await inquirer.prompt<{ action: WorkflowAction }>([
+      {
+        type: 'list',
+        name: 'action',
+        message: t('prompts.workflow.action'),
+        choices
+      }
+    ]);
+
+    if (action === 'back') {
+      continueMenu = false;
+    } else if (action === 'newWorkflow') {
+      const { confirmNew } = await inquirer.prompt<{ confirmNew: boolean }>([
+        {
+          type: 'confirm',
+          name: 'confirmNew',
+          message: t('prompts.workflow.confirmNewWorkflow'),
+          default: false
+        }
+      ]);
+
+      if (confirmNew) {
+        const created = await createNewWorkflow(workflowService);
+        if (created) {
+          // Continue with the new workflow
+          continue;
+        }
+      }
+    } else if (action === 'advance') {
+      try {
+        const nextPhase = await workflowService.advance();
+        if (nextPhase) {
+          ui.displaySuccess(t('success.workflow.advanced', { phase: nextPhase, phaseName: PHASE_NAMES_PT[nextPhase] }));
+        } else {
+          ui.displaySuccess(t('success.workflow.completed'));
+          // Workflow completed - ask if they want to start a new one
+          const { startNew } = await inquirer.prompt<{ startNew: boolean }>([
+            {
+              type: 'confirm',
+              name: 'startNew',
+              message: t('prompts.workflow.noWorkflowFound'),
+              default: true
+            }
+          ]);
+
+          if (startNew) {
+            await createNewWorkflow(workflowService);
+          }
+          continueMenu = false;
+        }
+      } catch (error) {
+        ui.displayError(t('errors.workflow.advanceFailed'), error as Error);
+      }
+    }
+    // 'status' just loops and refreshes
+  }
+}
+
+type SkillAction = 'init' | 'list' | 'export' | 'create' | 'back';
+
+async function runInteractiveSkills(): Promise<void> {
+  const projectPath = process.cwd();
+
+  let continueMenu = true;
+  while (continueMenu) {
+    const { action } = await inquirer.prompt<{ action: SkillAction }>([
+      {
+        type: 'list',
+        name: 'action',
+        message: t('prompts.skill.action'),
+        choices: [
+          { name: t('prompts.skill.action.init'), value: 'init' },
+          { name: t('prompts.skill.action.list'), value: 'list' },
+          { name: t('prompts.skill.action.export'), value: 'export' },
+          { name: t('prompts.skill.action.create'), value: 'create' },
+          { name: t('prompts.skill.action.back'), value: 'back' }
+        ]
+      }
+    ]);
+
+    if (action === 'back') {
+      continueMenu = false;
+      break;
+    }
+
+    if (action === 'init') {
+      try {
+        const { createSkillGenerator } = await import('./generators/skills');
+        const generator = createSkillGenerator({ repoPath: projectPath });
+        const result = await generator.generate({});
+
+        ui.displaySuccess(t('success.skill.initialized', { path: result.skillsDir }));
+        ui.displayInfo(t('info.skill.generated'), result.generatedSkills.join(', ') || 'none');
+        if (result.skippedSkills.length > 0) {
+          ui.displayInfo(t('info.skill.skipped'), result.skippedSkills.join(', '));
+        }
+      } catch (error) {
+        ui.displayError(t('errors.skill.initFailed'), error as Error);
+      }
+    } else if (action === 'list') {
+      try {
+        const { createSkillRegistry, BUILT_IN_SKILLS } = await import('./workflow/skills');
+        const registry = createSkillRegistry(projectPath);
+        const discovered = await registry.discoverAll();
+
+        console.log('\nBuilt-in Skills:');
+        for (const skill of discovered.builtIn) {
+          const scaffolded = discovered.all.find(s => s.slug === skill.slug && s.path.includes('.context'));
+          const status = scaffolded ? '[scaffolded]' : '[available]';
+          console.log(`  ${skill.slug} ${status}`);
+          console.log(`    ${skill.metadata.description}`);
+        }
+
+        if (discovered.custom.length > 0) {
+          console.log('\nCustom Skills:');
+          for (const skill of discovered.custom) {
+            console.log(`  ${skill.slug}`);
+            console.log(`    ${skill.metadata.description}`);
+          }
+        }
+
+        console.log(`\nTotal: ${discovered.all.length} skills (${discovered.builtIn.length} built-in, ${discovered.custom.length} custom)\n`);
+      } catch (error) {
+        ui.displayError(t('errors.skill.listFailed'), error as Error);
+      }
+    } else if (action === 'export') {
+      try {
+        const { preset } = await inquirer.prompt<{ preset: string }>([
+          {
+            type: 'list',
+            name: 'preset',
+            message: t('prompts.skill.exportPreset'),
+            choices: [
+              { name: t('prompts.skill.exportPreset.all'), value: 'all' },
+              { name: t('prompts.skill.exportPreset.claude'), value: 'claude' },
+              { name: t('prompts.skill.exportPreset.gemini'), value: 'gemini' },
+              { name: t('prompts.skill.exportPreset.codex'), value: 'codex' }
+            ],
+            default: 'all'
+          }
+        ]);
+
+        const { SkillExportService } = await import('./services/export/skillExportService');
+        const exportService = new SkillExportService({
+          ui,
+          t,
+          version: VERSION,
+        });
+
+        const result = await exportService.run(projectPath, {
+          preset,
+          includeBuiltIn: true,
+        });
+
+        ui.displaySuccess(t('success.skill.exported', {
+          count: String(result.skillsExported.length),
+          targets: String(result.targets.length)
+        }));
+      } catch (error) {
+        ui.displayError(t('errors.skill.exportFailed'), error as Error);
+      }
+    } else if (action === 'create') {
+      try {
+        const { name, description, phases } = await inquirer.prompt<{
+          name: string;
+          description: string;
+          phases: string;
+        }>([
+          {
+            type: 'input',
+            name: 'name',
+            message: t('prompts.skill.name'),
+            validate: (input: string) => input.trim().length > 0 || 'Name is required'
+          },
+          {
+            type: 'input',
+            name: 'description',
+            message: t('prompts.skill.description'),
+            default: ''
+          },
+          {
+            type: 'input',
+            name: 'phases',
+            message: t('prompts.skill.phases'),
+            default: 'E,V' // Default to Execution + Validation
+          }
+        ]);
+
+        const phaseArray = phases.split(',').map(p => p.trim().toUpperCase()).filter(p => ['P', 'R', 'E', 'V', 'C'].includes(p));
+
+        ui.startSpinner('Creating skill...');
+
+        const { createSkillGenerator } = await import('./generators/skills');
+        const generator = createSkillGenerator({ repoPath: projectPath });
+        const skillPath = await generator.generateCustomSkill({
+          name: name.trim(),
+          description: description.trim() || `TODO: Describe when to use ${name}`,
+          phases: phaseArray as any,
+        });
+
+        // AI-first: Try to fill skill with AI + LSP
+        const defaults = await detectSmartDefaults();
+        if (defaults.apiKeyConfigured && defaults.provider) {
+          ui.updateSpinner('Enhancing skill with AI...', 'info');
+          try {
+            const { SkillFillService } = await import('./services/fill/skillFillService');
+            const skillFillService = new SkillFillService({ ui, t, version: VERSION, defaultModel: DEFAULT_MODEL });
+            await skillFillService.run(projectPath, {
+              provider: defaults.provider,
+              model: DEFAULT_MODEL,
+              apiKey: getApiKeyFromEnv(defaults.provider!),
+              skills: [name.trim()],
+              semantic: true,
+              useLsp: true,
+            });
+          } catch {
+            // Fill failure is not critical - template is already created
+          }
+        }
+
+        ui.updateSpinner('Skill created', 'success');
+        ui.stopSpinner();
+
+        ui.displaySuccess(t('success.skill.created', { name }));
+        ui.displayInfo(t('info.skill.path'), skillPath);
+      } catch (error) {
+        ui.stopSpinner();
+        ui.displayError(t('errors.skill.createFailed'), error as Error);
+      }
+    }
+  }
+}
+
+// ============================================================================
+// Quick Sync - Unified sync for agents, skills, and docs
+// ============================================================================
+
+async function runQuickSync(): Promise<void> {
+  const projectPath = process.cwd();
+
+  // Step 1: Select components to sync
+  const { components } = await inquirer.prompt<{ components: string[] }>([
+    {
+      type: 'checkbox',
+      name: 'components',
+      message: t('prompts.quickSync.selectComponents'),
+      choices: [
+        { name: t('prompts.quickSync.components.agents'), value: 'agents', checked: true },
+        { name: t('prompts.quickSync.components.skills'), value: 'skills', checked: true },
+        { name: t('prompts.quickSync.components.docs'), value: 'docs', checked: true },
+      ],
+    },
+  ]);
+
+  if (components.length === 0) {
+    ui.displayWarning(t('prompts.quickSync.noComponentsSelected'));
+    return;
+  }
+
+  let agentTargets: string[] | undefined;
+  let skillTargets: string[] | undefined;
+  let docTargets: string[] | undefined;
+
+  // Step 2: If agents selected, choose targets
+  if (components.includes('agents')) {
+    const { targets } = await inquirer.prompt<{ targets: string[] }>([
+      {
+        type: 'checkbox',
+        name: 'targets',
+        message: t('prompts.quickSync.selectAgentTargets'),
+        choices: [
+          { name: '.claude/agents (Claude Code)', value: 'claude', checked: true },
+          { name: '.github/agents (GitHub Copilot)', value: 'github', checked: true },
+          { name: '.cursor/agents (Cursor AI)', value: 'cursor', checked: false },
+          { name: '.windsurf/agents (Windsurf/Codeium)', value: 'windsurf', checked: false },
+          { name: '.cline/agents (Cline)', value: 'cline', checked: false },
+          { name: '.continue/agents (Continue.dev)', value: 'continue', checked: false },
+        ],
+      },
+    ]);
+    agentTargets = targets.length > 0 ? targets : undefined;
+  }
+
+  // Step 3: If skills selected, choose targets
+  if (components.includes('skills')) {
+    const { targets } = await inquirer.prompt<{ targets: string[] }>([
+      {
+        type: 'checkbox',
+        name: 'targets',
+        message: t('prompts.quickSync.selectSkillTargets'),
+        choices: [
+          { name: '.claude/skills (Claude Code)', value: 'claude', checked: true },
+          { name: '.gemini/skills (Gemini CLI)', value: 'gemini', checked: true },
+          { name: '.codex/skills (Codex CLI)', value: 'codex', checked: true },
+        ],
+      },
+    ]);
+    skillTargets = targets.length > 0 ? targets : undefined;
+  }
+
+  // Step 4: If docs selected, choose targets
+  if (components.includes('docs')) {
+    const { targets } = await inquirer.prompt<{ targets: string[] }>([
+      {
+        type: 'checkbox',
+        name: 'targets',
+        message: t('prompts.quickSync.selectDocTargets'),
+        choices: [
+          { name: '.cursorrules (Cursor AI)', value: 'cursor', checked: true },
+          { name: 'CLAUDE.md (Claude Code)', value: 'claude', checked: true },
+          { name: 'AGENTS.md (Universal)', value: 'agents', checked: true },
+          { name: '.windsurfrules (Windsurf)', value: 'windsurf', checked: false },
+          { name: '.clinerules (Cline)', value: 'cline', checked: false },
+          { name: 'CONVENTIONS.md (Aider)', value: 'aider', checked: false },
+        ],
+      },
+    ]);
+    docTargets = targets.length > 0 ? targets : undefined;
+  }
+
+  // Build options based on selections
+  const options: QuickSyncOptions = {
+    skipAgents: !components.includes('agents'),
+    skipSkills: !components.includes('skills'),
+    skipDocs: !components.includes('docs'),
+    agentTargets,
+    skillTargets,
+    docTargets,
+    force: false,
+    dryRun: false,
+    verbose: false,
+  };
+
+  const quickSyncService = new QuickSyncService({
+    ui,
+    t,
+    version: VERSION,
+    defaultModel: DEFAULT_MODEL,
+  });
+
+  const result = await quickSyncService.run(projectPath, options);
+
+  // If docs are outdated, ask if user wants to update
+  if (!result.docsUpdated) {
+    const stats = await quickSyncService.getStats(projectPath);
+    if (stats.daysOld) {
+      const { updateDocs } = await inquirer.prompt<{ updateDocs: boolean }>([
+        {
+          type: 'confirm',
+          name: 'updateDocs',
+          message: t('prompts.quickSync.updateDocs'),
+          default: true,
+        },
+      ]);
+
+      if (updateDocs) {
+        // Trigger fill with AI + LSP
+        await runInteractiveLlmFill();
+      }
+    }
+  }
+
+  ui.displaySuccess(t('success.quickSync.complete'));
+}
+
+// ============================================================================
+// Manage Agents - Submenu for agent operations
+// ============================================================================
+
+type AgentMenuAction = 'sync' | 'create' | 'list' | 'back';
+
+async function runManageAgents(): Promise<void> {
+  const projectPath = process.cwd();
+
+  let continueMenu = true;
+  while (continueMenu) {
+    const { action } = await inquirer.prompt<{ action: AgentMenuAction }>([
+      {
+        type: 'list',
+        name: 'action',
+        message: t('prompts.agents.action'),
+        choices: [
+          { name: t('prompts.agents.choice.sync'), value: 'sync' },
+          { name: t('prompts.agents.choice.create'), value: 'create' },
+          { name: t('prompts.agents.choice.list'), value: 'list' },
+          { name: t('prompts.agents.choice.back'), value: 'back' },
+        ],
+      },
+    ]);
+
+    if (action === 'back') {
+      continueMenu = false;
+      break;
+    }
+
+    if (action === 'sync') {
+      await runInteractiveSync();
+    } else if (action === 'list') {
+      await listAgents(projectPath);
+    } else if (action === 'create') {
+      await createCustomAgent(projectPath);
+    }
+  }
+}
+
+async function listAgents(projectPath: string): Promise<void> {
+  const agentsPath = path.join(projectPath, '.context', 'agents');
+  const fs = await import('fs-extra');
+
+  if (!(await fs.pathExists(agentsPath))) {
+    ui.displayWarning('No agents directory found. Run scaffold first.');
+    return;
+  }
+
+  const files = await fs.readdir(agentsPath);
+  const agents = files.filter(f => f.endsWith('.md') && f !== 'README.md');
+
+  console.log('\nAgents:');
+  for (const agent of agents) {
+    const name = agent.replace('.md', '');
+    console.log(`  ${colors.primary(name)}`);
+  }
+  console.log(`\nTotal: ${agents.length} agents\n`);
+}
+
+async function createCustomAgent(projectPath: string): Promise<void> {
+  const { name, description, role } = await inquirer.prompt<{
+    name: string;
+    description: string;
+    role: string;
+  }>([
+    {
+      type: 'input',
+      name: 'name',
+      message: t('prompts.agent.name'),
+      validate: (input: string) => input.trim().length > 0 || 'Name is required',
+    },
+    {
+      type: 'input',
+      name: 'description',
+      message: t('prompts.agent.description'),
+    },
+    {
+      type: 'list',
+      name: 'role',
+      message: t('prompts.agent.role'),
+      choices: [
+        { name: 'Code Reviewer', value: 'code-reviewer' },
+        { name: 'Bug Fixer', value: 'bug-fixer' },
+        { name: 'Feature Developer', value: 'feature-developer' },
+        { name: 'Test Writer', value: 'test-writer' },
+        { name: 'Documentation Writer', value: 'documentation-writer' },
+        { name: 'Security Auditor', value: 'security-auditor' },
+        { name: 'Performance Optimizer', value: 'performance-optimizer' },
+        { name: 'Custom...', value: 'custom' },
+      ],
+    },
+  ]);
+
+  let finalRole = role;
+  if (role === 'custom') {
+    const { customRole } = await inquirer.prompt<{ customRole: string }>([
+      {
+        type: 'input',
+        name: 'customRole',
+        message: 'Enter custom role:',
+        validate: (input: string) => input.trim().length > 0 || 'Role is required',
+      },
+    ]);
+    finalRole = customRole.trim();
+  }
+
+  ui.startSpinner(t('spinner.agent.creating'));
+
+  try {
+    const fs = await import('fs-extra');
+    const agentsDir = path.join(projectPath, '.context', 'agents');
+    await fs.ensureDir(agentsDir);
+
+    const slug = name.trim().toLowerCase().replace(/\s+/g, '-');
+    const agentPath = path.join(agentsDir, `${slug}.md`);
+
+    // Generate template content
+    const template = `---
+name: ${name.trim()}
+description: ${description.trim() || `Custom agent: ${name.trim()}`}
+role: ${finalRole}
+custom: true
+---
+
+# ${name.trim()} Agent
+
+## Role
+${description.trim() || `Custom agent specialized in ${finalRole}`}
+
+## Responsibilities
+- Review and analyze code related to ${finalRole}
+- Provide recommendations based on best practices
+- Help maintain code quality and standards
+
+## Guidelines
+- Follow project conventions and patterns
+- Consider performance and maintainability
+- Document decisions and rationale
+
+## Context
+This agent should be invoked when working on tasks related to ${finalRole}.
+`;
+
+    // Write the agent file
+    await fs.writeFile(agentPath, template, 'utf-8');
+
+    // Try to fill with AI if API key is available
+    const defaults = await detectSmartDefaults();
+    if (defaults.apiKeyConfigured && defaults.provider) {
+      ui.updateSpinner('Enhancing agent with AI...', 'info');
+
+      try {
+        // Run fill on just this agent
+        const singleFillService = new FillService({
+          ui,
+          t,
+          version: VERSION,
+          defaultModel: DEFAULT_MODEL,
+        });
+
+        await singleFillService.run(projectPath, {
+          model: DEFAULT_MODEL,
+          provider: defaults.provider,
+          apiKey: getApiKeyFromEnv(defaults.provider!),
+          verbose: false,
+          semantic: true,
+          useLsp: true,
+          limit: 1,
+          include: [agentPath],
+        });
+      } catch {
+        // Ignore fill errors - template is already saved
+      }
+    }
+
+    ui.updateSpinner(t('spinner.agent.created'), 'success');
+    ui.stopSpinner();
+
+    ui.displaySuccess(t('success.agent.created', { name: name.trim() }));
+    console.log(`  Path: ${agentPath}\n`);
+  } catch (error) {
+    ui.updateSpinner('Failed to create agent', 'fail');
+    ui.stopSpinner();
+    ui.displayError('Failed to create agent', error as Error);
+  }
+}
+
+// ============================================================================
+// Settings - Submenu for configuration
+// ============================================================================
+
+type SettingsAction = 'language' | 'back';
+
+async function runSettings(): Promise<void> {
+  let continueMenu = true;
+  while (continueMenu) {
+    const { action } = await inquirer.prompt<{ action: SettingsAction }>([
+      {
+        type: 'list',
+        name: 'action',
+        message: t('prompts.settings.action'),
+        choices: [
+          { name: t('prompts.settings.choice.language'), value: 'language' },
+          { name: t('prompts.settings.choice.back'), value: 'back' },
+        ],
+      },
+    ]);
+
+    if (action === 'back') {
+      continueMenu = false;
+      break;
+    }
+
+    if (action === 'language') {
+      await selectLocale(true);
     }
   }
 }

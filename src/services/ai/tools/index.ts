@@ -8,6 +8,7 @@ import { checkScaffoldingTool } from './checkScaffoldingTool';
 import { initializeContextTool } from './initializeContextTool';
 import { scaffoldPlanTool } from './scaffoldPlanTool';
 import { fillScaffoldingTool, listFilesToFillTool, fillSingleFileTool } from './fillScaffoldingTool';
+import { getCodebaseMapTool } from './getCodebaseMapTool';
 
 export { readFileTool } from './readFileTool';
 export { listFilesTool } from './listFilesTool';
@@ -18,6 +19,7 @@ export { checkScaffoldingTool } from './checkScaffoldingTool';
 export { initializeContextTool } from './initializeContextTool';
 export { scaffoldPlanTool } from './scaffoldPlanTool';
 export { fillScaffoldingTool, listFilesToFillTool, fillSingleFileTool } from './fillScaffoldingTool';
+export { getCodebaseMapTool } from './getCodebaseMapTool';
 
 /**
  * Returns all code analysis tools as a ToolSet for use with AI SDK
@@ -34,7 +36,8 @@ export function getCodeAnalysisTools(): ToolSet {
     scaffoldPlan: scaffoldPlanTool,
     fillScaffolding: fillScaffoldingTool,
     listFilesToFill: listFilesToFillTool,
-    fillSingleFile: fillSingleFileTool
+    fillSingleFile: fillSingleFileTool,
+    getCodebaseMap: getCodebaseMapTool
   };
 }
 
@@ -52,7 +55,8 @@ export const TOOL_NAMES = [
   'scaffoldPlan',
   'fillScaffolding',
   'listFilesToFill',
-  'fillSingleFile'
+  'fillSingleFile',
+  'getCodebaseMap'
 ] as const;
 
 export type ToolName = (typeof TOOL_NAMES)[number];

@@ -44,6 +44,24 @@ export const TOOL_DESCRIPTIONS: Record<string, ToolDescription> = {
     description: 'Build optimized semantic context for LLM prompts. Pre-analyzes the codebase and returns formatted context.'
   },
 
+  getCodebaseMap: {
+    name: 'getCodebaseMap',
+    description: 'Get codebase map data (structure, symbols, architecture) from the pre-generated JSON.',
+    extendedDescription: `Get codebase map data from .context/docs/codebase-map.json.
+Use specific sections to reduce token usage:
+- "stack": Tech stack info (languages, frameworks, build tools)
+- "structure": File counts, top directories, language distribution
+- "architecture": Detected layers, patterns, entry points
+- "symbols": All symbol categories (classes, interfaces, functions, types, enums)
+- "symbols.classes", "symbols.interfaces", etc.: Specific symbol category
+- "publicAPI": Exported public API symbols
+- "dependencies": Most imported files
+- "stats": Analysis statistics
+- "all": Complete codebase map (default)
+
+The codebase map is generated during initialization with --semantic flag.`
+  },
+
   checkScaffolding: {
     name: 'checkScaffolding',
     description: 'Check if .context scaffolding exists and return granular status'
