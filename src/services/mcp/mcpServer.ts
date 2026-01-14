@@ -41,6 +41,7 @@ import {
   documentLinker,
   AgentType,
   AGENT_TYPES,
+  createPlanLinker,
 } from '../../workflow';
 
 export interface MCPServerOptions {
@@ -967,6 +968,340 @@ export class AIContextMCPServer {
     });
 
     this.log('Registered 4 extended workflow tools');
+
+    // Register plan-workflow integration tools
+    this.registerPlanTools();
+  }
+
+  /**
+   * Register plan-workflow integration tools
+   */
+  private registerPlanTools(): void {
+    const repoPath = this.options.repoPath || process.cwd();
+
+    // linkPlan - Link a plan to the current workflow
+    this.server.registerTool('linkPlan', {
+      description: 'Link an implementation plan to the current PREVC workflow. Plans provide detailed steps mapped to workflow phases.',
+      inputSchema: {
+        planSlug: z.string().describe('Plan slug/identifier (filename without .md)'),
+      }
+    }, async ({ planSlug }) => {
+      try {
+        const linker = createPlanLinker(repoPath);
+        const ref = await linker.linkPlan(planSlug);
+
+        if (!ref) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                success: false,
+                error: `Plan not found: ${planSlug}`,
+              }, null, 2)
+            }]
+          };
+        }
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              plan: ref,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // getLinkedPlans - Get all plans linked to the workflow
+    this.server.registerTool('getLinkedPlans', {
+      description: 'Get all implementation plans linked to the current PREVC workflow.',
+      inputSchema: {}
+    }, async () => {
+      try {
+        const linker = createPlanLinker(repoPath);
+        const plans = await linker.getLinkedPlans();
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              plans,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // getPlanDetails - Get detailed plan with PREVC mapping
+    this.server.registerTool('getPlanDetails', {
+      description: 'Get detailed plan information including phases mapped to PREVC, agents, and documentation.',
+      inputSchema: {
+        planSlug: z.string().describe('Plan slug/identifier'),
+      }
+    }, async ({ planSlug }) => {
+      try {
+        const linker = createPlanLinker(repoPath);
+        const plan = await linker.getLinkedPlan(planSlug);
+
+        if (!plan) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                success: false,
+                error: `Plan not found or not linked: ${planSlug}`,
+              }, null, 2)
+            }]
+          };
+        }
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              plan: {
+                ...plan,
+                phasesWithPrevc: plan.phases.map(p => ({
+                  ...p,
+                  prevcPhaseName: PHASE_NAMES_EN[p.prevcPhase],
+                })),
+              },
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // getPlansForPhase - Get plans relevant to current PREVC phase
+    this.server.registerTool('getPlansForPhase', {
+      description: 'Get all plans that have work items for a specific PREVC phase.',
+      inputSchema: {
+        phase: z.enum(['P', 'R', 'E', 'V', 'C']).describe('PREVC phase'),
+      }
+    }, async ({ phase }) => {
+      try {
+        const linker = createPlanLinker(repoPath);
+        const plans = await linker.getPlansForPhase(phase as PrevcPhase);
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              phase,
+              phaseName: PHASE_NAMES_EN[phase as PrevcPhase],
+              plans: plans.map(p => ({
+                slug: p.ref.slug,
+                title: p.ref.title,
+                phasesInThisPrevc: p.phases
+                  .filter(ph => ph.prevcPhase === phase)
+                  .map(ph => ({ id: ph.id, name: ph.name, status: ph.status })),
+                hasPendingWork: linker.hasPendingWorkForPhase(p, phase as PrevcPhase),
+              })),
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // updatePlanPhase - Update plan phase status
+    this.server.registerTool('updatePlanPhase', {
+      description: 'Update the status of a plan phase (syncs with PREVC workflow tracking).',
+      inputSchema: {
+        planSlug: z.string().describe('Plan slug/identifier'),
+        phaseId: z.string().describe('Phase ID within the plan (e.g., "phase-1")'),
+        status: z.enum(['pending', 'in_progress', 'completed', 'skipped']).describe('New status'),
+      }
+    }, async ({ planSlug, phaseId, status }) => {
+      try {
+        const linker = createPlanLinker(repoPath);
+        const success = await linker.updatePlanPhase(planSlug, phaseId, status as any);
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success,
+              planSlug,
+              phaseId,
+              status,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // recordDecision - Record a decision in a plan
+    this.server.registerTool('recordDecision', {
+      description: 'Record a decision made during plan execution. Decisions are tracked and can be referenced later.',
+      inputSchema: {
+        planSlug: z.string().describe('Plan slug/identifier'),
+        title: z.string().describe('Decision title'),
+        description: z.string().describe('Decision description and rationale'),
+        phase: z.enum(['P', 'R', 'E', 'V', 'C']).optional().describe('Related PREVC phase'),
+        alternatives: z.array(z.string()).optional().describe('Alternatives that were considered'),
+      }
+    }, async ({ planSlug, title, description, phase, alternatives }) => {
+      try {
+        const linker = createPlanLinker(repoPath);
+        const decision = await linker.recordDecision(planSlug, {
+          title,
+          description,
+          phase: phase as PrevcPhase | undefined,
+          alternatives,
+          status: 'accepted',
+        });
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              decision,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // discoverAgents - Discover all available agents (built-in + custom)
+    this.server.registerTool('discoverAgents', {
+      description: 'Discover all available agents including custom ones. Scans .context/agents/ for custom agent playbooks.',
+      inputSchema: {}
+    }, async () => {
+      try {
+        const linker = createPlanLinker(repoPath);
+        const agents = await linker.discoverAgents();
+
+        const builtIn = agents.filter(a => !a.isCustom);
+        const custom = agents.filter(a => a.isCustom);
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              totalAgents: agents.length,
+              builtInCount: builtIn.length,
+              customCount: custom.length,
+              agents: {
+                builtIn: builtIn.map(a => a.type),
+                custom: custom.map(a => ({ type: a.type, path: a.path })),
+              },
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // getAgentInfo - Get detailed info about a specific agent
+    this.server.registerTool('getAgentInfo', {
+      description: 'Get detailed information about a specific agent (built-in or custom). Returns path, existence status, title, and description.',
+      inputSchema: {
+        agentType: z.string().describe('Agent type/identifier (e.g., "code-reviewer" or "agente-de-marketing")'),
+      }
+    }, async ({ agentType }) => {
+      try {
+        const linker = createPlanLinker(repoPath);
+        const info = await linker.getAgentInfo(agentType);
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              agent: info,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    this.log('Registered 8 plan-workflow tools');
   }
 
   /**
@@ -1330,6 +1665,260 @@ export class AIContextMCPServer {
     });
 
     this.log('Registered 5 orchestration tools');
+
+    // Register skill tools
+    this.registerSkillTools();
+  }
+
+  /**
+   * Register skill tools for on-demand expertise
+   */
+  private registerSkillTools(): void {
+    const repoPath = this.options.repoPath || process.cwd();
+
+    // Import skill registry
+    const { createSkillRegistry, BUILT_IN_SKILLS, SKILL_TO_PHASES } = require('../../workflow/skills');
+
+    // listSkills - List all available skills
+    this.server.registerTool('listSkills', {
+      description: 'List all available skills (built-in + custom). Skills are on-demand expertise for specific tasks.',
+      inputSchema: {
+        includeContent: z.boolean().optional().describe('Include full skill content in response'),
+      }
+    }, async ({ includeContent }) => {
+      try {
+        const registry = createSkillRegistry(repoPath);
+        const discovered = await registry.discoverAll();
+
+        const format = (skill: any) => ({
+          slug: skill.slug,
+          name: skill.metadata.name,
+          description: skill.metadata.description,
+          phases: skill.metadata.phases || [],
+          isBuiltIn: skill.isBuiltIn,
+          ...(includeContent ? { content: skill.content } : {}),
+        });
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              totalSkills: discovered.all.length,
+              builtInCount: discovered.builtIn.length,
+              customCount: discovered.custom.length,
+              skills: {
+                builtIn: discovered.builtIn.map(format),
+                custom: discovered.custom.map(format),
+              },
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // getSkillContent - Get full content of a specific skill
+    this.server.registerTool('getSkillContent', {
+      description: 'Get the full content of a skill by slug. Returns the SKILL.md content with instructions.',
+      inputSchema: {
+        skillSlug: z.string().describe('Skill slug/identifier (e.g., "commit-message", "pr-review")'),
+      }
+    }, async ({ skillSlug }) => {
+      try {
+        const registry = createSkillRegistry(repoPath);
+        const content = await registry.getSkillContent(skillSlug);
+
+        if (!content) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                success: false,
+                error: `Skill not found: ${skillSlug}`,
+                availableSkills: BUILT_IN_SKILLS,
+              }, null, 2)
+            }]
+          };
+        }
+
+        const skill = await registry.getSkillMetadata(skillSlug);
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              skill: {
+                slug: skillSlug,
+                name: skill?.metadata.name,
+                description: skill?.metadata.description,
+                phases: skill?.metadata.phases,
+                isBuiltIn: skill?.isBuiltIn,
+              },
+              content,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // getSkillsForPhase - Get skills relevant to a PREVC phase
+    this.server.registerTool('getSkillsForPhase', {
+      description: 'Get all skills relevant to a specific PREVC phase. Useful for knowing which skills to activate during workflow execution.',
+      inputSchema: {
+        phase: z.enum(['P', 'R', 'E', 'V', 'C']).describe('PREVC phase'),
+      }
+    }, async ({ phase }) => {
+      try {
+        const registry = createSkillRegistry(repoPath);
+        const skills = await registry.getSkillsForPhase(phase);
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              phase,
+              phaseName: PHASE_NAMES_EN[phase as PrevcPhase],
+              skills: skills.map((s: any) => ({
+                slug: s.slug,
+                name: s.metadata.name,
+                description: s.metadata.description,
+                isBuiltIn: s.isBuiltIn,
+              })),
+              count: skills.length,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // scaffoldSkills - Generate skill files
+    this.server.registerTool('scaffoldSkills', {
+      description: 'Scaffold skill files in .context/skills/. Creates SKILL.md files for built-in or custom skills.',
+      inputSchema: {
+        skills: z.array(z.string()).optional().describe('Specific skills to scaffold (default: all built-in)'),
+        force: z.boolean().optional().describe('Overwrite existing skill files'),
+      }
+    }, async ({ skills, force }) => {
+      try {
+        const { createSkillGenerator } = require('../../generators/skills');
+        const generator = createSkillGenerator({ repoPath });
+        const result = await generator.generate({ skills, force });
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              skillsDir: result.skillsDir,
+              generated: result.generatedSkills,
+              skipped: result.skippedSkills,
+              indexPath: result.indexPath,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // exportSkills - Export skills to AI tool directories
+    this.server.registerTool('exportSkills', {
+      description: 'Export skills to AI tool directories (Claude Code, Gemini CLI, Codex). Copies skills to .claude/skills/, .gemini/skills/, etc.',
+      inputSchema: {
+        preset: z.enum(['claude', 'gemini', 'codex', 'all']).default('all')
+          .describe('Target AI tool or "all" for all supported tools'),
+        includeBuiltIn: z.boolean().optional().describe('Include built-in skills even if not scaffolded'),
+        force: z.boolean().optional().describe('Overwrite existing files'),
+      }
+    }, async ({ preset, includeBuiltIn, force }) => {
+      try {
+        const { SkillExportService } = require('../export/skillExportService');
+        const exportService = new SkillExportService({
+          ui: {
+            displayOutput: () => {},
+            displaySuccess: () => {},
+            displayError: () => {},
+            displayWarning: () => {},
+            startSpinner: () => {},
+            stopSpinner: () => {},
+            updateSpinner: () => {},
+          },
+          t: (key: string) => key,
+          version: VERSION,
+        });
+
+        const result = await exportService.run(repoPath, {
+          preset,
+          includeBuiltIn,
+          force,
+        });
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: result.filesCreated > 0,
+              targets: result.targets,
+              skillsExported: result.skillsExported,
+              filesCreated: result.filesCreated,
+              filesSkipped: result.filesSkipped,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    this.log('Registered 5 skill tools');
   }
 
   /**

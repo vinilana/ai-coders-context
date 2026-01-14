@@ -5,6 +5,78 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-01-14
+
+### Added
+
+- **Skills System**: On-demand expertise for AI agents (Claude Code, Gemini CLI, Codex)
+  - 10 built-in skills: commit-message, pr-review, code-review, test-generation, documentation, refactoring, bug-investigation, feature-breakdown, api-design, security-audit
+  - `SkillRegistry` class for skill discovery and management
+  - `SkillGenerator` for scaffolding SKILL.md files
+  - `SkillExportService` for exporting to `.claude/skills/`, `.gemini/skills/`, `.codex/skills/`
+  - CLI commands: `skill init`, `skill list`, `skill export`, `skill create`
+  - MCP tools: `listSkills`, `getSkillContent`, `getSkillsForPhase`, `scaffoldSkills`, `exportSkills`
+  - Skills are mapped to PREVC phases for workflow integration
+
+- **Plan-Workflow Integration**: Link plans to PREVC workflow phases
+  - `PlanLinker` class for managing plan-workflow relationships
+  - Plans now include PREVC phase mapping in frontmatter
+  - Track plan status, decisions, and risks per workflow phase
+  - MCP tools: `linkPlan`, `getLinkedPlans`, `getPlanDetails`, `getPlansForPhase`, `updatePlanPhase`, `recordDecision`
+
+- **Agent Lineup in Plans**: Plans now include recommended agents in frontmatter
+  - AI agents can discover which agents to use for each plan step
+  - `AgentLineupEntry` type with phase mapping
+  - Frontmatter parsing extracts agent lineup automatically
+
+- **Custom Agent Discovery**: Support for custom agent playbooks
+  - Discover agents from `.context/agents/` directory
+  - Support for both built-in and custom agents (e.g., `marketing-agent.md`)
+  - MCP tools: `discoverAgents`, `getAgentInfo`
+
+- **Centralized Agent Registry**: Single source of truth for agent management
+  - `AgentRegistry` class with caching and metadata retrieval
+  - `BUILT_IN_AGENTS` constant with type-safe agent types
+  - `isBuiltInAgent()` helper for validation
+  - Exported from `workflow/agents` module
+
+- **New MCP Tools for Plan Management**:
+  - `linkPlan` - Link a plan file to the current workflow
+  - `getLinkedPlans` - Get all linked plans for current workflow
+  - `getPlanDetails` - Get detailed information about a linked plan
+  - `getPlansForPhase` - Get plans relevant to a PREVC phase
+  - `updatePlanPhase` - Update plan phase status
+  - `recordDecision` - Record a decision for a plan
+  - `discoverAgents` - Discover all available agents (built-in + custom)
+  - `getAgentInfo` - Get metadata for a specific agent
+
+### Changed
+
+- **UI/UX Minimalist**: Removed emoticons from all UI components
+  - Report service uses text indicators: `[x]`, `[>]`, `[ ]`, `[-]`
+  - Menu choices use simple text without emoji prefixes
+  - Cleaner, more professional interface
+
+- **PlanLinker Refactored**: Now delegates agent operations to AgentRegistry (SRP)
+
+### Technical Details
+
+#### New Files
+- `src/workflow/plans/types.ts` - Plan-workflow integration types
+- `src/workflow/plans/planLinker.ts` - Plan-workflow linking service
+- `src/workflow/plans/index.ts` - Plans module exports
+- `src/workflow/agents/agentRegistry.ts` - Centralized agent registry
+- `src/workflow/agents/index.ts` - Agents module exports
+
+#### New Exports from `workflow` module
+```typescript
+// Plan Integration
+export { PlanLinker, createPlanLinker, PlanReference, LinkedPlan, ... } from './plans';
+
+// Agent Registry
+export { BUILT_IN_AGENTS, AgentRegistry, createAgentRegistry, ... } from './agents';
+```
+
 ## [0.5.2] - 2026-01-09
 
 ### Fixed

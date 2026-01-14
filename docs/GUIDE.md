@@ -246,6 +246,57 @@ Confirmation (C)
 
 ---
 
+## Plan-Workflow Integration
+
+Plans can be linked to the PREVC workflow for structured execution.
+
+### Linking Plans to Workflow
+
+```bash
+# Create a plan
+npx @ai-coders/context plan "authentication-system"
+
+# The plan is automatically linked when workflow starts
+```
+
+### Plan Frontmatter
+
+Plans include PREVC phase mapping and agent lineup:
+
+```yaml
+---
+title: Authentication System
+status: unfilled
+prevc_phases:
+  - P  # Planning
+  - R  # Review
+  - E  # Execution
+agents:
+  - type: architect-specialist
+    phase: R
+  - type: feature-developer
+    phase: E
+  - type: security-auditor
+    phase: V
+docs:
+  - architecture.md
+  - security.md
+---
+```
+
+### MCP Tools for Plans
+
+| Tool | Description |
+|------|-------------|
+| `linkPlan` | Link a plan file to current workflow |
+| `getLinkedPlans` | Get all linked plans |
+| `getPlanDetails` | Get plan details with agent lineup |
+| `getPlansForPhase` | Get plans for a PREVC phase |
+| `updatePlanPhase` | Update plan phase status |
+| `recordDecision` | Record a plan decision |
+
+---
+
 ## Agent Orchestration
 
 The orchestration system maps tasks to specialized AI agents.
@@ -289,6 +340,35 @@ The orchestrator selects agents based on task keywords:
 "optimize database queries" → performance-optimizer, database-specialist
 "add unit tests" → test-writer
 ```
+
+### Custom Agents
+
+You can create custom agent playbooks in `.context/agents/`:
+
+```
+.context/agents/
+├── README.md
+├── code-reviewer.md      # Built-in
+├── feature-developer.md  # Built-in
+└── marketing-agent.md    # Custom
+```
+
+Custom agents are automatically discovered and can be referenced in plans:
+
+```yaml
+agents:
+  - type: marketing-agent  # Custom agent
+    phase: P
+  - type: feature-developer  # Built-in agent
+    phase: E
+```
+
+### Agent Discovery MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `discoverAgents` | List all agents (built-in + custom) |
+| `getAgentInfo` | Get agent metadata and content |
 
 ---
 

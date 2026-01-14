@@ -100,3 +100,44 @@ export {
   PHASE_TO_DOCS,
   ROLE_TO_DOCS,
 } from './orchestration';
+
+// Plan Integration
+export {
+  PlanLinker,
+  createPlanLinker,
+  PlanReference,
+  LinkedPlan,
+  PlanPhase,
+  PlanStep,
+  PlanDecision,
+  PlanRisk,
+  WorkflowPlans,
+  AgentLineupEntry,
+  PLAN_PHASE_TO_PREVC,
+} from './plans';
+
+// Agent Registry
+export {
+  BUILT_IN_AGENTS,
+  BuiltInAgentType,
+  AgentMetadata,
+  DiscoveredAgents,
+  isBuiltInAgent,
+  AgentRegistry,
+  createAgentRegistry,
+} from './agents';
+
+// Skills
+export {
+  Skill,
+  SkillMetadata,
+  SkillReference,
+  DiscoveredSkills,
+  BUILT_IN_SKILLS,
+  BuiltInSkillType,
+  isBuiltInSkill,
+  SKILL_TO_PHASES,
+  SkillRegistry,
+  createSkillRegistry,
+  getBuiltInSkillTemplates,
+} from './skills';
