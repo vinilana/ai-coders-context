@@ -8,6 +8,42 @@
 
 Stop letting LLMs run on autopilot. PREVC is a universal process that improves AI output through 5 simple steps: **Planning, Review, Execution, Validation, and Confirmation**. Context-oriented. Spec-driven. No guesswork.
 
+## The Problem
+
+Every AI coding tool invented its own way to organize context:
+
+```
+.cursor/rules/          # Cursor
+.claude/                # Claude Code
+.windsurf/rules/        # Windsurf
+.github/copilot/        # Copilot
+.cline/                 # Cline
+AGENTS.md               # Codex
+```
+
+Using multiple tools? Enjoy duplicating your rules, agents, and documentation across 6 different formats. Context fragmentation is real.
+
+## The Solution
+
+One `.context/` directory. Works everywhere.
+
+```
+.context/
+├── docs/           # Your documentation (architecture, patterns, decisions)
+├── agents/         # Agent playbooks (code-reviewer, feature-developer, etc.)
+└── plans/          # Work plans linked to PREVC workflow
+```
+
+Export to any tool with a single command:
+
+```bash
+npx @ai-coders/context export-rules --preset all    # Export to all tools
+npx @ai-coders/context export-rules --preset cursor # Just Cursor
+npx @ai-coders/context export-rules --preset claude # Just Claude
+```
+
+**Write once. Use anywhere. No boilerplate.**
+
 ## Why PREVC?
 
 LLMs produce better results when they follow a structured process instead of generating code blindly. PREVC ensures:
