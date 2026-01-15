@@ -18,7 +18,15 @@ export { searchCodeTool } from './searchCodeTool';
 export { checkScaffoldingTool } from './checkScaffoldingTool';
 export { initializeContextTool } from './initializeContextTool';
 export { scaffoldPlanTool } from './scaffoldPlanTool';
-export { fillScaffoldingTool, listFilesToFillTool, fillSingleFileTool } from './fillScaffoldingTool';
+export {
+  fillScaffoldingTool,
+  listFilesToFillTool,
+  fillSingleFileTool,
+  getOrBuildContext,
+  generateDocContent,
+  generateAgentContent,
+  cleanupSharedContext
+} from './fillScaffoldingTool';
 export { getCodebaseMapTool } from './getCodebaseMapTool';
 
 /**

@@ -11,7 +11,9 @@ import {
 } from '../../stack';
 
 export const scaffoldPlanTool = tool({
-  description: 'Create a plan template in .context/plans/',
+  description: `Create a plan template in .context/plans/.
+When autoFill is true (default), returns semantic context and fill instructions.
+The AI agent MUST then fill the plan with specific implementation details.`,
   inputSchema: ScaffoldPlanInputSchema,
   execute: async (input: ScaffoldPlanInput) => {
     const {
@@ -20,7 +22,8 @@ export const scaffoldPlanTool = tool({
       outputDir: customOutputDir,
       title,
       summary,
-      semantic = true
+      semantic = true,
+      autoFill = true,
     } = input;
 
     const repoPath = customRepoPath ? path.resolve(customRepoPath) : process.cwd();
@@ -40,6 +43,9 @@ export const scaffoldPlanTool = tool({
 
       const planGenerator = new PlanGenerator();
 
+      // When autoFill is true, enable semantic analysis for richer content
+      const enableSemantic = autoFill && semantic;
+
       const result = await planGenerator.generatePlan({
         planName,
         outputDir,
@@ -47,14 +53,17 @@ export const scaffoldPlanTool = tool({
         summary,
         force: true, // MCP calls should always overwrite (non-interactive)
         verbose: false,
-        semantic,
-        projectPath: semantic ? repoPath : undefined,
+        semantic: enableSemantic,
+        projectPath: enableSemantic ? repoPath : undefined,
         selectedAgentTypes: filteredAgents,
         selectedDocKeys: filteredDocs,
       });
 
       // Read the generated content to return
       const planContent = await fs.readFile(result.planPath, 'utf-8');
+
+      // Build fill instructions for the plan
+      const fillInstructions = autoFill ? buildPlanFillInstructions(planName, result.planPath, summary) : undefined;
 
       return {
         success: true,
@@ -65,6 +74,10 @@ export const scaffoldPlanTool = tool({
           confidence: classification.confidence,
           reasoning: classification.reasoning,
         },
+        fillInstructions,
+        instructions: autoFill
+          ? 'IMPORTANT: Review the generated plan and fill in the specific implementation details. The plan template has been created with codebase context - you must now customize it with the actual tasks, phases, and deliverables for this feature/project.'
+          : 'The plan template has been created. You can customize it manually or use fillScaffolding to get suggested content.',
       };
     } catch (error) {
       return {
@@ -74,3 +87,55 @@ export const scaffoldPlanTool = tool({
     }
   }
 });
+
+/**
+ * Build fill instructions for a plan file
+ */
+function buildPlanFillInstructions(planName: string, planPath: string, summary?: string): string {
+  const lines: string[] = [];
+
+  lines.push('# Plan Fill Instructions');
+  lines.push('');
+  lines.push(`A plan template has been created at: \`${planPath}\``);
+  lines.push('');
+  lines.push('You MUST now fill in the following sections with specific implementation details:');
+  lines.push('');
+  lines.push('## Required Sections to Fill');
+  lines.push('');
+  lines.push('### 1. Goal & Scope');
+  lines.push('- Define the specific objective of this plan');
+  lines.push('- List what is included and excluded from scope');
+  if (summary) {
+    lines.push(`- Initial summary provided: "${summary}"`);
+  }
+  lines.push('');
+  lines.push('### 2. Phases');
+  lines.push('- Break down the implementation into logical phases');
+  lines.push('- Each phase should have:');
+  lines.push('  - Clear objective');
+  lines.push('  - Specific steps with owners (agent types)');
+  lines.push('  - Deliverables and evidence of completion');
+  lines.push('  - Git commit checkpoint message');
+  lines.push('');
+  lines.push('### 3. Agent Lineup');
+  lines.push('- Assign specific agents to phases');
+  lines.push('- Define focus areas for each agent');
+  lines.push('');
+  lines.push('### 4. Documentation Touchpoints');
+  lines.push('- List which docs need to be updated');
+  lines.push('- Specify which sections and why');
+  lines.push('');
+  lines.push('### 5. Success Criteria');
+  lines.push('- Define measurable success criteria');
+  lines.push('- Include testing and validation requirements');
+  lines.push('');
+  lines.push('## Action Required');
+  lines.push('');
+  lines.push('1. Read the generated plan template');
+  lines.push('2. Fill in each section with specific, actionable content');
+  lines.push('3. Write the completed plan back to the file');
+  lines.push('');
+  lines.push('DO NOT leave placeholder text. Each section must have concrete, implementation-ready content.');
+
+  return lines.join('\n');
+}

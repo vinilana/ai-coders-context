@@ -303,6 +303,8 @@ export const InitializeContextInputSchema = z.object({
     .describe('Override auto-detected project type (e.g., "cli", "web-frontend", "library")'),
   disableFiltering: z.boolean().default(false).optional()
     .describe('Generate all agents/docs regardless of project type'),
+  autoFill: z.boolean().default(true).optional()
+    .describe('Automatically fill scaffolding with codebase-aware content (default: true)'),
 });
 
 export const InitializeContextOutputSchema = z.object({
@@ -323,7 +325,9 @@ export const ScaffoldPlanInputSchema = z.object({
   outputDir: z.string().optional().describe('Output directory'),
   title: z.string().optional().describe('Plan title (defaults to formatted planName)'),
   summary: z.string().optional().describe('Plan summary/goal'),
-  semantic: z.boolean().default(true).optional().describe('Enable semantic analysis')
+  semantic: z.boolean().default(true).optional().describe('Enable semantic analysis'),
+  autoFill: z.boolean().default(true).optional()
+    .describe('Automatically fill the plan with codebase-aware content (default: true)'),
 });
 
 export const ScaffoldPlanOutputSchema = z.object({

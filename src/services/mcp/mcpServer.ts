@@ -7,6 +7,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
+import * as path from 'path';
 
 import {
   readFileTool,
@@ -288,9 +289,11 @@ export class AIContextMCPServer {
         semantic: z.boolean().default(true).optional()
           .describe('Enable semantic analysis for richer templates'),
         include: z.array(z.string()).optional().describe('Include patterns'),
-        exclude: z.array(z.string()).optional().describe('Exclude patterns')
+        exclude: z.array(z.string()).optional().describe('Exclude patterns'),
+        autoFill: z.boolean().default(true).optional()
+          .describe('Automatically fill scaffolding with codebase-aware content (default: true)')
       }
-    }, async ({ repoPath, type, outputDir, semantic, include, exclude }) => {
+    }, async ({ repoPath, type, outputDir, semantic, include, exclude, autoFill }) => {
       const result = await initializeContextTool.execute!(
         {
           repoPath: repoPath || this.options.repoPath || process.cwd(),
@@ -298,7 +301,8 @@ export class AIContextMCPServer {
           outputDir,
           semantic,
           include,
-          exclude
+          exclude,
+          autoFill
         },
         { toolCallId: '', messages: [] }
       );
@@ -320,9 +324,11 @@ export class AIContextMCPServer {
         outputDir: z.string().optional().describe('Output directory'),
         title: z.string().optional().describe('Plan title (defaults to formatted planName)'),
         summary: z.string().optional().describe('Plan summary/goal'),
-        semantic: z.boolean().default(true).optional().describe('Enable semantic analysis')
+        semantic: z.boolean().default(true).optional().describe('Enable semantic analysis'),
+        autoFill: z.boolean().default(true).optional()
+          .describe('Automatically fill plan with codebase-aware content (default: true)')
       }
-    }, async ({ planName, repoPath, outputDir, title, summary, semantic }) => {
+    }, async ({ planName, repoPath, outputDir, title, summary, semantic, autoFill }) => {
       const result = await scaffoldPlanTool.execute!(
         {
           planName,
@@ -330,7 +336,8 @@ export class AIContextMCPServer {
           outputDir,
           title,
           summary,
-          semantic
+          semantic,
+          autoFill
         },
         { toolCallId: '', messages: [] }
       );
@@ -487,12 +494,17 @@ export class AIContextMCPServer {
       }
     }, async ({ name, description, scale }) => {
       try {
-        const service = new WorkflowService(repoPath);
+        const resolvedRepoPath = path.resolve(repoPath);
+        const service = new WorkflowService(resolvedRepoPath);
         const status = await service.init({
           name,
           description,
           scale: scale as string | undefined,
         });
+
+        // Include file paths for visibility
+        const contextPath = path.join(resolvedRepoPath, '.context');
+        const statusFilePath = path.join(contextPath, 'workflow', 'status.yaml');
 
         return {
           content: [{
@@ -505,6 +517,8 @@ export class AIContextMCPServer {
               phases: Object.keys(status.phases).filter(
                 (p) => status.phases[p as PrevcPhase].status !== 'skipped'
               ),
+              statusFilePath,
+              contextPath,
             }, null, 2)
           }]
         };
@@ -527,7 +541,8 @@ export class AIContextMCPServer {
       inputSchema: {}
     }, async () => {
       try {
-        const service = new WorkflowService(repoPath);
+        const resolvedRepoPath = path.resolve(repoPath);
+        const service = new WorkflowService(resolvedRepoPath);
 
         if (!(await service.hasWorkflow())) {
           return {
@@ -535,7 +550,8 @@ export class AIContextMCPServer {
               type: 'text' as const,
               text: JSON.stringify({
                 success: false,
-                error: 'No workflow found. Run workflowInit first.'
+                error: 'No workflow found. Run workflowInit first.',
+                statusFilePath: path.join(resolvedRepoPath, '.context', 'workflow', 'status.yaml')
               }, null, 2)
             }]
           };
@@ -543,6 +559,7 @@ export class AIContextMCPServer {
 
         const summary = await service.getSummary();
         const status = await service.getStatus();
+        const statusFilePath = path.join(resolvedRepoPath, '.context', 'workflow', 'status.yaml');
 
         return {
           content: [{
@@ -559,6 +576,7 @@ export class AIContextMCPServer {
               isComplete: summary.isComplete,
               phases: status.phases,
               roles: status.roles,
+              statusFilePath,
             }, null, 2)
           }]
         };
