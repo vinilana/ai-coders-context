@@ -8,7 +8,11 @@ import { SemanticContextBuilder } from '../../semantic/contextBuilder';
 let sharedContextBuilder: SemanticContextBuilder | null = null;
 let cachedContext: { repoPath: string; context: string } | null = null;
 
-async function getOrBuildContext(repoPath: string): Promise<string> {
+/**
+ * Get or build semantic context for a repository.
+ * Caches the context for efficiency when processing multiple files.
+ */
+export async function getOrBuildContext(repoPath: string): Promise<string> {
   if (cachedContext && cachedContext.repoPath === repoPath) {
     return cachedContext.context;
   }
@@ -380,7 +384,10 @@ After calling this tool, write the suggestedContent to each file path.`,
   }
 });
 
-function generateDocContent(fileName: string, template: string, context: string): string {
+/**
+ * Generate filled documentation content based on file type and semantic context.
+ */
+export function generateDocContent(fileName: string, template: string, context: string): string {
   // Extract key information from semantic context
   const contextLines = context.split('\n');
 
@@ -439,7 +446,10 @@ ${context.substring(0, 2000)}...
   }
 }
 
-function generateAgentContent(agentType: string, template: string, context: string): string {
+/**
+ * Generate filled agent playbook content based on agent type and semantic context.
+ */
+export function generateAgentContent(agentType: string, template: string, context: string): string {
   const archSection = extractSection(context, '## Architecture', '##');
   const patternsSection = extractSection(context, '## Patterns', '##');
 
@@ -475,7 +485,10 @@ Analyze the codebase to identify files relevant to this agent's responsibilities
 `;
 }
 
-function extractSection(content: string, startMarker: string, endMarker: string): string {
+/**
+ * Extract a section from content between markers.
+ */
+export function extractSection(content: string, startMarker: string, endMarker: string): string {
   const startIndex = content.indexOf(startMarker);
   if (startIndex === -1) return '';
 
