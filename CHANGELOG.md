@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-01-15
+
+### Added
+
+- **Auto-fill instructions for scaffolding**: MCP scaffolding tools now return detailed fill instructions
+  - `initializeContext` returns semantic context and per-file fill instructions when `autoFill=true` (default)
+  - `scaffoldPlan` returns fill instructions for the plan template
+  - AI agents receive comprehensive prompts to fill each generated file
+  - New `fillPrompt` field with complete instructions for all files
+  - New `fillInstructions` per file with specific guidance (architecture, data-flow, conventions, etc.)
+
+- **Workflow file path visibility**: `workflowInit` and `workflowStatus` now return file paths
+  - `statusFilePath`: Absolute path to `.context/workflow/status.yaml`
+  - `contextPath`: Path to the `.context` directory
+  - Helps AI agents and users locate workflow state files
+
+- **New `autoFill` parameter**: Added to `initializeContext` and `scaffoldPlan` MCP tools
+  - Defaults to `true` - scaffolding tools return semantic context and fill instructions
+  - Set to `false` to skip context building and get template-only response
+
+### Changed
+
+- **Scaffolding tool responses**: Now include structured fill instructions instead of generic nextSteps
+  - Each generated file includes type-specific fill instructions
+  - Semantic context included for codebase-aware content generation
+  - Clear action directives for AI agents to fill files
+
+### Technical Details
+
+#### Modified Files
+- `src/services/ai/schemas.ts` - Added `autoFill` parameter to input schemas
+- `src/services/ai/tools/initializeContextTool.ts` - Returns fill instructions and semantic context
+- `src/services/ai/tools/scaffoldPlanTool.ts` - Returns fill instructions for plans
+- `src/services/ai/tools/fillScaffoldingTool.ts` - Exported helper functions for reuse
+- `src/services/ai/tools/index.ts` - Updated exports
+- `src/services/mcp/mcpServer.ts` - Added `autoFill` to tool schemas, file paths to workflow responses
+
 ## [0.6.0] - 2026-01-14
 
 ### Added
