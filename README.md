@@ -40,6 +40,9 @@ Export to any tool.
 **Write once. Use anywhere. No boilerplate.**
 
 
+## Youtube video
+[![Watch the video](https://img.youtube.com/vi/p9uV3CeLaKY/0.jpg)](https://www.youtube.com/watch?v=p9uV3CeLaKY)
+
 ## Connect with Us
 
 Built by [AI Coders Academy](http://aicoders.academy/) — Learn AI-assisted development and become a more productive developer.
