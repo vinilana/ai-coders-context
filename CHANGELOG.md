@@ -32,6 +32,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Semantic context included for codebase-aware content generation
   - Clear action directives for AI agents to fill files
 
+### Fixed
+
+- **MCP `fillSkills` no longer requires API key**: Fixed critical bug where `fillSkills` MCP tool
+  incorrectly required an AI API key when called via Claude Code
+  - MCP tools now return fill instructions instead of calling LLM services directly
+  - API keys are only required for CLI usage, never for MCP
+  - Design principle: AI agent (Claude Code) IS the LLM, so MCP tools return context/instructions
+
 ### Technical Details
 
 #### Modified Files
@@ -40,7 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `src/services/ai/tools/scaffoldPlanTool.ts` - Returns fill instructions for plans
 - `src/services/ai/tools/fillScaffoldingTool.ts` - Exported helper functions for reuse
 - `src/services/ai/tools/index.ts` - Updated exports
-- `src/services/mcp/mcpServer.ts` - Added `autoFill` to tool schemas, file paths to workflow responses
+- `src/services/mcp/mcpServer.ts` - Fixed `fillSkills` to return fill instructions instead of calling SkillFillService, added `autoFill` to tool schemas, file paths to workflow responses
 
 ## [0.6.0] - 2026-01-14
 

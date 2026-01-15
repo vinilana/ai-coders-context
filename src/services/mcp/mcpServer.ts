@@ -21,7 +21,8 @@ import {
   fillScaffoldingTool,
   listFilesToFillTool,
   fillSingleFileTool,
-  getCodebaseMapTool
+  getCodebaseMapTool,
+  getOrBuildContext
 } from '../ai/tools';
 import { getToolDescription } from '../ai/toolRegistry';
 import { SemanticContextBuilder, type ContextFormat } from '../semantic/contextBuilder';
@@ -1980,60 +1981,99 @@ export class AIContextMCPServer {
       }
     });
 
-    // fillSkills - Fill/personalize skill files with AI
+    // fillSkills - Return fill instructions for skill files (NO API key required)
     this.server.registerTool('fillSkills', {
-      description: 'Fill/personalize skill files using AI analysis of the codebase. Reads docs and agents for context.',
+      description: `Fill/personalize skill files with codebase-aware content.
+Returns semantic context and fill instructions for the AI agent to process.
+The AI agent MUST then fill each skill file using the provided context and instructions.`,
       inputSchema: {
         skills: z.array(z.string()).optional().describe('Specific skills to fill (default: all scaffolded)'),
-        force: z.boolean().optional().describe('Overwrite existing content'),
-        useSemanticContext: z.boolean().default(true).optional().describe('Use semantic context mode (more token efficient)'),
-        useLsp: z.boolean().optional().describe('Enable LSP for deeper analysis'),
+        force: z.boolean().optional().describe('Include already-filled skills'),
       }
-    }, async ({ skills, force, useSemanticContext, useLsp }) => {
+    }, async ({ skills, force }) => {
       try {
-        const { SkillFillService } = require('../fill/skillFillService');
+        const fs = require('fs-extra');
+        const registry = createSkillRegistry(repoPath);
+        const skillsDir = path.join(repoPath, '.context', 'skills');
 
-        const skillFillService = new SkillFillService({
-          ui: {
-            displayWelcome: () => {},
-            displayProjectInfo: () => {},
-            displayStep: () => {},
-            displaySuccess: () => {},
-            displayError: () => {},
-            displayWarning: () => {},
-            displayInfo: () => {},
-            startSpinner: () => {},
-            stopSpinner: () => {},
-            updateSpinner: () => {},
-            createAgentCallbacks: () => ({
-              onAgentStart: () => {},
-              onAgentStep: () => {},
-              onAgentComplete: () => {},
-              onToolCall: () => {},
-              onToolResult: () => {},
-            }),
-          },
-          t: (key: string) => key,
-          version: VERSION,
-          defaultModel: DEFAULT_MODEL,
-        });
+        // Check if skills directory exists
+        if (!await fs.pathExists(skillsDir)) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                success: false,
+                error: 'Skills directory does not exist. Run scaffoldSkills first.',
+                skillsDir,
+              }, null, 2)
+            }]
+          };
+        }
 
-        const result = await skillFillService.run(repoPath, {
-          skills,
-          force,
-          semantic: useSemanticContext ?? true,
-          useLsp,
-        });
+        // Discover skills to fill
+        const discovered = await registry.discoverAll();
+        let skillsToFill = discovered.all;
+
+        // Filter by specific skills if provided
+        if (skills && skills.length > 0) {
+          skillsToFill = skillsToFill.filter((s: { slug: string }) => skills.includes(s.slug));
+        }
+
+        // Filter out already-filled skills unless force is set
+        if (!force) {
+          skillsToFill = skillsToFill.filter((s: { path: string }) => {
+            // Check if skill file exists and has minimal content (likely a template)
+            if (!fs.existsSync(s.path)) return true;
+            const content = fs.readFileSync(s.path, 'utf-8');
+            // Consider it unfilled if it's a template (has placeholder markers)
+            return content.includes('<!-- TODO') || content.includes('[PLACEHOLDER]') || content.length < 500;
+          });
+        }
+
+        if (skillsToFill.length === 0) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                success: true,
+                message: 'No skills need filling. Use force=true to refill existing skills.',
+                skillsDir,
+              }, null, 2)
+            }]
+          };
+        }
+
+        // Build semantic context
+        let semanticContext: string | undefined;
+        try {
+          semanticContext = await getOrBuildContext(repoPath);
+        } catch (contextError) {
+          // Continue without semantic context
+          semanticContext = undefined;
+        }
+
+        // Build fill instructions for each skill
+        const fillInstructions = skillsToFill.map((skill: { path: string; slug: string; metadata: { name?: string; description?: string }; isBuiltIn: boolean }) => ({
+          skillPath: skill.path,
+          skillSlug: skill.slug,
+          skillName: skill.metadata.name || skill.slug,
+          description: skill.metadata.description || '',
+          isBuiltIn: skill.isBuiltIn,
+          instructions: getSkillFillInstructions(skill.slug),
+        }));
+
+        // Build comprehensive fill prompt
+        const fillPrompt = buildSkillFillPrompt(fillInstructions, semanticContext);
 
         return {
           content: [{
             type: 'text' as const,
             text: JSON.stringify({
               success: true,
-              filled: result.filled,
-              skipped: result.skipped,
-              failed: result.failed,
-              model: result.model,
+              skillsToFill: fillInstructions,
+              semanticContext,
+              fillPrompt,
+              instructions: 'IMPORTANT: You MUST now fill each skill file using the semantic context and fill instructions provided. Write the content to each skillPath.',
             }, null, 2)
           }]
         };
@@ -2079,6 +2119,142 @@ export class AIContextMCPServer {
       process.stderr.write(`[mcp] ${message}\n`);
     }
   }
+}
+
+/**
+ * Get fill instructions for a skill based on its type
+ */
+function getSkillFillInstructions(skillSlug: string): string {
+  const instructions: Record<string, string> = {
+    'commit-message': `Fill this skill with:
+- Commit message format conventions for this project
+- Examples of good commit messages from the codebase
+- Branch naming conventions if applicable
+- Semantic versioning guidelines`,
+
+    'pr-review': `Fill this skill with:
+- PR review checklist specific to this codebase
+- Code quality standards to check
+- Testing requirements before merge
+- Documentation expectations`,
+
+    'code-review': `Fill this skill with:
+- Code review guidelines for this project
+- Common patterns to look for
+- Security and performance considerations
+- Style and convention checks`,
+
+    'test-generation': `Fill this skill with:
+- Testing framework and conventions used
+- Test file organization patterns
+- Mocking strategies for this codebase
+- Coverage requirements`,
+
+    'documentation': `Fill this skill with:
+- Documentation standards for this project
+- JSDoc/TSDoc conventions
+- README structure expectations
+- API documentation guidelines`,
+
+    'refactoring': `Fill this skill with:
+- Refactoring patterns common in this codebase
+- Code smell detection guidelines
+- Safe refactoring procedures
+- Testing requirements after refactoring`,
+
+    'bug-investigation': `Fill this skill with:
+- Debugging workflow for this codebase
+- Common bug patterns and their fixes
+- Logging and error handling conventions
+- Test verification steps`,
+
+    'feature-breakdown': `Fill this skill with:
+- Feature decomposition approach
+- Task estimation guidelines
+- Dependency identification process
+- Integration points to consider`,
+
+    'api-design': `Fill this skill with:
+- API design patterns used in this project
+- Endpoint naming conventions
+- Request/response format standards
+- Versioning and deprecation policies`,
+
+    'security-audit': `Fill this skill with:
+- Security checklist for this codebase
+- Common vulnerabilities to check
+- Authentication/authorization patterns
+- Data validation requirements`,
+  };
+
+  return instructions[skillSlug] || `Fill this skill with project-specific content for ${skillSlug}:
+- Identify relevant patterns from the codebase
+- Include specific examples from the project
+- Add conventions and best practices
+- Reference important files and components`;
+}
+
+/**
+ * Build comprehensive fill prompt for skills
+ */
+function buildSkillFillPrompt(
+  skills: Array<{
+    skillPath: string;
+    skillSlug: string;
+    skillName: string;
+    description: string;
+    instructions: string;
+  }>,
+  semanticContext?: string
+): string {
+  const lines: string[] = [];
+
+  lines.push('# Skill Fill Instructions');
+  lines.push('');
+  lines.push('You MUST fill each of the following skill files with codebase-specific content.');
+  lines.push('');
+
+  if (semanticContext) {
+    lines.push('## Codebase Context');
+    lines.push('');
+    lines.push('Use this semantic context to understand the codebase:');
+    lines.push('');
+    lines.push('```');
+    lines.push(semanticContext.length > 6000 ? semanticContext.substring(0, 6000) + '\n...(truncated)' : semanticContext);
+    lines.push('```');
+    lines.push('');
+  }
+
+  lines.push('## Skills to Fill');
+  lines.push('');
+
+  for (const skill of skills) {
+    lines.push(`### ${skill.skillName} (${skill.skillSlug})`);
+    lines.push(`**Path:** \`${skill.skillPath}\``);
+    if (skill.description) {
+      lines.push(`**Description:** ${skill.description}`);
+    }
+    lines.push('');
+    lines.push('**Fill Instructions:**');
+    lines.push(skill.instructions);
+    lines.push('');
+  }
+
+  lines.push('## Action Required');
+  lines.push('');
+  lines.push('For each skill listed above:');
+  lines.push('1. Read the current skill template');
+  lines.push('2. Generate codebase-specific content based on the instructions and context');
+  lines.push('3. Write the filled content to the skill file');
+  lines.push('');
+  lines.push('Each skill should be personalized with:');
+  lines.push('- Specific examples from this codebase');
+  lines.push('- Project-specific conventions and patterns');
+  lines.push('- References to relevant files and components');
+  lines.push('');
+  lines.push('DO NOT leave placeholder text. Each skill must have meaningful, project-specific content.');
+
+  return lines.join('\n');
 }
 
 /**
