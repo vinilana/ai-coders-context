@@ -34,9 +34,12 @@ import { WorkflowService } from '../workflow';
 const DEFAULT_MODEL = DEFAULT_MODELS.google || 'gemini-3-flash-preview';
 import { StartService } from '../start';
 import { ReportService } from '../report';
-import { ExportRulesService, EXPORT_PRESETS } from '../export';
+import { ExportRulesService, EXPORT_PRESETS, ContextExportService } from '../export';
 import { StackDetector } from '../stack';
-import { ReverseQuickSyncService, ToolDetector } from '../reverseSync';
+import { ReverseQuickSyncService, ToolDetector, ImportSkillsService } from '../reverseSync';
+import { ImportRulesService, ImportAgentsService } from '../import';
+import { SyncService } from '../sync';
+import type { PresetName } from '../sync/types';
 import {
   PREVC_ROLES,
   PHASE_NAMES_EN,
@@ -1000,6 +1003,201 @@ export class AIContextMCPServer {
       }
     });
 
+    // exportDocs - Export documentation to AI tools (with README indexing support)
+    this.server.registerTool('exportDocs', {
+      description: 'Export documentation from .context/docs/ to AI tool directories. Uses README.md files as indices by default for cleaner exports.',
+      inputSchema: {
+        preset: z.enum(['cursor', 'claude', 'github', 'windsurf', 'cline', 'aider', 'codex', 'antigravity', 'trae', 'all']).default('all')
+          .describe('Target AI tool preset or "all" for all supported tools'),
+        indexMode: z.enum(['readme', 'all']).default('readme')
+          .describe('Index mode: "readme" exports only README.md files (recommended), "all" exports all matching files'),
+        force: z.boolean().optional().describe('Overwrite existing files'),
+        dryRun: z.boolean().optional().describe('Preview changes without writing'),
+      }
+    }, async ({ preset, indexMode, force, dryRun }) => {
+      try {
+        const exportService = new ExportRulesService({
+          ui: {
+            displayOutput: () => {},
+            displaySuccess: () => {},
+            displayError: () => {},
+            displayInfo: () => {},
+            displayWarning: () => {},
+            startSpinner: () => {},
+            stopSpinner: () => {},
+            updateSpinner: () => {},
+          } as any,
+          t: (key: string) => key,
+          version: VERSION,
+        });
+
+        const result = await exportService.run(repoPath, { preset, indexMode, force, dryRun });
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              filesCreated: result.filesCreated,
+              filesSkipped: result.filesSkipped,
+              filesFailed: result.filesFailed,
+              targets: result.targets,
+              errors: result.errors,
+              indexMode: indexMode || 'readme',
+              dryRun: dryRun || false,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // exportAgents - Export agents to AI tool directories
+    this.server.registerTool('exportAgents', {
+      description: 'Export agents from .context/agents/ to AI tool directories (Claude, Cursor, GitHub Copilot, Windsurf, Cline, Continue, Antigravity, Trae).',
+      inputSchema: {
+        preset: z.enum(['claude', 'cursor', 'github', 'windsurf', 'cline', 'continue', 'antigravity', 'trae', 'all']).default('all')
+          .describe('Target AI tool preset or "all" for all supported tools'),
+        mode: z.enum(['symlink', 'markdown']).default('symlink')
+          .describe('Sync mode: symlink creates links (recommended), markdown creates reference files'),
+        force: z.boolean().optional().describe('Overwrite existing files'),
+        dryRun: z.boolean().optional().describe('Preview changes without writing'),
+      }
+    }, async ({ preset, mode, force, dryRun }) => {
+      try {
+        const syncService = new SyncService({
+          ui: {
+            displayOutput: () => {},
+            displaySuccess: () => {},
+            displayError: () => {},
+            displayInfo: () => {},
+            displayWarning: () => {},
+            displayWelcome: () => {},
+            displayStep: () => {},
+            startSpinner: () => {},
+            stopSpinner: () => {},
+            updateSpinner: () => {},
+          } as any,
+          t: (key: string) => key,
+          version: VERSION,
+        });
+
+        // Run sync with the specified preset
+        await syncService.run({
+          source: '.context/agents',
+          preset: preset as PresetName,
+          mode: mode as 'symlink' | 'markdown',
+          force: force || false,
+          dryRun: dryRun || false,
+        });
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              preset,
+              mode,
+              dryRun: dryRun || false,
+              message: `Agents exported to ${preset} targets`,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // exportContext - Unified export of docs, agents, and skills
+    this.server.registerTool('exportContext', {
+      description: 'Unified export of docs, agents, and skills to AI tool directories. Combines exportDocs, exportAgents, and exportSkills in one operation.',
+      inputSchema: {
+        preset: z.enum(['cursor', 'claude', 'github', 'windsurf', 'cline', 'aider', 'codex', 'antigravity', 'trae', 'all']).default('all')
+          .describe('Target AI tool preset or "all" for all supported tools'),
+        skipDocs: z.boolean().optional().describe('Skip docs export'),
+        skipAgents: z.boolean().optional().describe('Skip agents export'),
+        skipSkills: z.boolean().optional().describe('Skip skills export'),
+        docsIndexMode: z.enum(['readme', 'all']).default('readme')
+          .describe('Index mode for docs: "readme" exports only README.md files, "all" exports all matching files'),
+        agentMode: z.enum(['symlink', 'markdown']).default('symlink')
+          .describe('Sync mode for agents: symlink (recommended) or markdown reference'),
+        includeBuiltInSkills: z.boolean().optional().describe('Include built-in skills'),
+        force: z.boolean().optional().describe('Overwrite existing files'),
+        dryRun: z.boolean().optional().describe('Preview changes without writing'),
+      }
+    }, async ({ preset, skipDocs, skipAgents, skipSkills, docsIndexMode, agentMode, includeBuiltInSkills, force, dryRun }) => {
+      try {
+        const contextExportService = new ContextExportService({
+          ui: {
+            displayOutput: () => {},
+            displaySuccess: () => {},
+            displayError: () => {},
+            displayInfo: () => {},
+            displayWarning: () => {},
+            startSpinner: () => {},
+            stopSpinner: () => {},
+            updateSpinner: () => {},
+          } as any,
+          t: (key: string) => key,
+          version: VERSION,
+        });
+
+        const result = await contextExportService.run(repoPath, {
+          preset,
+          skipDocs,
+          skipAgents,
+          skipSkills,
+          docsIndexMode,
+          agentMode,
+          includeBuiltInSkills,
+          force,
+          dryRun,
+        });
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              docsExported: result.docsExported,
+              agentsExported: result.agentsExported,
+              skillsExported: result.skillsExported,
+              targets: result.targets,
+              errors: result.errors,
+              dryRun: dryRun || false,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
     // detectStack - Detect project technology stack
     this.server.registerTool('detectStack', {
       description: 'Detect the project technology stack including languages, frameworks, build tools, and test frameworks. Useful for intelligent defaults.',
@@ -1031,7 +1229,7 @@ export class AIContextMCPServer {
       }
     });
 
-    this.log('Registered 4 extended workflow tools');
+    this.log('Registered 7 extended workflow tools');
 
     // Register reverse sync tools
     this.registerReverseSyncTools();
@@ -1149,7 +1347,189 @@ export class AIContextMCPServer {
       }
     });
 
-    this.log('Registered 2 reverse sync tools');
+    // importDocs - Import docs from AI tool directories
+    this.server.registerTool('importDocs', {
+      description: 'Import documentation/rules from AI tool directories into .context/docs/. Auto-detects rule files from Claude, Cursor, GitHub Copilot, etc.',
+      inputSchema: {
+        repoPath: z.string().optional().describe('Repository path (defaults to cwd)'),
+        autoDetect: z.boolean().default(true).optional()
+          .describe('Auto-detect rule files from AI tool directories'),
+        force: z.boolean().optional().describe('Force overwrite existing files'),
+        dryRun: z.boolean().optional().describe('Preview changes without importing'),
+      }
+    }, async ({ repoPath: inputPath, autoDetect, force, dryRun }) => {
+      try {
+        const mcpUI = {
+          displayWelcome: () => {},
+          displaySuccess: () => {},
+          displayInfo: () => {},
+          displayWarning: () => {},
+          displayError: () => {},
+          startSpinner: () => {},
+          updateSpinner: () => {},
+          stopSpinner: () => {},
+        };
+
+        const service = new ImportRulesService({
+          ui: mcpUI as any,
+          t: (key: string) => key,
+          version: VERSION,
+        });
+
+        const targetPath = inputPath || repoPath;
+        await service.run({
+          autoDetect: autoDetect !== false,
+          force: force || false,
+          dryRun: dryRun || false,
+        }, targetPath);
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              message: 'Docs imported successfully',
+              dryRun: dryRun || false,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // importAgents - Import agents from AI tool directories
+    this.server.registerTool('importAgents', {
+      description: 'Import agents from AI tool directories into .context/agents/. Auto-detects agent files from Claude, Cursor, GitHub Copilot, etc.',
+      inputSchema: {
+        repoPath: z.string().optional().describe('Repository path (defaults to cwd)'),
+        autoDetect: z.boolean().default(true).optional()
+          .describe('Auto-detect agent files from AI tool directories'),
+        force: z.boolean().optional().describe('Force overwrite existing files'),
+        dryRun: z.boolean().optional().describe('Preview changes without importing'),
+      }
+    }, async ({ repoPath: inputPath, autoDetect, force, dryRun }) => {
+      try {
+        const mcpUI = {
+          displayWelcome: () => {},
+          displaySuccess: () => {},
+          displayInfo: () => {},
+          displayWarning: () => {},
+          displayError: () => {},
+          startSpinner: () => {},
+          updateSpinner: () => {},
+          stopSpinner: () => {},
+        };
+
+        const service = new ImportAgentsService({
+          ui: mcpUI as any,
+          t: (key: string) => key,
+          version: VERSION,
+        });
+
+        const targetPath = inputPath || repoPath;
+        await service.run({
+          autoDetect: autoDetect !== false,
+          force: force || false,
+          dryRun: dryRun || false,
+        }, targetPath);
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              message: 'Agents imported successfully',
+              dryRun: dryRun || false,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // importSkills - Import skills from AI tool directories
+    this.server.registerTool('importSkills', {
+      description: 'Import skills from AI tool directories into .context/skills/. Auto-detects skill files from Claude, Gemini, Codex, etc.',
+      inputSchema: {
+        repoPath: z.string().optional().describe('Repository path (defaults to cwd)'),
+        autoDetect: z.boolean().default(true).optional()
+          .describe('Auto-detect skill files from AI tool directories'),
+        mergeStrategy: z.enum(['skip', 'overwrite', 'merge', 'rename']).default('skip')
+          .describe('How to handle conflicts with existing files'),
+        force: z.boolean().optional().describe('Force overwrite existing files'),
+        dryRun: z.boolean().optional().describe('Preview changes without importing'),
+      }
+    }, async ({ repoPath: inputPath, autoDetect, mergeStrategy, force, dryRun }) => {
+      try {
+        const mcpUI = {
+          displayWelcome: () => {},
+          displaySuccess: () => {},
+          displayInfo: () => {},
+          displayWarning: () => {},
+          displayError: () => {},
+          startSpinner: () => {},
+          updateSpinner: () => {},
+          stopSpinner: () => {},
+        };
+
+        const service = new ImportSkillsService({
+          ui: mcpUI as any,
+          t: (key: string) => key,
+          version: VERSION,
+        });
+
+        const targetPath = inputPath || repoPath;
+        const result = await service.run({
+          autoDetect: autoDetect !== false,
+          mergeStrategy: mergeStrategy || 'skip',
+          force: force || false,
+          dryRun: dryRun || false,
+        }, targetPath);
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              skillsImported: result.filesCreated,
+              filesSkipped: result.filesSkipped,
+              filesFailed: result.filesFailed,
+              dryRun: dryRun || false,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    this.log('Registered 5 reverse sync tools');
   }
 
   /**

@@ -80,3 +80,17 @@ export {
   getAgentsImportSources,
   getSkillsImportSources,
 } from './toolRegistry';
+
+// Content Type Registry
+export {
+  ContentType,
+  CONTENT_TYPE_REGISTRY,
+  getContentType,
+  getExportableContentTypes,
+  getImportableContentTypes,
+  getContentTypeIds,
+  hasContentType,
+  registerContentType,
+  getContextPath,
+  getIndexFile,
+} from './contentTypeRegistry';

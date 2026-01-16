@@ -38,6 +38,8 @@ export interface ExportOptions {
   force?: boolean;
   dryRun?: boolean;
   verbose?: boolean;
+  /** Index mode: 'readme' exports only README.md files, 'all' exports all matching files */
+  indexMode?: 'readme' | 'all';
 }
 
 export interface ExportResult extends OperationResult {
@@ -110,8 +112,8 @@ export class ExportRulesService {
       return result;
     }
 
-    // Read source rules
-    const rules = await this.readSourceRules(sourcePath);
+    // Read source rules based on indexMode
+    const rules = await this.readSourceRules(sourcePath, options.indexMode);
     if (rules.length === 0) {
       this.deps.ui.displayError(this.deps.t('errors.export.noRules'));
       return result;
@@ -252,30 +254,66 @@ export class ExportRulesService {
 
   /**
    * Read source rules from .context/docs
+   * @param sourcePath - Path to the source directory
+   * @param indexMode - 'readme' to only read README.md files, 'all' to read all matching files
    */
-  private async readSourceRules(sourcePath: string): Promise<RuleFile[]> {
+  private async readSourceRules(sourcePath: string, indexMode?: 'readme' | 'all'): Promise<RuleFile[]> {
     const rules: RuleFile[] = [];
-    const patterns = ['**/*rules*.md', '**/*instructions*.md', '**/*conventions*.md', '**/README.md'];
 
     try {
+      if (indexMode === 'readme') {
+        // Only read README.md files (indices)
+        return await this.readReadmeIndexFiles(sourcePath);
+      }
+
+      // Default behavior: read all matching files
       const files = await globFiles(`**/*.md`, sourcePath, { absolute: true });
 
       for (const file of files) {
         const basename = getBasename(file).toLowerCase();
-        const isRuleFile = patterns.some(p =>
+        const isRuleFile =
           basename.includes('rules') ||
           basename.includes('instructions') ||
           basename.includes('conventions') ||
-          basename === 'readme'
-        );
+          basename === 'readme.md' ||
+          basename === 'readme';
 
-        if (isRuleFile || patterns.length === 0) {
+        if (isRuleFile) {
           try {
             const content = await fs.readFile(file, 'utf-8');
             rules.push({ name: getBasename(file), content, path: file });
           } catch {
             // Skip unreadable files
           }
+        }
+      }
+    } catch {
+      // Source path doesn't exist
+    }
+
+    return rules;
+  }
+
+  /**
+   * Read only README.md files as indices
+   * This is useful when you want to export just the index files that reference other docs
+   */
+  private async readReadmeIndexFiles(sourcePath: string): Promise<RuleFile[]> {
+    const rules: RuleFile[] = [];
+
+    try {
+      const files = await globFiles(`**/README.md`, sourcePath, { absolute: true });
+
+      for (const file of files) {
+        try {
+          const content = await fs.readFile(file, 'utf-8');
+          // Use relative path from sourcePath for naming
+          const relativePath = path.relative(sourcePath, file);
+          const dirName = path.dirname(relativePath);
+          const name = dirName === '.' ? 'README' : `${dirName}/README`;
+          rules.push({ name, content, path: file });
+        } catch {
+          // Skip unreadable files
         }
       }
     } catch {

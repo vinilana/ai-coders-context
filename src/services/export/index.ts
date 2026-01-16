@@ -3,3 +3,6 @@ export type { ExportOptions, ExportResult, ExportTarget, ExportRulesServiceDepen
 
 export { SkillExportService, SKILL_EXPORT_PRESETS } from './skillExportService';
 export type { SkillExportOptions, SkillExportResult, SkillExportTarget, SkillExportServiceDependencies } from './skillExportService';
+
+export { ContextExportService } from './contextExportService';
+export type { ContextExportOptions, ContextExportResult, ContextExportServiceDependencies } from './contextExportService';
