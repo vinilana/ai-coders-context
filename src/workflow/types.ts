@@ -151,6 +151,38 @@ export interface PlanApproval {
 }
 
 /**
+ * Execution history action types
+ */
+export type ExecutionAction =
+  | 'started'
+  | 'completed'
+  | 'plan_linked'
+  | 'plan_approved'
+  | 'phase_skipped'
+  | 'settings_changed';
+
+/**
+ * Entry in the execution history
+ */
+export interface ExecutionHistoryEntry {
+  timestamp: string;
+  phase: PrevcPhase;
+  action: ExecutionAction;
+  plan?: string;
+  approved_by?: string;
+  description?: string;
+}
+
+/**
+ * Execution history tracking for workflow
+ */
+export interface ExecutionHistory {
+  history: ExecutionHistoryEntry[];
+  last_activity: string;
+  resume_context: string;
+}
+
+/**
  * Project metadata in the workflow status
  */
 export interface ProjectMetadata {
@@ -172,6 +204,9 @@ export interface ProjectMetadata {
 export interface PrevcStatus {
   project: ProjectMetadata;
   phases: Record<PrevcPhase, PhaseStatus>;
+  /** Execution history (replaces roles) */
+  execution?: ExecutionHistory;
+  /** Legacy roles - kept for backward compatibility */
   roles: Partial<Record<PrevcRole, RoleStatus>>;
   /** Plan approval tracking */
   approval?: PlanApproval;

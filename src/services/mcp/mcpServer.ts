@@ -506,9 +506,11 @@ export class AIContextMCPServer {
         require_plan: z.boolean().optional()
           .describe('Require a linked plan before advancing P → R'),
         require_approval: z.boolean().optional()
-          .describe('Require plan approval before advancing R → E')
+          .describe('Require plan approval before advancing R → E'),
+        archive_previous: z.boolean().optional()
+          .describe('How to handle existing workflow: true = archive to .context/workflow/archive/, false = delete. Required if workflow already exists.')
       }
-    }, async ({ name, description, scale, autonomous, require_plan, require_approval }) => {
+    }, async ({ name, description, scale, autonomous, require_plan, require_approval, archive_previous }) => {
       try {
         const resolvedRepoPath = path.resolve(repoPath);
         const service = new WorkflowService(resolvedRepoPath);
@@ -519,6 +521,7 @@ export class AIContextMCPServer {
           autonomous,
           requirePlan: require_plan,
           requireApproval: require_approval,
+          archivePrevious: archive_previous,
         });
 
         // Include file paths for visibility

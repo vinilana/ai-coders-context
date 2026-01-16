@@ -571,6 +571,58 @@ export class PlanLinker {
     await fs.ensureDir(this.workflowPath);
     await fs.writeFile(plansFile, JSON.stringify(plans, null, 2), 'utf-8');
   }
+
+  /**
+   * Clear all plans and tracking data
+   * Used when deleting/resetting a workflow
+   */
+  async clearAllPlans(): Promise<void> {
+    const plansFile = path.join(this.workflowPath, 'plans.json');
+    const trackingDir = path.join(this.workflowPath, 'plan-tracking');
+
+    // Remove plans.json
+    if (await fs.pathExists(plansFile)) {
+      await fs.remove(plansFile);
+    }
+
+    // Remove plan-tracking directory
+    if (await fs.pathExists(trackingDir)) {
+      await fs.remove(trackingDir);
+    }
+  }
+
+  /**
+   * Archive all plans and tracking data
+   * Moves files to .context/workflow/archive/{timestamp}/
+   */
+  async archivePlans(): Promise<void> {
+    const plansFile = path.join(this.workflowPath, 'plans.json');
+    const trackingDir = path.join(this.workflowPath, 'plan-tracking');
+
+    // Check if there's anything to archive
+    const hasPlans = await fs.pathExists(plansFile);
+    const hasTracking = await fs.pathExists(trackingDir);
+
+    if (!hasPlans && !hasTracking) {
+      return;
+    }
+
+    // Create archive directory with timestamp
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const archiveDir = path.join(this.workflowPath, 'archive', `plans-${timestamp}`);
+
+    await fs.ensureDir(archiveDir);
+
+    // Move plans.json to archive
+    if (hasPlans) {
+      await fs.move(plansFile, path.join(archiveDir, 'plans.json'));
+    }
+
+    // Move plan-tracking directory to archive
+    if (hasTracking) {
+      await fs.move(trackingDir, path.join(archiveDir, 'plan-tracking'));
+    }
+  }
 }
 
 // Export singleton factory

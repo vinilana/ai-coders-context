@@ -89,6 +89,7 @@ export {
   createMediumProjectStatus,
   createLargeProjectStatus,
   createEnterpriseProjectStatus,
+  generateResumeContext,
 } from './status/templates';
 
 // Orchestrator

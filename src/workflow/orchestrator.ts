@@ -4,6 +4,8 @@
  * Manages workflow progression, phase transitions, and role handoffs.
  */
 
+import * as fs from 'fs-extra';
+import * as path from 'path';
 import {
   PrevcStatus,
   PrevcPhase,
@@ -18,6 +20,7 @@ import { detectProjectScale, getScaleRoute } from './scaling';
 import { PREVC_PHASE_ORDER, getPhaseDefinition } from './phases';
 import { getRoleConfig } from './prevcConfig';
 import { WorkflowGateChecker, GateCheckResult, getDefaultSettings } from './gates';
+import { PlanLinker } from './plans/planLinker';
 
 /**
  * Options for completing a phase
@@ -43,10 +46,12 @@ export interface InitWorkflowOptions {
  * Coordinates the execution of the PREVC workflow.
  */
 export class PrevcOrchestrator {
+  private contextPath: string;
   private statusManager: PrevcStatusManager;
   private gateChecker: WorkflowGateChecker;
 
   constructor(contextPath: string) {
+    this.contextPath = contextPath;
     this.statusManager = new PrevcStatusManager(contextPath);
     this.gateChecker = new WorkflowGateChecker();
   }
@@ -75,12 +80,24 @@ export class PrevcOrchestrator {
 
   /**
    * Initialize a workflow with explicit scale
+   * @param archivePrevious - If undefined and workflow exists, throws error. If true, archives. If false, deletes.
    */
   async initWorkflowWithScale(
     name: string,
     scale: ProjectScale,
-    settings?: Partial<WorkflowSettings>
+    settings?: Partial<WorkflowSettings>,
+    archivePrevious?: boolean
   ): Promise<PrevcStatus> {
+    // Check for existing workflow
+    if (await this.hasWorkflow()) {
+      if (archivePrevious === undefined) {
+        throw new Error(
+          'A workflow already exists. Use archivePrevious=true to archive or archivePrevious=false to delete the existing workflow.'
+        );
+      }
+      await this.resetWorkflow(archivePrevious);
+    }
+
     const route = getScaleRoute(scale);
 
     const status = await this.statusManager.create({
@@ -97,6 +114,56 @@ export class PrevcOrchestrator {
     }
 
     return status;
+  }
+
+  /**
+   * Reset the current workflow
+   * @param archive - If true, archives the current workflow. If false, deletes it.
+   */
+  async resetWorkflow(archive: boolean): Promise<void> {
+    const repoPath = path.dirname(this.contextPath);
+    const planLinker = new PlanLinker(repoPath);
+
+    if (archive) {
+      await this.archiveCurrentWorkflow();
+      await planLinker.archivePlans();
+    } else {
+      await planLinker.clearAllPlans();
+      // Delete status.yaml
+      const statusPath = path.join(this.contextPath, 'workflow', 'status.yaml');
+      if (await fs.pathExists(statusPath)) {
+        await fs.remove(statusPath);
+      }
+    }
+  }
+
+  /**
+   * Archive the current workflow to .context/workflow/archive/
+   */
+  private async archiveCurrentWorkflow(): Promise<void> {
+    const workflowPath = path.join(this.contextPath, 'workflow');
+    const statusPath = path.join(workflowPath, 'status.yaml');
+
+    if (!(await fs.pathExists(statusPath))) {
+      return;
+    }
+
+    // Get current workflow name for archive folder
+    let archiveName = 'workflow';
+    try {
+      const status = await this.statusManager.load();
+      archiveName = status.project.name.replace(/[^a-zA-Z0-9-_]/g, '-');
+    } catch {
+      // Use default name if can't load status
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const archiveDir = path.join(workflowPath, 'archive', `${archiveName}-${timestamp}`);
+
+    await fs.ensureDir(archiveDir);
+
+    // Move status.yaml to archive
+    await fs.move(statusPath, path.join(archiveDir, 'status.yaml'));
   }
 
   /**

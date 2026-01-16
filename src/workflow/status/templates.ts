@@ -10,6 +10,8 @@ import {
   PrevcRole,
   ProjectScale,
   PhaseStatus,
+  ExecutionHistory,
+  ExecutionAction,
 } from '../types';
 import { PREVC_PHASE_ORDER } from '../phases';
 import { getScaleRoute } from '../scaling';
@@ -27,6 +29,41 @@ const ALL_ROLES: PrevcRole[] = [
   'documenter',
   'solo-dev',
 ];
+
+/**
+ * Phase names for resume context
+ */
+const PHASE_NAMES: Record<PrevcPhase, string> = {
+  P: 'Planejamento',
+  R: 'Revisão',
+  E: 'Execução',
+  V: 'Validação',
+  C: 'Confirmação',
+};
+
+/**
+ * Generate resume context based on current phase and action
+ */
+export function generateResumeContext(phase: PrevcPhase, action: ExecutionAction): string {
+  const phaseName = PHASE_NAMES[phase];
+
+  switch (action) {
+    case 'started':
+      return `Fase ${phase} (${phaseName}) em progresso`;
+    case 'completed':
+      return `Fase ${phase} (${phaseName}) concluída`;
+    case 'plan_linked':
+      return `Plano vinculado - aguardando revisão`;
+    case 'plan_approved':
+      return `Plano aprovado - pronto para execução`;
+    case 'phase_skipped':
+      return `Fase ${phase} ignorada - avançando`;
+    case 'settings_changed':
+      return `Configurações atualizadas`;
+    default:
+      return `Fase ${phase} (${phaseName})`;
+  }
+}
 
 /**
  * Options for creating initial status
@@ -91,7 +128,7 @@ export function createInitialStatus(options: CreateStatusOptions): PrevcStatus {
       ? ALL_ROLES.filter(r => r !== 'solo-dev')
       : route.roles;
 
-  // Create role statuses
+  // Create role statuses (legacy - kept for backward compatibility)
   const roleStatuses: Partial<Record<PrevcRole, object>> = {};
   for (const role of activeRoles) {
     roleStatuses[role] = {
@@ -99,14 +136,27 @@ export function createInitialStatus(options: CreateStatusOptions): PrevcStatus {
     };
   }
 
+  // Create execution history
+  const now = new Date().toISOString();
+  const execution: ExecutionHistory = {
+    history: [{
+      timestamp: now,
+      phase: firstPhase,
+      action: 'started',
+    }],
+    last_activity: now,
+    resume_context: generateResumeContext(firstPhase, 'started'),
+  };
+
   return {
     project: {
       name,
       scale,
-      started: new Date().toISOString(),
+      started: now,
       current_phase: firstPhase,
     },
     phases: phaseStatuses,
+    execution,
     roles: roleStatuses,
   };
 }

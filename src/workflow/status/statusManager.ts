@@ -17,10 +17,13 @@ import {
   RoleStatus,
   WorkflowSettings,
   PlanApproval,
+  ExecutionHistory,
+  ExecutionHistoryEntry,
+  ExecutionAction,
 } from '../types';
 import { PREVC_PHASE_ORDER } from '../phases';
 import { getScaleRoute } from '../scaling';
-import { createInitialStatus } from './templates';
+import { createInitialStatus, generateResumeContext } from './templates';
 import { getDefaultSettings } from '../gates';
 
 /**
@@ -160,6 +163,7 @@ export class PrevcStatusManager {
    */
   async transitionToPhase(phase: PrevcPhase): Promise<void> {
     const status = await this.load();
+    const now = new Date().toISOString();
 
     // Update current phase
     status.project.current_phase = phase;
@@ -168,8 +172,24 @@ export class PrevcStatusManager {
     status.phases[phase] = {
       ...status.phases[phase],
       status: 'in_progress',
-      started_at: new Date().toISOString(),
+      started_at: now,
     };
+
+    // Add history entry
+    if (!status.execution) {
+      status.execution = {
+        history: [],
+        last_activity: now,
+        resume_context: '',
+      };
+    }
+    status.execution.history.push({
+      timestamp: now,
+      phase,
+      action: 'started',
+    });
+    status.execution.last_activity = now;
+    status.execution.resume_context = generateResumeContext(phase, 'started');
 
     await this.save(status);
   }
@@ -182,11 +202,12 @@ export class PrevcStatusManager {
     outputs?: string[]
   ): Promise<void> {
     const status = await this.load();
+    const now = new Date().toISOString();
 
     const phaseStatus: PhaseStatus = {
       ...status.phases[phase],
       status: 'completed',
-      completed_at: new Date().toISOString(),
+      completed_at: now,
     };
 
     if (outputs) {
@@ -194,6 +215,23 @@ export class PrevcStatusManager {
     }
 
     status.phases[phase] = phaseStatus;
+
+    // Add history entry
+    if (!status.execution) {
+      status.execution = {
+        history: [],
+        last_activity: now,
+        resume_context: '',
+      };
+    }
+    status.execution.history.push({
+      timestamp: now,
+      phase,
+      action: 'completed',
+    });
+    status.execution.last_activity = now;
+    status.execution.resume_context = generateResumeContext(phase, 'completed');
+
     await this.save(status);
   }
 
@@ -291,6 +329,7 @@ export class PrevcStatusManager {
    */
   async markPlanCreated(planSlug: string): Promise<void> {
     const status = await this.load();
+    const now = new Date().toISOString();
 
     if (!status.approval) {
       status.approval = {
@@ -302,6 +341,23 @@ export class PrevcStatusManager {
     status.approval.plan_created = true;
     status.project.plan = planSlug;
 
+    // Add history entry
+    if (!status.execution) {
+      status.execution = {
+        history: [],
+        last_activity: now,
+        resume_context: '',
+      };
+    }
+    status.execution.history.push({
+      timestamp: now,
+      phase: status.project.current_phase,
+      action: 'plan_linked',
+      plan: planSlug,
+    });
+    status.execution.last_activity = now;
+    status.execution.resume_context = generateResumeContext(status.project.current_phase, 'plan_linked');
+
     await this.save(status);
   }
 
@@ -310,6 +366,7 @@ export class PrevcStatusManager {
    */
   async approvePlan(approver: PrevcRole | string, notes?: string): Promise<PlanApproval> {
     const status = await this.load();
+    const now = new Date().toISOString();
 
     if (!status.approval) {
       status.approval = {
@@ -320,10 +377,27 @@ export class PrevcStatusManager {
 
     status.approval.plan_approved = true;
     status.approval.approved_by = approver;
-    status.approval.approved_at = new Date().toISOString();
+    status.approval.approved_at = now;
     if (notes) {
       status.approval.approval_notes = notes;
     }
+
+    // Add history entry
+    if (!status.execution) {
+      status.execution = {
+        history: [],
+        last_activity: now,
+        resume_context: '',
+      };
+    }
+    status.execution.history.push({
+      timestamp: now,
+      phase: status.project.current_phase,
+      action: 'plan_approved',
+      approved_by: String(approver),
+    });
+    status.execution.last_activity = now;
+    status.execution.resume_context = generateResumeContext(status.project.current_phase, 'plan_approved');
 
     await this.save(status);
     return status.approval;
@@ -338,9 +412,46 @@ export class PrevcStatusManager {
   }
 
   /**
+   * Add an entry to the execution history
+   */
+  async addHistoryEntry(entry: Omit<ExecutionHistoryEntry, 'timestamp'>): Promise<void> {
+    const status = await this.load();
+    const now = new Date().toISOString();
+
+    // Ensure execution exists
+    if (!status.execution) {
+      status.execution = {
+        history: [],
+        last_activity: now,
+        resume_context: '',
+      };
+    }
+
+    // Add new entry
+    const fullEntry: ExecutionHistoryEntry = {
+      ...entry,
+      timestamp: now,
+    };
+    status.execution.history.push(fullEntry);
+    status.execution.last_activity = now;
+    status.execution.resume_context = generateResumeContext(entry.phase, entry.action);
+
+    await this.save(status);
+  }
+
+  /**
+   * Get execution history
+   */
+  async getExecutionHistory(): Promise<ExecutionHistory | undefined> {
+    const status = await this.load();
+    return status.execution;
+  }
+
+  /**
    * Apply migration logic for existing workflows
    * - Add default settings based on scale
    * - Initialize approval tracking based on current state
+   * - Initialize execution history for old workflows
    */
   private migrateStatus(status: PrevcStatus): PrevcStatus {
     // Add default settings if missing
@@ -360,6 +471,61 @@ export class PrevcStatusManager {
         plan_approved: isPastReview,
         approved_by: isPastReview ? 'system-migration' : undefined,
         approved_at: isPastReview ? new Date().toISOString() : undefined,
+      };
+    }
+
+    // Initialize execution history if missing (migration from old workflows)
+    if (!status.execution) {
+      const now = new Date().toISOString();
+      const currentPhase = status.project.current_phase;
+      const history: ExecutionHistoryEntry[] = [];
+
+      // Reconstruct history from phase data
+      for (const phase of PREVC_PHASE_ORDER) {
+        const phaseStatus = status.phases[phase];
+        if (phaseStatus.started_at) {
+          history.push({
+            timestamp: phaseStatus.started_at,
+            phase,
+            action: 'started',
+          });
+        }
+        if (phaseStatus.completed_at) {
+          history.push({
+            timestamp: phaseStatus.completed_at,
+            phase,
+            action: 'completed',
+          });
+        }
+        if (phaseStatus.status === 'skipped') {
+          history.push({
+            timestamp: now,
+            phase,
+            action: 'phase_skipped',
+          });
+        }
+      }
+
+      // Sort by timestamp
+      history.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+
+      // Determine resume context based on current state
+      let resumeContext = generateResumeContext(currentPhase, 'started');
+      if (status.approval?.plan_approved) {
+        resumeContext = generateResumeContext(currentPhase, 'plan_approved');
+      } else if (status.approval?.plan_created) {
+        resumeContext = generateResumeContext(currentPhase, 'plan_linked');
+      }
+
+      status.execution = {
+        history: history.length > 0 ? history : [{
+          timestamp: status.project.started || now,
+          phase: currentPhase,
+          action: 'started',
+          description: 'Migrated from legacy workflow',
+        }],
+        last_activity: history.length > 0 ? history[history.length - 1].timestamp : now,
+        resume_context: resumeContext,
       };
     }
 
@@ -408,6 +574,8 @@ export class PrevcStatusManager {
         currentSection = 'settings';
       } else if (line.startsWith('approval:')) {
         currentSection = 'approval';
+      } else if (line.startsWith('execution:')) {
+        currentSection = 'execution';
       } else if (currentSection === 'project' && line.startsWith('  ')) {
         const [key, ...valueParts] = trimmed.split(':');
         const value = valueParts.join(':').trim().replace(/^["']|["']$/g, '');
@@ -517,6 +685,24 @@ export class PrevcStatusManager {
         if (key === 'approval_notes') {
           result.approval.approval_notes = value || undefined;
         }
+      } else if (currentSection === 'execution' && line.startsWith('  ')) {
+        if (!result.execution) {
+          result.execution = {
+            history: [],
+            last_activity: '',
+            resume_context: '',
+          };
+        }
+        const [key, ...valueParts] = trimmed.split(':');
+        const value = valueParts.join(':').trim().replace(/^["']|["']$/g, '');
+        if (key === 'last_activity') {
+          result.execution.last_activity = value;
+        }
+        if (key === 'resume_context') {
+          result.execution.resume_context = value;
+        }
+        // Note: history parsing is simplified - for complex arrays, use a YAML library
+        // History entries are primarily written by the system, not manually edited
       }
     }
 
@@ -595,6 +781,29 @@ export class PrevcStatusManager {
       }
     }
     lines.push('');
+
+    // Execution section (new - replaces roles as primary tracking)
+    if (status.execution) {
+      lines.push('execution:');
+      lines.push('  history:');
+      for (const entry of status.execution.history) {
+        lines.push(`    - timestamp: "${entry.timestamp}"`);
+        lines.push(`      phase: ${entry.phase}`);
+        lines.push(`      action: ${entry.action}`);
+        if (entry.plan) {
+          lines.push(`      plan: "${entry.plan}"`);
+        }
+        if (entry.approved_by) {
+          lines.push(`      approved_by: "${entry.approved_by}"`);
+        }
+        if (entry.description) {
+          lines.push(`      description: "${entry.description}"`);
+        }
+      }
+      lines.push(`  last_activity: "${status.execution.last_activity}"`);
+      lines.push(`  resume_context: "${status.execution.resume_context}"`);
+      lines.push('');
+    }
 
     // Settings section
     if (status.project.settings) {

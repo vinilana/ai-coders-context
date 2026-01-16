@@ -53,6 +53,8 @@ export interface WorkflowInitOptions {
   requirePlan?: boolean;
   /** Require plan approval before advancing R → E */
   requireApproval?: boolean;
+  /** How to handle existing workflow: true = archive, false = delete, undefined = error if exists */
+  archivePrevious?: boolean;
 }
 
 /**
@@ -122,7 +124,8 @@ export class WorkflowService {
     const status = await this.orchestrator.initWorkflowWithScale(
       options.name,
       scale,
-      settings
+      settings,
+      options.archivePrevious
     );
 
     this.deps.ui?.displaySuccess(
