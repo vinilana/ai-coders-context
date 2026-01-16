@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **MCP Install Command**: New `mcp:install` CLI command for easy MCP server configuration
+  - Automatically configures ai-context MCP server in AI tools (Claude Code, Cursor, Windsurf, Cline, Continue.dev)
+  - Interactive mode with tool detection and selection
+  - Supports global (home directory) and local (project directory) installation
+  - Merges with existing MCP configurations without overwriting
+  - Dry-run mode for previewing changes
+  - Bilingual support (English and Portuguese)
+
 - **MCP Export Tools**: New granular export tools for docs, agents, and skills
   - `exportDocs` - Export documentation from `.context/docs/` with README indexing mode
   - `exportAgents` - Export agents from `.context/agents/` (symlink by default)
@@ -57,10 +65,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Technical Details
 
 #### New Files
+- `src/services/mcp/mcpInstallService.ts` - MCP installation service for AI tools
+- `src/services/mcp/mcpInstallService.test.ts` - Unit tests for MCP install service
 - `src/services/export/contextExportService.ts` - Unified export orchestrator
 - `src/services/shared/contentTypeRegistry.ts` - Extensible content type definitions
 
 #### Modified Files
+- `src/index.ts` - Added `mcp:install` CLI command with interactive mode
+- `src/services/mcp/index.ts` - Exported MCPInstallService
+- `src/utils/i18n.ts` - Added translations for mcp:install command (EN + PT-BR)
 - `src/services/mcp/mcpServer.ts` - Added 7 new MCP tools (export + import), added `skipContentGeneration` option
 - `src/services/ai/schemas.ts` - Added `skipContentGeneration` option to InitializeContextInputSchema
 - `src/services/ai/tools/initializeContextTool.ts` - Implemented lean response for `skipContentGeneration`

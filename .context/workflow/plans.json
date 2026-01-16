@@ -1,0 +1,14 @@
+{
+  "active": [
+    {
+      "slug": "mcp-install-command",
+      "path": "plans/mcp-install-command.md",
+      "title": "MCP Install Command",
+      "summary": "Implementar comando na CLI interativa para instalar o MCP facilmente em qualquer ferramenta de AI",
+      "linkedAt": "2026-01-16T17:51:52.373Z",
+      "status": "active"
+    }
+  ],
+  "completed": [],
+  "primary": "mcp-install-command"
+}

@@ -18,7 +18,7 @@ import { PlanService } from './services/plan/planService';
 import { SyncService } from './services/sync/syncService';
 import { ImportRulesService, ImportAgentsService } from './services/import';
 import { ServeService } from './services/serve';
-import { startMCPServer } from './services/mcp';
+import { startMCPServer, MCPInstallService } from './services/mcp';
 import { StateDetector } from './services/state';
 import { UpdateService } from './services/update';
 import { WorkflowService, WorkflowServiceDependencies } from './services/workflow';
@@ -467,6 +467,64 @@ program
       if (options.verbose) {
         process.stderr.write(`[mcp] Error: ${error}\n`);
       }
+      process.exit(1);
+    }
+  });
+
+// MCP Install Command
+program
+  .command('mcp:install [tool]')
+  .description(t('commands.mcpInstall.description'))
+  .option('-g, --global', t('commands.mcpInstall.options.global'), true)
+  .option('-l, --local', t('commands.mcpInstall.options.local'))
+  .option('--dry-run', t('commands.mcpInstall.options.dryRun'))
+  .option('-v, --verbose', t('commands.mcpInstall.options.verbose'))
+  .action(async (tool: string | undefined, options: any) => {
+    try {
+      const mcpInstallService = new MCPInstallService({ ui, t, version: VERSION });
+
+      // If no tool specified and not in CI, show interactive prompt
+      if (!tool && process.stdin.isTTY) {
+        const supportedTools = mcpInstallService.getSupportedTools();
+        const detectedTools = await mcpInstallService.detectInstalledTools();
+
+        const choices = supportedTools.map(tool => ({
+          name: detectedTools.includes(tool.id)
+            ? `${tool.displayName} (${t('labels.detected')})`
+            : tool.displayName,
+          value: tool.id,
+        }));
+
+        choices.unshift({
+          name: t('commands.mcpInstall.allDetected'),
+          value: 'all',
+        });
+
+        const { selectedTool } = await inquirer.prompt([
+          {
+            type: 'list',
+            name: 'selectedTool',
+            message: t('commands.mcpInstall.selectTool'),
+            choices,
+          },
+        ]);
+
+        tool = selectedTool;
+      }
+
+      const result = await mcpInstallService.run({
+        tool,
+        global: options.local ? false : options.global,
+        dryRun: options.dryRun,
+        verbose: options.verbose,
+        repoPath: process.cwd(),
+      });
+
+      if (result.installations.length > 0) {
+        ui.displayInfo('MCP', t('info.mcp.restartTools'));
+      }
+    } catch (error) {
+      ui.displayError(t('errors.mcp.installFailed', { tool: tool || 'unknown' }), error as Error);
       process.exit(1);
     }
   });
