@@ -14,6 +14,7 @@ import {
   ensureDirectory,
   pathExists,
   displayOperationSummary,
+  getSkillsExportPresets,
 } from '../shared';
 import { createSkillRegistry, Skill, BUILT_IN_SKILLS, getBuiltInSkillTemplates, SKILL_TO_PHASES, BuiltInSkillType, wrapWithFrontmatter } from '../../workflow/skills';
 
@@ -43,28 +44,28 @@ export interface SkillExportResult extends OperationResult {
 }
 
 /**
- * Skill export presets for different AI tools
+ * Build skill export presets from the unified tool registry
  */
-export const SKILL_EXPORT_PRESETS: Record<string, SkillExportTarget[]> = {
-  claude: [
-    { name: 'claude-skills', path: '.claude/skills', description: 'Claude Code skills directory' },
-  ],
-  gemini: [
-    { name: 'gemini-skills', path: '.gemini/skills', description: 'Gemini CLI skills directory' },
-  ],
-  codex: [
-    { name: 'codex-skills', path: '.codex/skills', description: 'Codex CLI skills directory' },
-  ],
-  antigravity: [
-    { name: 'antigravity-workflows', path: '.agent/workflows', description: 'Google Antigravity workflows directory' },
-  ],
-  all: [], // Populated dynamically below
-};
+function buildSkillExportPresets(): Record<string, SkillExportTarget[]> {
+  const registryPresets = getSkillsExportPresets();
+  const presets: Record<string, SkillExportTarget[]> = {};
 
-// Populate 'all' preset
-SKILL_EXPORT_PRESETS.all = Object.entries(SKILL_EXPORT_PRESETS)
-  .filter(([key]) => key !== 'all')
-  .flatMap(([, targets]) => targets);
+  for (const [toolId, targets] of Object.entries(registryPresets)) {
+    presets[toolId] = targets;
+  }
+
+  // Build 'all' preset
+  presets.all = Object.entries(presets)
+    .filter(([key]) => key !== 'all')
+    .flatMap(([, targets]) => targets);
+
+  return presets;
+}
+
+/**
+ * Skill export presets for different AI tools (derived from tool registry)
+ */
+export const SKILL_EXPORT_PRESETS: Record<string, SkillExportTarget[]> = buildSkillExportPresets();
 
 export class SkillExportService {
   constructor(private deps: SkillExportServiceDependencies) {}

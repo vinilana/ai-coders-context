@@ -18,6 +18,7 @@ import {
   pathExists,
   getBasename,
   displayOperationSummary,
+  getRulesExportPresets,
 } from '../shared';
 
 export type ExportRulesServiceDependencies = BaseDependencies;
@@ -50,38 +51,42 @@ interface RuleFile {
 }
 
 /**
- * Export presets for different AI tools
+ * Build export presets from the unified tool registry
  */
-export const EXPORT_PRESETS: Record<string, ExportTarget[]> = {
-  cursor: [
-    { name: 'cursorrules', path: '.cursorrules', format: 'single', description: 'Cursor AI rules file' },
-    { name: 'cursor-rules-dir', path: '.cursor/rules', format: 'directory', description: 'Cursor AI rules directory' },
-  ],
-  claude: [
-    { name: 'claude-md', path: 'CLAUDE.md', format: 'single', description: 'Claude Code main rules file' },
-  ],
-  github: [
-    { name: 'copilot-instructions', path: '.github/copilot-instructions.md', format: 'single', description: 'GitHub Copilot instructions' },
-  ],
-  windsurf: [
-    { name: 'windsurf-rules-dir', path: '.windsurf/rules', format: 'directory', description: 'Windsurf rules directory' },
-  ],
-  antigravity: [
-    { name: 'antigravity-rules', path: '.agent/rules', format: 'directory', description: 'Google Antigravity rules directory' },
-  ],
-  trae: [
-    { name: 'trae-rules', path: '.trae/rules', format: 'directory', description: 'Trae AI rules directory' },
-  ],
-  agents: [
-    { name: 'agents-md', path: 'AGENTS.md', format: 'single', description: 'Universal AGENTS.md file' },
-  ],
-  all: [], // Populated dynamically below
-};
+function buildExportPresets(): Record<string, ExportTarget[]> {
+  const registryPresets = getRulesExportPresets();
+  const presets: Record<string, ExportTarget[]> = {};
 
-// Populate 'all' preset
-EXPORT_PRESETS.all = Object.entries(EXPORT_PRESETS)
-  .filter(([key]) => key !== 'all')
-  .flatMap(([, targets]) => targets);
+  // Add presets from registry
+  for (const [toolId, targets] of Object.entries(registryPresets)) {
+    presets[toolId] = targets;
+  }
+
+  // Add cursor legacy .cursorrules file (in addition to directory)
+  if (presets.cursor) {
+    presets.cursor = [
+      { name: 'cursorrules', path: '.cursorrules', format: 'single', description: 'Cursor AI rules file' },
+      ...presets.cursor,
+    ];
+  }
+
+  // Add universal AGENTS.md
+  presets.agents = [
+    { name: 'agents-md', path: 'AGENTS.md', format: 'single', description: 'Universal AGENTS.md file' },
+  ];
+
+  // Build 'all' preset
+  presets.all = Object.entries(presets)
+    .filter(([key]) => key !== 'all')
+    .flatMap(([, targets]) => targets);
+
+  return presets;
+}
+
+/**
+ * Export presets for different AI tools (derived from tool registry)
+ */
+export const EXPORT_PRESETS: Record<string, ExportTarget[]> = buildExportPresets();
 
 export class ExportRulesService {
   constructor(private deps: ExportRulesServiceDependencies) {}

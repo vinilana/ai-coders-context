@@ -57,3 +57,26 @@ export {
   getBasename,
   joinPaths,
 } from './pathHelpers';
+
+// Tool Registry
+export {
+  ToolCapabilities,
+  ToolPaths,
+  ToolDefinition,
+  TOOL_REGISTRY,
+  getToolById,
+  getAllToolIds,
+  getToolsWithCapability,
+  getToolIdFromPath,
+  getToolDisplayName,
+  getToolCapabilities,
+  getDirectoryPrefixMap,
+  getDisplayNameMap,
+  getCapabilitiesMap,
+  getRulesExportPresets,
+  getAgentsSyncPresets,
+  getSkillsExportPresets,
+  getRulesImportSources,
+  getAgentsImportSources,
+  getSkillsImportSources,
+} from './toolRegistry';
