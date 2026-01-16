@@ -6,24 +6,90 @@ import {
   DocumentationTemplateContext,
   GuideMeta,
   renderIndex,
-  renderProjectOverview,
-  renderArchitectureNotes,
-  renderDevelopmentWorkflow,
-  renderTestingStrategy,
-  renderGlossary,
-  renderDataFlow,
-  renderSecurity,
-  renderToolingGuide
 } from './templates';
-import { getGuidesByKeys } from './guideRegistry';
+import { getGuidesByKeys, DOCUMENT_GUIDES } from './guideRegistry';
 import { CodebaseAnalyzer, SemanticContext } from '../../services/semantic';
 import { StackDetector } from '../../services/stack';
 import { CodebaseMapGenerator } from './codebaseMapGenerator';
+import {
+  createDocFrontmatter,
+  serializeFrontmatter,
+  DocScaffoldFrontmatter,
+} from '../../types/scaffoldFrontmatter';
+import { getScaffoldStructure } from '../shared/scaffoldStructures';
 
-interface DocSection {
-  fileName: string;
-  content: (context: DocumentationTemplateContext) => string;
+/**
+ * Document guide info with category mapping
+ */
+interface DocGuideInfo {
+  key: string;
+  file: string;
+  title: string;
+  description: string;
+  category: DocScaffoldFrontmatter['category'];
 }
+
+/**
+ * Category mapping for documentation guides
+ */
+const DOC_GUIDE_INFO: Record<string, DocGuideInfo> = {
+  'project-overview': {
+    key: 'project-overview',
+    file: 'project-overview.md',
+    title: 'Project Overview',
+    description: 'High-level overview of the project, its purpose, and key components',
+    category: 'overview',
+  },
+  'architecture': {
+    key: 'architecture',
+    file: 'architecture.md',
+    title: 'Architecture Notes',
+    description: 'System architecture, layers, patterns, and design decisions',
+    category: 'architecture',
+  },
+  'development-workflow': {
+    key: 'development-workflow',
+    file: 'development-workflow.md',
+    title: 'Development Workflow',
+    description: 'Day-to-day engineering processes, branching, and contribution guidelines',
+    category: 'workflow',
+  },
+  'testing-strategy': {
+    key: 'testing-strategy',
+    file: 'testing-strategy.md',
+    title: 'Testing Strategy',
+    description: 'Test frameworks, patterns, coverage requirements, and quality gates',
+    category: 'testing',
+  },
+  'glossary': {
+    key: 'glossary',
+    file: 'glossary.md',
+    title: 'Glossary & Domain Concepts',
+    description: 'Project terminology, type definitions, domain entities, and business rules',
+    category: 'glossary',
+  },
+  'data-flow': {
+    key: 'data-flow',
+    file: 'data-flow.md',
+    title: 'Data Flow & Integrations',
+    description: 'How data moves through the system and external integrations',
+    category: 'data-flow',
+  },
+  'security': {
+    key: 'security',
+    file: 'security.md',
+    title: 'Security & Compliance Notes',
+    description: 'Security policies, authentication, secrets management, and compliance requirements',
+    category: 'security',
+  },
+  'tooling': {
+    key: 'tooling',
+    file: 'tooling.md',
+    title: 'Tooling & Productivity Guide',
+    description: 'Scripts, IDE settings, automation, and developer productivity tips',
+    category: 'tooling',
+  },
+};
 
 interface DocumentationGenerationConfig {
   selectedDocs?: string[];
@@ -88,13 +154,31 @@ export class DocumentationGenerator {
     const docKeys = config.selectedDocs ?? config.filteredDocs;
     const guidesToGenerate = getGuidesByKeys(docKeys);
     const context = this.buildContext(repoStructure, guidesToGenerate, semantics);
-    const sections = this.getDocSections(guidesToGenerate);
 
     let created = 0;
-    for (const section of sections) {
-      const targetPath = path.join(docsDir, section.fileName);
-      const content = section.content(context);
-      await GeneratorUtils.writeFileWithLogging(targetPath, content, verbose, `Created ${section.fileName}`);
+
+    // Generate README.md index (still uses template rendering for summary)
+    const readmePath = path.join(docsDir, 'README.md');
+    const readmeContent = renderIndex(context);
+    await GeneratorUtils.writeFileWithLogging(readmePath, readmeContent, verbose, 'Created README.md');
+    created += 1;
+
+    // Generate frontmatter-only files for each guide (scaffold v2)
+    for (const guide of guidesToGenerate) {
+      const guideInfo = DOC_GUIDE_INFO[guide.key];
+      if (!guideInfo) {
+        continue;
+      }
+
+      const targetPath = path.join(docsDir, guideInfo.file);
+      const frontmatter = createDocFrontmatter(
+        guideInfo.key,
+        guideInfo.description,
+        guideInfo.category
+      );
+      const content = serializeFrontmatter(frontmatter) + '\n';
+
+      await GeneratorUtils.writeFileWithLogging(targetPath, content, verbose, `Created ${guideInfo.file}`);
       created += 1;
     }
 
@@ -142,40 +226,6 @@ export class DocumentationGenerator {
       }
     });
     return Array.from(directorySet).sort();
-  }
-
-  private getDocSections(guides: GuideMeta[]): DocSection[] {
-    const sections: DocSection[] = [
-      {
-        fileName: 'README.md',
-        content: context => renderIndex(context)
-      }
-    ];
-
-    const renderMap: Record<string, (context: DocumentationTemplateContext) => string> = {
-      'project-overview': renderProjectOverview,
-      architecture: renderArchitectureNotes,
-      'development-workflow': () => renderDevelopmentWorkflow(),
-      'testing-strategy': () => renderTestingStrategy(),
-      glossary: renderGlossary,
-      'data-flow': renderDataFlow,
-      security: () => renderSecurity(),
-      tooling: () => renderToolingGuide()
-    };
-
-    guides.forEach(guide => {
-      const renderer = renderMap[guide.key];
-      if (!renderer) {
-        return;
-      }
-
-      sections.push({
-        fileName: guide.file,
-        content: renderer
-      });
-    });
-
-    return sections;
   }
 
   private async updateAgentGuideReferences(repoStructure: RepoStructure, verbose: boolean): Promise<void> {

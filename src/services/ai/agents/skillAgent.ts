@@ -24,6 +24,8 @@ export interface SkillAgentOptions {
   useSemanticContext?: boolean;
   /** Enable LSP for deeper semantic analysis (type info, references, implementations) */
   useLSP?: boolean;
+  /** Scaffold structure context for AI generation (v2 scaffold system) */
+  scaffoldStructure?: string;
 }
 
 export interface SkillAgentResult {
@@ -73,7 +75,8 @@ export class SkillAgent {
       maxOutputTokens = 8000,
       callbacks,
       useSemanticContext = true,
-      useLSP = false
+      useLSP = false,
+      scaffoldStructure
     } = options;
 
     // Emit agent start event
@@ -89,7 +92,8 @@ export class SkillAgent {
         agentsContext,
         maxOutputTokens,
         callbacks,
-        useLSP
+        useLSP,
+        scaffoldStructure
       );
     }
 
@@ -102,7 +106,8 @@ export class SkillAgent {
       agentsContext,
       maxSteps,
       maxOutputTokens,
-      callbacks
+      callbacks,
+      scaffoldStructure
     );
   }
 
@@ -117,7 +122,8 @@ export class SkillAgent {
     agentsContext: string | undefined,
     maxOutputTokens: number,
     callbacks?: AgentEventCallbacks,
-    useLSP: boolean = false
+    useLSP: boolean = false,
+    scaffoldStructure?: string
   ): Promise<SkillAgentResult> {
     const toolName = useLSP ? 'semanticAnalysis+LSP' : 'semanticAnalysis';
 
@@ -148,20 +154,36 @@ export class SkillAgent {
       summary: `Analyzed codebase for ${skillSlug}${useLSP ? ' with LSP' : ''}: ${semanticContext.length} chars of context`
     });
 
-    const userPrompt = `Generate a personalized skill playbook for "${skillSlug}".
+    // Build user prompt with optional scaffold structure context
+    const structureSection = scaffoldStructure
+      ? `\n## Skill Structure Requirements\n${scaffoldStructure}\n`
+      : '';
 
-Repository: ${repoPath}
-
-${semanticContext}
-
-${existingContent ? `Current skill content (to enhance):\n${existingContent}` : ''}
-
-Generate a detailed skill playbook that:
+    const instructions = scaffoldStructure
+      ? `Generate a detailed skill playbook following the structure requirements above.
+- Generate COMPLETE content following the structure requirements
+- Do NOT include YAML frontmatter in the output (it will be preserved separately)
+- Follow the specified tone (instructional) and target audience (ai-agents)
+- Include all REQUIRED sections
+- Personalize with project-specific examples and references`
+      : `Generate a detailed skill playbook that:
 1. Is personalized for THIS specific codebase
 2. Uses project-specific examples and references
 3. Includes workflows tailored to the project structure
 4. References actual files, patterns, and tools used in the project
 5. Preserves the YAML frontmatter format`;
+
+    const userPrompt = `Generate a personalized skill playbook for "${skillSlug}".
+
+Repository: ${repoPath}
+${structureSection}
+## Codebase Context
+${semanticContext}
+
+${existingContent ? `## Current skill content (to enhance):\n${existingContent}` : ''}
+
+## Instructions
+${instructions}`;
 
     const { provider, modelId } = this.providerResult;
 
@@ -193,20 +215,30 @@ Generate a detailed skill playbook that:
     agentsContext: string | undefined,
     maxSteps: number,
     maxOutputTokens: number,
-    callbacks?: AgentEventCallbacks
+    callbacks?: AgentEventCallbacks,
+    scaffoldStructure?: string
   ): Promise<SkillAgentResult> {
     const focusPatterns = SKILL_TYPE_FOCUS[skillSlug] || ['src/**/*'];
 
-    const userPrompt = `Generate a personalized skill playbook for "${skillSlug}".
+    // Build user prompt with optional scaffold structure context
+    const structureSection = scaffoldStructure
+      ? `\n## Skill Structure Requirements\n${scaffoldStructure}\n`
+      : '';
 
-Repository: ${repoPath}
-Focus patterns: ${focusPatterns.join(', ')}
+    const instructions = scaffoldStructure
+      ? `Use the tools to analyze the codebase and identify:
+- Project structure and conventions
+- Testing patterns and frameworks
+- Configuration files and their settings
+- Patterns relevant to this skill type
 
-${docsContext ? `Project Documentation:\n${docsContext}\n` : ''}
-${agentsContext ? `Agent Playbooks:\n${agentsContext}\n` : ''}
-${existingContent ? `Current skill content (to enhance):\n${existingContent}` : ''}
-
-Use the tools to analyze the codebase and identify:
+Then generate a personalized skill playbook following the structure requirements above.
+- Generate COMPLETE content following the structure requirements
+- Do NOT include YAML frontmatter in the output (it will be preserved separately)
+- Follow the specified tone (instructional) and target audience (ai-agents)
+- Include all REQUIRED sections
+- Personalize with project-specific examples and references`
+      : `Use the tools to analyze the codebase and identify:
 - Project structure and conventions
 - Testing patterns and frameworks
 - Configuration files and their settings
@@ -217,6 +249,17 @@ Then generate a personalized skill playbook that:
 2. References actual file paths and patterns
 3. Adapts instructions to the project's technology stack
 4. Preserves the YAML frontmatter format`;
+
+    const userPrompt = `Generate a personalized skill playbook for "${skillSlug}".
+
+Repository: ${repoPath}
+Focus patterns: ${focusPatterns.join(', ')}
+${structureSection}
+${docsContext ? `Project Documentation:\n${docsContext}\n` : ''}
+${agentsContext ? `Agent Playbooks:\n${agentsContext}\n` : ''}
+${existingContent ? `Current skill content (to enhance):\n${existingContent}` : ''}
+
+${instructions}`;
 
     const { provider, modelId } = this.providerResult;
     let stepCount = 0;

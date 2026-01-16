@@ -1,5 +1,15 @@
 /**
  * SKILL.md Template
+ *
+ * REFERENCE ONLY - This file is not used by generators anymore.
+ *
+ * Scaffold structures are now defined in:
+ * src/generators/shared/scaffoldStructures.ts
+ *
+ * This file serves as historical reference for the structure/content
+ * that should be generated for this skill type.
+ *
+ * @deprecated Since v2.0.0 scaffold system
  */
 
 import { SkillMetadata, SKILL_TO_PHASES, BuiltInSkillType, isBuiltInSkill } from '../../../workflow/skills';

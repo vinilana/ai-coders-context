@@ -23,6 +23,8 @@ export interface PlaybookAgentOptions {
   useSemanticContext?: boolean;
   /** Enable LSP for deeper semantic analysis (type info, references, implementations) */
   useLSP?: boolean;
+  /** Scaffold structure context for AI generation (v2 scaffold system) */
+  scaffoldStructure?: string;
 }
 
 export interface PlaybookAgentResult {
@@ -66,18 +68,18 @@ export class PlaybookAgent {
    * Generate a playbook using tools for context gathering
    */
   async generatePlaybook(options: PlaybookAgentOptions): Promise<PlaybookAgentResult> {
-    const { repoPath, agentType, existingContext, maxSteps = 12, maxOutputTokens = 8000, callbacks, useSemanticContext = true, useLSP = false } = options;
+    const { repoPath, agentType, existingContext, maxSteps = 12, maxOutputTokens = 8000, callbacks, useSemanticContext = true, useLSP = false, scaffoldStructure } = options;
 
     // Emit agent start event
     callbacks?.onAgentStart?.({ agent: 'playbook', target: agentType });
 
     // Use semantic context mode for token efficiency
     if (useSemanticContext) {
-      return this.generateWithSemanticContext(repoPath, agentType, existingContext, maxOutputTokens, callbacks, useLSP);
+      return this.generateWithSemanticContext(repoPath, agentType, existingContext, maxOutputTokens, callbacks, useLSP, scaffoldStructure);
     }
 
     // Tool-based mode for thorough analysis
-    return this.generateWithTools(repoPath, agentType, existingContext, maxSteps, maxOutputTokens, callbacks);
+    return this.generateWithTools(repoPath, agentType, existingContext, maxSteps, maxOutputTokens, callbacks, scaffoldStructure);
   }
 
   /**
@@ -89,7 +91,8 @@ export class PlaybookAgent {
     existingContext: string | undefined,
     maxOutputTokens: number,
     callbacks?: AgentEventCallbacks,
-    useLSP: boolean = false
+    useLSP: boolean = false,
+    scaffoldStructure?: string
   ): Promise<PlaybookAgentResult> {
     const toolName = useLSP ? 'semanticAnalysis+LSP' : 'semanticAnalysis';
 
@@ -115,19 +118,34 @@ export class PlaybookAgent {
       summary: `Analyzed codebase for ${agentType}${useLSP ? ' with LSP' : ''}: ${semanticContext.length} chars of context`
     });
 
-    const userPrompt = `Generate a comprehensive playbook for a ${agentType} agent.
+    // Build user prompt with optional scaffold structure context
+    const structureSection = scaffoldStructure
+      ? `\n## Playbook Structure Requirements\n${scaffoldStructure}\n`
+      : '';
 
-Repository: ${repoPath}
-
-${semanticContext}
-
-${existingContext ? `Existing context:\n${existingContext}` : ''}
-
-Generate a detailed, actionable playbook with:
+    const instructions = scaffoldStructure
+      ? `Generate a detailed, actionable playbook following the structure requirements above.
+- Generate COMPLETE content following the structure requirements
+- Do NOT include YAML frontmatter in the output
+- Follow the specified tone (instructional) and target audience (ai-agents)
+- Include all REQUIRED sections`
+      : `Generate a detailed, actionable playbook with:
 1. Clear understanding of what files/areas the agent should focus on
 2. Specific workflows and steps for common tasks
 3. Best practices derived from the actual codebase
 4. Key files and their purposes`;
+
+    const userPrompt = `Generate a comprehensive playbook for a ${agentType} agent.
+
+Repository: ${repoPath}
+${structureSection}
+## Codebase Context
+${semanticContext}
+
+${existingContext ? `## Existing context:\n${existingContext}` : ''}
+
+## Instructions
+${instructions}`;
 
     const { provider, modelId } = this.providerResult;
 
@@ -157,23 +175,38 @@ Generate a detailed, actionable playbook with:
     existingContext: string | undefined,
     maxSteps: number,
     maxOutputTokens: number,
-    callbacks?: AgentEventCallbacks
+    callbacks?: AgentEventCallbacks,
+    scaffoldStructure?: string
   ): Promise<PlaybookAgentResult> {
     const focusPatterns = AGENT_TYPE_FOCUS[agentType] || ['src/**/*'];
 
-    const userPrompt = `Generate a comprehensive playbook for a ${agentType} agent.
+    // Build user prompt with optional scaffold structure context
+    const structureSection = scaffoldStructure
+      ? `\n## Playbook Structure Requirements\n${scaffoldStructure}\n`
+      : '';
 
-Repository: ${repoPath}
-Focus patterns: ${focusPatterns.join(', ')}
-${existingContext ? `Existing context:\n${existingContext}` : ''}
-
-Use the tools to analyze the codebase and identify:
+    const instructions = scaffoldStructure
+      ? `Use the tools to analyze the codebase, then generate a detailed, actionable playbook following the structure requirements above.
+- Generate COMPLETE content following the structure requirements
+- Do NOT include YAML frontmatter in the output
+- Follow the specified tone and target audience
+- Include all REQUIRED sections`
+      : `Use the tools to analyze the codebase and identify:
 - Relevant files for this agent type
 - Patterns and conventions
 - Testing strategies (if applicable)
 - Key workflows
 
 Then generate a detailed, actionable playbook.`;
+
+    const userPrompt = `Generate a comprehensive playbook for a ${agentType} agent.
+
+Repository: ${repoPath}
+Focus patterns: ${focusPatterns.join(', ')}
+${structureSection}
+${existingContext ? `Existing context:\n${existingContext}` : ''}
+
+${instructions}`;
 
     const { provider, modelId } = this.providerResult;
     let stepCount = 0;

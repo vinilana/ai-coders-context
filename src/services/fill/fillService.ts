@@ -3,7 +3,13 @@ import * as fs from 'fs-extra';
 import { glob } from 'glob';
 
 import { colors, symbols, typography } from '../../utils/theme';
-import { removeFrontMatter } from '../../utils/frontMatter';
+import {
+  removeFrontMatter,
+  parseFrontMatter,
+  parseScaffoldFrontMatter,
+  getDocumentName,
+  isScaffoldContent,
+} from '../../utils/frontMatter';
 
 import type { CLIInterface } from '../../utils/cliUI';
 import type { TranslateFn } from '../../utils/i18n';
@@ -17,6 +23,11 @@ import type { LLMConfig, RepoStructure, UsageStats } from '../../types';
 import type { BaseLLMClient } from '../baseLLMClient';
 import { resolveLlmConfig } from '../shared/llmConfig';
 import type { AgentType as GeneratorAgentType } from '../../generators/agents/agentTypes';
+import {
+  getScaffoldStructure,
+  serializeStructureForAI,
+  type ScaffoldStructure,
+} from '../../generators/shared/scaffoldStructures';
 
 export interface FillCommandFlags {
   output?: string;
@@ -63,6 +74,10 @@ interface TargetFile {
   relativePath: string;
   isAgent: boolean;
   content: string;
+  /** Document name extracted from frontmatter */
+  documentName?: string;
+  /** Scaffold structure for AI context (v2 scaffold system) */
+  scaffoldStructure?: ScaffoldStructure;
 }
 
 interface FillServiceDependencies {
@@ -250,6 +265,11 @@ export class FillService {
     try {
       let updatedContent: string;
 
+      // Serialize scaffold structure for AI context (if available)
+      const structureContext = target.scaffoldStructure
+        ? serializeStructureForAI(target.scaffoldStructure)
+        : undefined;
+
       if (target.isAgent) {
         // Use PlaybookAgent for agent files
         const agentType = this.extractAgentTypeFromPath(target.relativePath);
@@ -260,7 +280,8 @@ export class FillService {
           existingContext: target.content,
           callbacks,
           useSemanticContext: options.useSemanticContext,
-          useLSP: options.useLSP
+          useLSP: options.useLSP,
+          scaffoldStructure: structureContext,
         });
         updatedContent = result.text;
       } else {
@@ -272,7 +293,8 @@ export class FillService {
           context: target.content,
           callbacks,
           useSemanticContext: options.useSemanticContext,
-          useLSP: options.useLSP
+          useLSP: options.useLSP,
+          scaffoldStructure: structureContext,
         });
         updatedContent = result.text;
       }
@@ -339,7 +361,31 @@ export class FillService {
       const content = await fs.readFile(fullPath, 'utf-8');
       const isAgent = fullPath.includes(`${path.sep}agents${path.sep}`);
       const relativePath = path.relative(options.outputDir, fullPath);
-      targets.push({ fullPath, relativePath, isAgent, content });
+
+      // Extract document name from frontmatter and load scaffold structure
+      const documentName = getDocumentName(content);
+      let scaffoldStructure: ScaffoldStructure | undefined;
+
+      if (documentName) {
+        scaffoldStructure = getScaffoldStructure(documentName);
+      }
+
+      // For agents, try to extract from filename if not in frontmatter
+      if (!documentName && isAgent) {
+        const filename = path.basename(fullPath, '.md');
+        if (filename !== 'README') {
+          scaffoldStructure = getScaffoldStructure(filename);
+        }
+      }
+
+      targets.push({
+        fullPath,
+        relativePath,
+        isAgent,
+        content,
+        documentName: documentName || undefined,
+        scaffoldStructure,
+      });
 
       if (options.limit && targets.length >= options.limit) {
         break;

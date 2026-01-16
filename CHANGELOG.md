@@ -34,11 +34,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Configurable skip options for each content type
   - Consistent error handling and reporting
 
+- **MCP Response Optimization**: New `skipContentGeneration` option for `initializeContext`
+  - Reduces response size from ~10k tokens to ~500 tokens
+  - Enables two-phase workflow: scaffold first, fill on-demand
+  - Default `true` for MCP to reduce context usage
+  - Use `fillSingleFile` or `fillScaffolding` tools to generate content when needed
+
 ### Changed
 
 - **Agents Export Default**: Changed default sync mode from `markdown` to `symlink`
   - Symlinks keep AI tool directories automatically synchronized
   - Changes in `.context/agents/` reflect immediately in target directories
+
+### Fixed
+
+- **Export Validation**: Export commands now properly check if source directories exist
+  - `exportContext`, `exportDocs`, `exportAgents`, `exportSkills` only export content that actually exists in `.context/`
+  - Added `fs.pathExists` checks before processing docs, agents, and skills directories
+  - Skills export without `includeBuiltIn` no longer fails silently when `.context/skills/` doesn't exist
+  - Prevents misleading success messages when exporting non-existent content
 
 ### Technical Details
 
@@ -47,8 +61,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `src/services/shared/contentTypeRegistry.ts` - Extensible content type definitions
 
 #### Modified Files
-- `src/services/mcp/mcpServer.ts` - Added 7 new MCP tools (export + import)
-- `src/services/export/exportRulesService.ts` - Added `indexMode` option
+- `src/services/mcp/mcpServer.ts` - Added 7 new MCP tools (export + import), added `skipContentGeneration` option
+- `src/services/ai/schemas.ts` - Added `skipContentGeneration` option to InitializeContextInputSchema
+- `src/services/ai/tools/initializeContextTool.ts` - Implemented lean response for `skipContentGeneration`
+- `src/services/export/exportRulesService.ts` - Added `indexMode` option and source path validation
+- `src/services/export/contextExportService.ts` - Added directory existence checks before export
+- `src/services/export/skillExportService.ts` - Added skills directory existence check
 - `src/services/export/index.ts` - Export ContextExportService
 - `src/services/shared/index.ts` - Export ContentTypeRegistry
 
