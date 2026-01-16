@@ -49,11 +49,13 @@ export class PrevcOrchestrator {
   private contextPath: string;
   private statusManager: PrevcStatusManager;
   private gateChecker: WorkflowGateChecker;
+  private planLinker: PlanLinker;
 
   constructor(contextPath: string) {
     this.contextPath = contextPath;
     this.statusManager = new PrevcStatusManager(contextPath);
     this.gateChecker = new WorkflowGateChecker();
+    this.planLinker = new PlanLinker(path.dirname(contextPath));
   }
 
   /**
@@ -121,14 +123,11 @@ export class PrevcOrchestrator {
    * @param archive - If true, archives the current workflow. If false, deletes it.
    */
   async resetWorkflow(archive: boolean): Promise<void> {
-    const repoPath = path.dirname(this.contextPath);
-    const planLinker = new PlanLinker(repoPath);
-
     if (archive) {
       await this.archiveCurrentWorkflow();
-      await planLinker.archivePlans();
+      await this.planLinker.archivePlans();
     } else {
-      await planLinker.clearAllPlans();
+      await this.planLinker.clearAllPlans();
       // Delete status.yaml
       const statusPath = path.join(this.contextPath, 'workflow', 'status.yaml');
       if (await fs.pathExists(statusPath)) {
@@ -243,6 +242,15 @@ export class PrevcOrchestrator {
 
     // Mark current phase as complete
     await this.statusManager.markPhaseComplete(currentPhase, outputs);
+
+    // Auto-sync linked plan markdown with execution progress
+    if (status.project.plan) {
+      try {
+        await this.planLinker.syncPlanMarkdown(status.project.plan);
+      } catch {
+        // Silent fail - plan sync is non-critical
+      }
+    }
 
     // Get and transition to next phase
     if (nextPhase) {

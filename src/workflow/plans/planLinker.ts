@@ -14,6 +14,9 @@ import {
   PlanDecision,
   WorkflowPlans,
   PLAN_PHASE_TO_PREVC,
+  StepExecution,
+  PlanPhaseTracking,
+  PlanExecutionTracking,
 } from './types';
 import { PrevcPhase, StatusType } from '../types';
 import { AgentRegistry, AgentMetadata, createAgentRegistry } from '../agents';
@@ -286,6 +289,389 @@ export class PlanLinker {
       overall: plan.progress,
       byPhase,
     };
+  }
+
+  /**
+   * Update individual step status within a plan phase
+   */
+  async updatePlanStep(
+    planSlug: string,
+    phaseId: string,
+    stepIndex: number,
+    status: StatusType,
+    options?: {
+      output?: string;
+      notes?: string;
+    }
+  ): Promise<boolean> {
+    const trackingFile = path.join(this.workflowPath, 'plan-tracking', `${planSlug}.json`);
+    const now = new Date().toISOString();
+
+    // Load existing tracking or create new
+    let tracking = await this.loadPlanTracking(planSlug);
+    if (!tracking) {
+      tracking = {
+        planSlug,
+        progress: 0,
+        phases: {},
+        decisions: [],
+        lastUpdated: now,
+      };
+    }
+
+    // Ensure phase exists in tracking
+    if (!tracking.phases[phaseId]) {
+      tracking.phases[phaseId] = {
+        phaseId,
+        status: 'in_progress',
+        startedAt: now,
+        steps: [],
+      };
+    }
+
+    // Find or create step entry
+    let step = tracking.phases[phaseId].steps.find(s => s.stepIndex === stepIndex);
+    if (!step) {
+      // Get step description from the plan if possible
+      const plan = await this.getLinkedPlan(planSlug);
+      const planPhase = plan?.phases.find(p => p.id === phaseId);
+      const planStep = planPhase?.steps.find(s => s.order === stepIndex);
+
+      step = {
+        stepIndex,
+        description: planStep?.description || `Step ${stepIndex}`,
+        status: 'pending',
+      };
+      tracking.phases[phaseId].steps.push(step);
+    }
+
+    // Update step status and timestamps
+    step.status = status;
+    if (status === 'in_progress' && !step.startedAt) {
+      step.startedAt = now;
+    }
+    if (status === 'completed') {
+      step.completedAt = now;
+    }
+    if (options?.output) {
+      step.output = options.output;
+    }
+    if (options?.notes) {
+      step.notes = options.notes;
+    }
+
+    // Update phase status based on steps
+    const phaseSteps = tracking.phases[phaseId].steps;
+    const allStepsCompleted = phaseSteps.length > 0 && phaseSteps.every(s => s.status === 'completed');
+    const anyStepInProgress = phaseSteps.some(s => s.status === 'in_progress');
+
+    if (allStepsCompleted) {
+      tracking.phases[phaseId].status = 'completed';
+      tracking.phases[phaseId].completedAt = now;
+    } else if (anyStepInProgress || phaseSteps.some(s => s.status === 'completed')) {
+      tracking.phases[phaseId].status = 'in_progress';
+    }
+
+    // Recalculate overall progress
+    tracking.progress = this.calculateStepProgress(tracking);
+    tracking.lastUpdated = now;
+
+    // Save tracking
+    await fs.ensureDir(path.dirname(trackingFile));
+    await fs.writeFile(trackingFile, JSON.stringify(tracking, null, 2), 'utf-8');
+
+    // Auto-sync to markdown
+    await this.syncPlanMarkdown(planSlug);
+
+    return true;
+  }
+
+  /**
+   * Get detailed execution status for a plan including all steps
+   */
+  async getPlanExecutionStatus(planSlug: string): Promise<PlanExecutionTracking | null> {
+    return this.loadPlanTracking(planSlug);
+  }
+
+  /**
+   * Sync tracking data back to the plan markdown file
+   * Updates checkboxes, timestamps, and adds execution history section
+   */
+  async syncPlanMarkdown(planSlug: string): Promise<boolean> {
+    const planPath = path.join(this.plansPath, `${planSlug}.md`);
+    const tracking = await this.loadPlanTracking(planSlug);
+
+    if (!tracking || !await fs.pathExists(planPath)) {
+      return false;
+    }
+
+    let content = await fs.readFile(planPath, 'utf-8');
+
+    // Update frontmatter with progress and phase statuses
+    content = this.updateFrontmatterProgress(content, tracking);
+
+    // Update step checkboxes in markdown body
+    content = this.updateStepCheckboxes(content, tracking);
+
+    // Add/update execution history section
+    content = this.updateExecutionHistorySection(content, tracking);
+
+    await fs.writeFile(planPath, content, 'utf-8');
+    return true;
+  }
+
+  /**
+   * Load plan tracking from JSON file
+   */
+  private async loadPlanTracking(planSlug: string): Promise<PlanExecutionTracking | null> {
+    const trackingFile = path.join(this.workflowPath, 'plan-tracking', `${planSlug}.json`);
+
+    if (!await fs.pathExists(trackingFile)) {
+      return null;
+    }
+
+    try {
+      const content = await fs.readFile(trackingFile, 'utf-8');
+      const data = JSON.parse(content);
+
+      // Migrate old format to new format if needed
+      if (!data.phases || typeof data.phases !== 'object') {
+        // Old format had phases as simple status objects
+        const migratedPhases: Record<string, PlanPhaseTracking> = {};
+        if (data.phases) {
+          for (const [phaseId, phaseData] of Object.entries(data.phases as Record<string, { status: string; updatedAt?: string }>)) {
+            migratedPhases[phaseId] = {
+              phaseId,
+              status: phaseData.status as StatusType,
+              startedAt: phaseData.updatedAt,
+              completedAt: phaseData.status === 'completed' ? phaseData.updatedAt : undefined,
+              steps: [],
+            };
+          }
+        }
+        return {
+          planSlug,
+          progress: data.progress || 0,
+          phases: migratedPhases,
+          decisions: data.decisions || [],
+          lastUpdated: data.lastUpdated || new Date().toISOString(),
+        };
+      }
+
+      return data as PlanExecutionTracking;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Calculate progress based on completed steps across all phases
+   */
+  private calculateStepProgress(tracking: PlanExecutionTracking): number {
+    let totalSteps = 0;
+    let completedSteps = 0;
+
+    for (const phase of Object.values(tracking.phases)) {
+      totalSteps += phase.steps.length;
+      completedSteps += phase.steps.filter(s => s.status === 'completed').length;
+    }
+
+    return totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
+  }
+
+  /**
+   * Update frontmatter with progress percentage
+   */
+  private updateFrontmatterProgress(content: string, tracking: PlanExecutionTracking): string {
+    // Check if frontmatter exists
+    if (!content.startsWith('---')) {
+      return content;
+    }
+
+    const endIndex = content.indexOf('---', 3);
+    if (endIndex === -1) {
+      return content;
+    }
+
+    let frontmatter = content.slice(0, endIndex);
+    const body = content.slice(endIndex);
+
+    // Update or add progress field
+    if (frontmatter.includes('progress:')) {
+      frontmatter = frontmatter.replace(/progress:\s*\d+/, `progress: ${tracking.progress}`);
+    } else {
+      // Add progress after status line or at end of frontmatter
+      if (frontmatter.includes('status:')) {
+        frontmatter = frontmatter.replace(/(status:\s*\w+)/, `$1\nprogress: ${tracking.progress}`);
+      } else {
+        frontmatter = frontmatter.trimEnd() + `\nprogress: ${tracking.progress}\n`;
+      }
+    }
+
+    // Update or add lastUpdated field
+    if (frontmatter.includes('lastUpdated:')) {
+      frontmatter = frontmatter.replace(/lastUpdated:\s*"[^"]*"/, `lastUpdated: "${tracking.lastUpdated}"`);
+    } else {
+      frontmatter = frontmatter.trimEnd() + `\nlastUpdated: "${tracking.lastUpdated}"\n`;
+    }
+
+    return frontmatter + body;
+  }
+
+  /**
+   * Update step checkboxes in markdown body
+   */
+  private updateStepCheckboxes(content: string, tracking: PlanExecutionTracking): string {
+    // Match numbered steps with optional existing checkboxes
+    // Patterns like: "1. **Step text**" or "1. [ ] **Step text**" or "1. [x] **Step text**"
+    const stepPattern = /^(\d+)\.\s*(?:\[[ x]\]\s*)?(.+?)(?:\s*\*\([^)]*\)\*)?$/gm;
+
+    // Track which phase we're currently in by finding phase headers
+    let currentPhaseId: string | null = null;
+
+    // Split content into lines for processing
+    const lines = content.split('\n');
+    const updatedLines: string[] = [];
+
+    for (const line of lines) {
+      // Check for phase header
+      const phaseMatch = line.match(/^###\s+Phase\s+(\d+)/);
+      if (phaseMatch) {
+        currentPhaseId = `phase-${phaseMatch[1]}`;
+        updatedLines.push(line);
+        continue;
+      }
+
+      // Check for numbered step
+      const stepMatch = line.match(/^(\d+)\.\s*(?:\[[ x]\]\s*)?(.+?)(?:\s*\*\([^)]*\)\*)?$/);
+      if (stepMatch && currentPhaseId) {
+        const stepNum = parseInt(stepMatch[1], 10);
+        const stepText = stepMatch[2].trim();
+
+        // Find step in tracking
+        const phaseTracking = tracking.phases[currentPhaseId];
+        const stepTracking = phaseTracking?.steps.find(s => s.stepIndex === stepNum);
+
+        if (stepTracking) {
+          const checkMark = stepTracking.status === 'completed' ? '[x]' : '[ ]';
+          let timestamp = '';
+          if (stepTracking.completedAt) {
+            timestamp = ` *(completed: ${stepTracking.completedAt})*`;
+          } else if (stepTracking.startedAt && stepTracking.status === 'in_progress') {
+            timestamp = ` *(in progress since: ${stepTracking.startedAt})*`;
+          }
+          updatedLines.push(`${stepNum}. ${checkMark} ${stepText}${timestamp}`);
+          continue;
+        }
+      }
+
+      updatedLines.push(line);
+    }
+
+    return updatedLines.join('\n');
+  }
+
+  /**
+   * Add or update execution history section in markdown
+   */
+  private updateExecutionHistorySection(content: string, tracking: PlanExecutionTracking): string {
+    const historySection = this.generateExecutionHistoryMarkdown(tracking);
+
+    // Check if section exists
+    const historyMarker = '## Execution History';
+    const existingIndex = content.indexOf(historyMarker);
+
+    if (existingIndex > -1) {
+      // Find the end of the section (next ## header or end of file)
+      const afterHistory = content.slice(existingIndex);
+      const nextSectionMatch = afterHistory.match(/\n## [^E]/);
+      if (nextSectionMatch && nextSectionMatch.index) {
+        const endIndex = existingIndex + nextSectionMatch.index;
+        content = content.slice(0, existingIndex) + historySection + content.slice(endIndex);
+      } else {
+        // History is the last section
+        content = content.slice(0, existingIndex) + historySection;
+      }
+    } else {
+      // Add before "## Evidence" or "## Rollback" or at end
+      const insertPoints = ['## Evidence', '## Rollback'];
+      let insertIndex = -1;
+
+      for (const marker of insertPoints) {
+        const idx = content.indexOf(marker);
+        if (idx > -1) {
+          insertIndex = idx;
+          break;
+        }
+      }
+
+      if (insertIndex > -1) {
+        content = content.slice(0, insertIndex) + historySection + '\n\n' + content.slice(insertIndex);
+      } else {
+        content = content.trimEnd() + '\n\n' + historySection;
+      }
+    }
+
+    return content;
+  }
+
+  /**
+   * Generate execution history markdown section
+   */
+  private generateExecutionHistoryMarkdown(tracking: PlanExecutionTracking): string {
+    const lines = [
+      '## Execution History',
+      '',
+      `> Last updated: ${tracking.lastUpdated} | Progress: ${tracking.progress}%`,
+      '',
+    ];
+
+    // Sort phases by ID
+    const sortedPhases = Object.entries(tracking.phases).sort(([a], [b]) => a.localeCompare(b));
+
+    for (const [phaseId, phase] of sortedPhases) {
+      const statusIcon = phase.status === 'completed' ? '[DONE]' :
+                         phase.status === 'in_progress' ? '[IN PROGRESS]' :
+                         phase.status === 'skipped' ? '[SKIPPED]' :
+                         '[PENDING]';
+
+      lines.push(`### ${phaseId} ${statusIcon}`);
+
+      if (phase.startedAt) {
+        lines.push(`- Started: ${phase.startedAt}`);
+      }
+      if (phase.completedAt) {
+        lines.push(`- Completed: ${phase.completedAt}`);
+      }
+
+      if (phase.steps.length > 0) {
+        lines.push('');
+        const sortedSteps = [...phase.steps].sort((a, b) => a.stepIndex - b.stepIndex);
+        for (const step of sortedSteps) {
+          const check = step.status === 'completed' ? 'x' : ' ';
+          let line = `- [${check}] Step ${step.stepIndex}: ${step.description}`;
+
+          if (step.completedAt) {
+            line += ` *(${step.completedAt})*`;
+          } else if (step.startedAt && step.status === 'in_progress') {
+            line += ` *(in progress)*`;
+          }
+
+          lines.push(line);
+
+          if (step.output) {
+            lines.push(`  - Output: ${step.output}`);
+          }
+          if (step.notes) {
+            lines.push(`  - Notes: ${step.notes}`);
+          }
+        }
+      }
+
+      lines.push('');
+    }
+
+    return lines.join('\n');
   }
 
   /**

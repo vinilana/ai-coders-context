@@ -2055,6 +2055,132 @@ export class AIContextMCPServer {
       }
     });
 
+    // updatePlanStep - Update individual step status within a plan phase
+    this.server.registerTool('updatePlanStep', {
+      description: 'Update the status of a specific step within a plan phase. Automatically syncs changes to the plan markdown file.',
+      inputSchema: {
+        planSlug: z.string().describe('Plan slug/identifier'),
+        phaseId: z.string().describe('Phase ID (e.g., "phase-1", "phase-2")'),
+        stepIndex: z.number().describe('Step number (1-based index)'),
+        status: z.enum(['pending', 'in_progress', 'completed', 'skipped']).describe('New step status'),
+        output: z.string().optional().describe('Output artifact or result from this step'),
+        notes: z.string().optional().describe('Execution notes or comments'),
+      }
+    }, async ({ planSlug, phaseId, stepIndex, status, output, notes }) => {
+      try {
+        const linker = createPlanLinker(repoPath);
+        const success = await linker.updatePlanStep(
+          planSlug,
+          phaseId,
+          stepIndex,
+          status as any,
+          { output, notes }
+        );
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success,
+              planSlug,
+              phaseId,
+              stepIndex,
+              status,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // getPlanExecutionStatus - Get detailed execution status for a plan
+    this.server.registerTool('getPlanExecutionStatus', {
+      description: 'Get detailed execution status for a plan, including all phases and individual step progress.',
+      inputSchema: {
+        planSlug: z.string().describe('Plan slug/identifier'),
+      }
+    }, async ({ planSlug }) => {
+      try {
+        const linker = createPlanLinker(repoPath);
+        const status = await linker.getPlanExecutionStatus(planSlug);
+
+        if (!status) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                success: false,
+                error: 'Plan tracking not found. The plan may not have any execution data yet.',
+              }, null, 2)
+            }]
+          };
+        }
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              ...status,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // syncPlanMarkdown - Manually sync plan execution tracking to markdown file
+    this.server.registerTool('syncPlanMarkdown', {
+      description: 'Manually sync plan execution tracking to the plan markdown file. Updates checkboxes, timestamps, and execution history.',
+      inputSchema: {
+        planSlug: z.string().describe('Plan slug/identifier'),
+      }
+    }, async ({ planSlug }) => {
+      try {
+        const linker = createPlanLinker(repoPath);
+        const success = await linker.syncPlanMarkdown(planSlug);
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success,
+              planSlug,
+              message: success ? 'Plan markdown synced successfully' : 'Failed to sync - plan or tracking not found',
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
     // discoverAgents - Discover all available agents (built-in + custom)
     this.server.registerTool('discoverAgents', {
       description: 'Discover all available agents including custom ones. Scans .context/agents/ for custom agent playbooks.',
