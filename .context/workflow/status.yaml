@@ -1,0 +1,25 @@
+project:
+  name: "MCP Install Command"
+  scale: QUICK
+  started: "2026-01-16T17:48:27.183Z"
+  current_phase: E
+
+phases:
+  P:
+    status: skipped
+    reason: "Not required for scale QUICK"
+  R:
+    status: skipped
+    reason: "Not required for scale QUICK"
+  E:
+    status: in_progress
+    started_at: "2026-01-16T17:48:27.183Z"
+  V:
+    status: pending
+  C:
+    status: skipped
+    reason: "Not required for scale QUICK"
+
+roles:
+  solo-dev:
+    status: pending

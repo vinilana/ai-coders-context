@@ -105,17 +105,26 @@ const projectOverviewStructure: ScaffoldStructure = {
       headingLevel: 2,
     },
     {
-      heading: 'Quick Facts',
+      heading: 'Codebase Reference',
       order: 2,
+      contentType: 'prose',
+      guidance: 'Add a callout pointing to codebase-map.json for detailed symbol counts, architecture layers, and dependencies. Do NOT list all symbols inline.',
+      exampleContent: '> **Detailed Analysis**: For complete symbol counts, architecture layers, and dependency graphs, see [`codebase-map.json`](./codebase-map.json).',
+      required: true,
+      headingLevel: 2,
+    },
+    {
+      heading: 'Quick Facts',
+      order: 3,
       contentType: 'list',
-      guidance: 'List root directory path, primary languages (with file counts), and key entry points.',
-      exampleContent: '- Root: `/path/to/repo`\n- Languages: TypeScript (150 files), Python (20 files)\n- Entry: `src/index.ts`',
+      guidance: 'List root directory path, primary languages (with file counts), and key entry points. Reference codebase-map.json for full analysis.',
+      exampleContent: '- Root: `/path/to/repo`\n- Languages: TypeScript (150 files), Python (20 files)\n- Entry: `src/index.ts`\n- Full analysis: [`codebase-map.json`](./codebase-map.json)',
       required: true,
       headingLevel: 2,
     },
     {
       heading: 'Entry Points',
-      order: 3,
+      order: 4,
       contentType: 'list',
       guidance: 'List main entry points with links (CLI, server, library exports). Use markdown links with line numbers.',
       required: true,
@@ -123,15 +132,15 @@ const projectOverviewStructure: ScaffoldStructure = {
     },
     {
       heading: 'Key Exports',
-      order: 4,
+      order: 5,
       contentType: 'list',
-      guidance: 'List major exported classes and interfaces with links. Group by type (Classes, Interfaces).',
+      guidance: 'Reference codebase-map.json for the complete list.',
       required: true,
       headingLevel: 2,
     },
     {
       heading: 'File Structure & Code Organization',
-      order: 5,
+      order: 6,
       contentType: 'list',
       guidance: 'List top-level directories with brief descriptions of their purpose.',
       exampleContent: '- `src/` \u2014 TypeScript source files and CLI entrypoints.\n- `tests/` \u2014 Automated tests and fixtures.',
@@ -140,7 +149,7 @@ const projectOverviewStructure: ScaffoldStructure = {
     },
     {
       heading: 'Technology Stack Summary',
-      order: 6,
+      order: 7,
       contentType: 'prose',
       guidance: 'Outline primary runtimes, languages, and platforms in use. Note build tooling, linting, and formatting infrastructure.',
       required: true,
@@ -148,7 +157,7 @@ const projectOverviewStructure: ScaffoldStructure = {
     },
     {
       heading: 'Core Framework Stack',
-      order: 7,
+      order: 8,
       contentType: 'prose',
       guidance: 'Document core frameworks per layer (backend, frontend, data, messaging). Mention architectural patterns enforced by these frameworks.',
       required: false,
@@ -156,7 +165,7 @@ const projectOverviewStructure: ScaffoldStructure = {
     },
     {
       heading: 'UI & Interaction Libraries',
-      order: 8,
+      order: 9,
       contentType: 'prose',
       guidance: 'List UI kits, CLI interaction helpers, or design system dependencies. Note theming, accessibility, or localization considerations.',
       required: false,
@@ -164,7 +173,7 @@ const projectOverviewStructure: ScaffoldStructure = {
     },
     {
       heading: 'Development Tools Overview',
-      order: 9,
+      order: 10,
       contentType: 'prose',
       guidance: 'Highlight essential CLIs, scripts, or developer environments. Link to Tooling guide for deeper setup.',
       required: false,
@@ -172,7 +181,7 @@ const projectOverviewStructure: ScaffoldStructure = {
     },
     {
       heading: 'Getting Started Checklist',
-      order: 10,
+      order: 11,
       contentType: 'checklist',
       guidance: 'Provide numbered steps to get a new developer productive. Include install, run, and verify steps.',
       exampleContent: '1. Install dependencies with `npm install`.\n2. Explore the CLI by running `npm run dev`.\n3. Review Development Workflow for day-to-day tasks.',
@@ -181,14 +190,14 @@ const projectOverviewStructure: ScaffoldStructure = {
     },
     {
       heading: 'Next Steps',
-      order: 11,
+      order: 12,
       contentType: 'prose',
       guidance: 'Capture product positioning, key stakeholders, and links to external documentation or product specs.',
       required: false,
       headingLevel: 2,
     },
   ],
-  linkTo: ['architecture.md', 'development-workflow.md', 'tooling.md'],
+  linkTo: ['architecture.md', 'development-workflow.md', 'tooling.md', 'codebase-map.json'],
 };
 
 const architectureStructure: ScaffoldStructure = {
@@ -219,7 +228,8 @@ const architectureStructure: ScaffoldStructure = {
       heading: 'Architectural Layers',
       order: 3,
       contentType: 'list',
-      guidance: 'For each layer, describe its purpose, directories, symbol count, key exports, and dependencies on other layers. Use H3 for each layer.',
+      guidance: 'List architecture layers with their purpose and key directories. Do NOT list symbol counts inline - reference codebase-map.json for detailed analysis.',
+      exampleContent: '- **Services**: Core business logic (`src/services/`)\n- **Generators**: Content generation (`src/generators/`)\n\n> See [`codebase-map.json`](./codebase-map.json) for complete symbol counts and dependency graphs.',
       required: true,
       headingLevel: 2,
     },
@@ -305,7 +315,7 @@ const architectureStructure: ScaffoldStructure = {
       headingLevel: 2,
     },
   ],
-  linkTo: ['project-overview.md', 'data-flow.md'],
+  linkTo: ['project-overview.md', 'data-flow.md', 'codebase-map.json'],
 };
 
 const developmentWorkflowStructure: ScaffoldStructure = {
