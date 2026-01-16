@@ -15,10 +15,13 @@ import {
   ProjectScale,
   PhaseStatus,
   RoleStatus,
+  WorkflowSettings,
+  PlanApproval,
 } from '../types';
 import { PREVC_PHASE_ORDER } from '../phases';
 import { getScaleRoute } from '../scaling';
 import { createInitialStatus } from './templates';
+import { getDefaultSettings } from '../gates';
 
 /**
  * Default status file path relative to .context directory
@@ -57,7 +60,10 @@ export class PrevcStatusManager {
 
     const content = await fs.readFile(this.statusPath, 'utf-8');
     // Parse YAML manually (simple format)
-    this.cachedStatus = this.parseYaml(content);
+    let status = this.parseYaml(content);
+    // Apply migration for existing workflows
+    status = this.migrateStatus(status);
+    this.cachedStatus = status;
     return this.cachedStatus;
   }
 
@@ -74,7 +80,10 @@ export class PrevcStatusManager {
     }
 
     const content = fs.readFileSync(this.statusPath, 'utf-8');
-    this.cachedStatus = this.parseYaml(content);
+    let status = this.parseYaml(content);
+    // Apply migration for existing workflows
+    status = this.migrateStatus(status);
+    this.cachedStatus = status;
     return this.cachedStatus;
   }
 
@@ -250,6 +259,114 @@ export class PrevcStatusManager {
   }
 
   /**
+   * Set workflow settings
+   */
+  async setSettings(settings: Partial<WorkflowSettings>): Promise<WorkflowSettings> {
+    const status = await this.load();
+    const defaults = getDefaultSettings(status.project.scale);
+
+    const currentSettings = status.project.settings || defaults;
+    const newSettings: WorkflowSettings = {
+      autonomous_mode: settings.autonomous_mode ?? currentSettings.autonomous_mode,
+      require_plan: settings.require_plan ?? currentSettings.require_plan,
+      require_approval: settings.require_approval ?? currentSettings.require_approval,
+    };
+
+    status.project.settings = newSettings;
+    await this.save(status);
+    return newSettings;
+  }
+
+  /**
+   * Get workflow settings (with defaults applied)
+   */
+  async getSettings(): Promise<WorkflowSettings> {
+    const status = await this.load();
+    const defaults = getDefaultSettings(status.project.scale);
+    return status.project.settings || defaults;
+  }
+
+  /**
+   * Mark that a plan has been created/linked
+   */
+  async markPlanCreated(planSlug: string): Promise<void> {
+    const status = await this.load();
+
+    if (!status.approval) {
+      status.approval = {
+        plan_created: false,
+        plan_approved: false,
+      };
+    }
+
+    status.approval.plan_created = true;
+    status.project.plan = planSlug;
+
+    await this.save(status);
+  }
+
+  /**
+   * Approve the plan
+   */
+  async approvePlan(approver: PrevcRole | string, notes?: string): Promise<PlanApproval> {
+    const status = await this.load();
+
+    if (!status.approval) {
+      status.approval = {
+        plan_created: false,
+        plan_approved: false,
+      };
+    }
+
+    status.approval.plan_approved = true;
+    status.approval.approved_by = approver;
+    status.approval.approved_at = new Date().toISOString();
+    if (notes) {
+      status.approval.approval_notes = notes;
+    }
+
+    await this.save(status);
+    return status.approval;
+  }
+
+  /**
+   * Get approval status
+   */
+  async getApproval(): Promise<PlanApproval | undefined> {
+    const status = await this.load();
+    return status.approval;
+  }
+
+  /**
+   * Apply migration logic for existing workflows
+   * - Add default settings based on scale
+   * - Initialize approval tracking based on current state
+   */
+  private migrateStatus(status: PrevcStatus): PrevcStatus {
+    // Add default settings if missing
+    if (!status.project.settings) {
+      status.project.settings = getDefaultSettings(status.project.scale);
+    }
+
+    // Initialize approval tracking if missing
+    if (!status.approval) {
+      const hasPlan = Boolean(status.project.plan || (status.project.plans && status.project.plans.length > 0));
+      const isPastReview = ['E', 'V', 'C'].includes(status.project.current_phase) ||
+        status.phases['R'].status === 'completed';
+
+      status.approval = {
+        plan_created: hasPlan,
+        // Auto-approve if already past R phase (grandfather clause)
+        plan_approved: isPastReview,
+        approved_by: isPastReview ? 'system-migration' : undefined,
+        approved_at: isPastReview ? new Date().toISOString() : undefined,
+      };
+    }
+
+    return status;
+  }
+
+  /**
    * Parse YAML content to PrevcStatus object
    * Simple implementation for the specific format
    */
@@ -287,6 +404,10 @@ export class PrevcStatusManager {
         currentSection = 'phases';
       } else if (line.startsWith('roles:')) {
         currentSection = 'roles';
+      } else if (line.startsWith('settings:')) {
+        currentSection = 'settings';
+      } else if (line.startsWith('approval:')) {
+        currentSection = 'approval';
       } else if (currentSection === 'project' && line.startsWith('  ')) {
         const [key, ...valueParts] = trimmed.split(':');
         const value = valueParts.join(':').trim().replace(/^["']|["']$/g, '');
@@ -352,6 +473,49 @@ export class PrevcStatusManager {
             roleStatus.current_task = value;
           }
           result.roles[currentRole as PrevcRole] = roleStatus;
+        }
+      } else if (currentSection === 'settings' && line.startsWith('  ')) {
+        if (!result.project.settings) {
+          result.project.settings = {
+            autonomous_mode: false,
+            require_plan: true,
+            require_approval: true,
+          };
+        }
+        const [key, ...valueParts] = trimmed.split(':');
+        const value = valueParts.join(':').trim().replace(/^["']|["']$/g, '');
+        if (key === 'autonomous_mode') {
+          result.project.settings.autonomous_mode = value === 'true';
+        }
+        if (key === 'require_plan') {
+          result.project.settings.require_plan = value === 'true';
+        }
+        if (key === 'require_approval') {
+          result.project.settings.require_approval = value === 'true';
+        }
+      } else if (currentSection === 'approval' && line.startsWith('  ')) {
+        if (!result.approval) {
+          result.approval = {
+            plan_created: false,
+            plan_approved: false,
+          };
+        }
+        const [key, ...valueParts] = trimmed.split(':');
+        const value = valueParts.join(':').trim().replace(/^["']|["']$/g, '');
+        if (key === 'plan_created') {
+          result.approval.plan_created = value === 'true';
+        }
+        if (key === 'plan_approved') {
+          result.approval.plan_approved = value === 'true';
+        }
+        if (key === 'approved_by') {
+          result.approval.approved_by = value || undefined;
+        }
+        if (key === 'approved_at') {
+          result.approval.approved_at = value || undefined;
+        }
+        if (key === 'approval_notes') {
+          result.approval.approval_notes = value || undefined;
         }
       }
     }
@@ -429,6 +593,33 @@ export class PrevcStatusManager {
           lines.push(`    outputs: [${roleStatus.outputs.map((o) => `"${o}"`).join(', ')}]`);
         }
       }
+    }
+    lines.push('');
+
+    // Settings section
+    if (status.project.settings) {
+      lines.push('settings:');
+      lines.push(`  autonomous_mode: ${status.project.settings.autonomous_mode}`);
+      lines.push(`  require_plan: ${status.project.settings.require_plan}`);
+      lines.push(`  require_approval: ${status.project.settings.require_approval}`);
+      lines.push('');
+    }
+
+    // Approval section
+    if (status.approval) {
+      lines.push('approval:');
+      lines.push(`  plan_created: ${status.approval.plan_created}`);
+      lines.push(`  plan_approved: ${status.approval.plan_approved}`);
+      if (status.approval.approved_by) {
+        lines.push(`  approved_by: "${status.approval.approved_by}"`);
+      }
+      if (status.approval.approved_at) {
+        lines.push(`  approved_at: "${status.approval.approved_at}"`);
+      }
+      if (status.approval.approval_notes) {
+        lines.push(`  approval_notes: "${status.approval.approval_notes}"`);
+      }
+      lines.push('');
     }
 
     return lines.join('\n') + '\n';

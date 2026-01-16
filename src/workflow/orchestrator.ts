@@ -10,11 +10,32 @@ import {
   PrevcRole,
   ProjectContext,
   ProjectScale,
+  WorkflowSettings,
+  PlanApproval,
 } from './types';
 import { PrevcStatusManager } from './status/statusManager';
 import { detectProjectScale, getScaleRoute } from './scaling';
 import { PREVC_PHASE_ORDER, getPhaseDefinition } from './phases';
 import { getRoleConfig } from './prevcConfig';
+import { WorkflowGateChecker, GateCheckResult, getDefaultSettings } from './gates';
+
+/**
+ * Options for completing a phase
+ */
+export interface CompletePhaseOptions {
+  /** Force advancement even if gates would block */
+  force?: boolean;
+}
+
+/**
+ * Options for initializing a workflow with settings
+ */
+export interface InitWorkflowOptions {
+  name: string;
+  scale: ProjectScale;
+  /** Override default settings */
+  settings?: Partial<WorkflowSettings>;
+}
 
 /**
  * PREVC Workflow Orchestrator
@@ -23,9 +44,11 @@ import { getRoleConfig } from './prevcConfig';
  */
 export class PrevcOrchestrator {
   private statusManager: PrevcStatusManager;
+  private gateChecker: WorkflowGateChecker;
 
   constructor(contextPath: string) {
     this.statusManager = new PrevcStatusManager(contextPath);
+    this.gateChecker = new WorkflowGateChecker();
   }
 
   /**
@@ -55,16 +78,32 @@ export class PrevcOrchestrator {
    */
   async initWorkflowWithScale(
     name: string,
-    scale: ProjectScale
+    scale: ProjectScale,
+    settings?: Partial<WorkflowSettings>
   ): Promise<PrevcStatus> {
     const route = getScaleRoute(scale);
 
-    return this.statusManager.create({
+    const status = await this.statusManager.create({
       name,
       scale,
       phases: route.phases,
       roles: route.roles,
     });
+
+    // Apply custom settings if provided
+    if (settings) {
+      await this.statusManager.setSettings(settings);
+      return this.statusManager.load();
+    }
+
+    return status;
+  }
+
+  /**
+   * Initialize a workflow with full options
+   */
+  async initWorkflowWithOptions(options: InitWorkflowOptions): Promise<PrevcStatus> {
+    return this.initWorkflowWithScale(options.name, options.scale, options.settings);
   }
 
   /**
@@ -119,19 +158,74 @@ export class PrevcOrchestrator {
   /**
    * Complete the current phase and advance to the next
    */
-  async completePhase(outputs?: string[]): Promise<PrevcPhase | null> {
-    const currentPhase = await this.getCurrentPhase();
+  async completePhase(
+    outputs?: string[],
+    options: CompletePhaseOptions = {}
+  ): Promise<PrevcPhase | null> {
+    const status = await this.getStatus();
+    const currentPhase = status.project.current_phase;
+    const nextPhase = await this.getNextPhase();
+
+    // Check gates before advancing (unless force is true)
+    if (nextPhase) {
+      this.gateChecker.enforceGates(status, {
+        force: options.force,
+        nextPhase,
+      });
+    }
 
     // Mark current phase as complete
     await this.statusManager.markPhaseComplete(currentPhase, outputs);
 
     // Get and transition to next phase
-    const nextPhase = await this.getNextPhase();
     if (nextPhase) {
       await this.statusManager.transitionToPhase(nextPhase);
     }
 
     return nextPhase;
+  }
+
+  /**
+   * Check gates for the current phase transition
+   */
+  async checkGates(): Promise<GateCheckResult> {
+    const status = await this.getStatus();
+    return this.gateChecker.checkGates(status);
+  }
+
+  /**
+   * Set workflow settings
+   */
+  async setSettings(settings: Partial<WorkflowSettings>): Promise<WorkflowSettings> {
+    return this.statusManager.setSettings(settings);
+  }
+
+  /**
+   * Get workflow settings
+   */
+  async getSettings(): Promise<WorkflowSettings> {
+    return this.statusManager.getSettings();
+  }
+
+  /**
+   * Mark that a plan has been created/linked
+   */
+  async markPlanCreated(planSlug: string): Promise<void> {
+    return this.statusManager.markPlanCreated(planSlug);
+  }
+
+  /**
+   * Approve the plan
+   */
+  async approvePlan(approver: PrevcRole | string, notes?: string): Promise<PlanApproval> {
+    return this.statusManager.approvePlan(approver, notes);
+  }
+
+  /**
+   * Get approval status
+   */
+  async getApproval(): Promise<PlanApproval | undefined> {
+    return this.statusManager.getApproval();
   }
 
   /**

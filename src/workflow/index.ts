@@ -12,6 +12,23 @@
 // Types
 export * from './types';
 
+// Errors
+export {
+  WorkflowError,
+  WorkflowGateError,
+  NoPlanToApproveError,
+  NoWorkflowError,
+} from './errors';
+
+// Gates
+export {
+  WorkflowGateChecker,
+  createGateChecker,
+  getDefaultSettings,
+  GateCheckResult,
+  GateStatus,
+} from './gates';
+
 // Roles
 export {
   PREVC_ROLES,
@@ -75,7 +92,12 @@ export {
 } from './status/templates';
 
 // Orchestrator
-export { PrevcOrchestrator, WorkflowSummary } from './orchestrator';
+export {
+  PrevcOrchestrator,
+  WorkflowSummary,
+  CompletePhaseOptions,
+  InitWorkflowOptions,
+} from './orchestrator';
 
 // Collaboration
 export {

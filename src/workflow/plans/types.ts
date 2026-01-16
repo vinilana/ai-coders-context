@@ -39,6 +39,12 @@ export interface PlanReference {
   linkedAt: string;
   /** Plan status */
   status: 'active' | 'completed' | 'paused' | 'cancelled';
+  /** Approval status for workflow gates */
+  approval_status?: 'pending' | 'approved' | 'rejected';
+  /** When the plan was approved */
+  approved_at?: string;
+  /** Who approved the plan */
+  approved_by?: string;
 }
 
 /**

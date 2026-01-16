@@ -53,6 +53,8 @@ import {
   AgentType,
   AGENT_TYPES,
   createPlanLinker,
+  WorkflowGateError,
+  NoPlanToApproveError,
 } from '../../workflow';
 
 export interface MCPServerOptions {
@@ -498,9 +500,15 @@ export class AIContextMCPServer {
         name: z.string().describe('Name of the project/feature'),
         description: z.string().optional().describe('Description for scale detection'),
         scale: z.enum(['QUICK', 'SMALL', 'MEDIUM', 'LARGE', 'ENTERPRISE']).optional()
-          .describe('Project scale (auto-detected if not provided)')
+          .describe('Project scale (auto-detected if not provided)'),
+        autonomous: z.boolean().optional()
+          .describe('Enable autonomous mode (bypasses plan and approval gates)'),
+        require_plan: z.boolean().optional()
+          .describe('Require a linked plan before advancing P → R'),
+        require_approval: z.boolean().optional()
+          .describe('Require plan approval before advancing R → E')
       }
-    }, async ({ name, description, scale }) => {
+    }, async ({ name, description, scale, autonomous, require_plan, require_approval }) => {
       try {
         const resolvedRepoPath = path.resolve(repoPath);
         const service = new WorkflowService(resolvedRepoPath);
@@ -508,11 +516,16 @@ export class AIContextMCPServer {
           name,
           description,
           scale: scale as string | undefined,
+          autonomous,
+          requirePlan: require_plan,
+          requireApproval: require_approval,
         });
 
         // Include file paths for visibility
         const contextPath = path.join(resolvedRepoPath, '.context');
         const statusFilePath = path.join(contextPath, 'workflow', 'status.yaml');
+
+        const settings = await service.getSettings();
 
         return {
           content: [{
@@ -525,6 +538,11 @@ export class AIContextMCPServer {
               phases: Object.keys(status.phases).filter(
                 (p) => status.phases[p as PrevcPhase].status !== 'skipped'
               ),
+              settings: {
+                autonomous_mode: settings.autonomous_mode,
+                require_plan: settings.require_plan,
+                require_approval: settings.require_approval,
+              },
               statusFilePath,
               contextPath,
             }, null, 2)
@@ -606,9 +624,11 @@ export class AIContextMCPServer {
       description: 'Complete the current phase and advance to the next phase in the PREVC workflow.',
       inputSchema: {
         outputs: z.array(z.string()).optional()
-          .describe('List of artifact paths generated in the current phase')
+          .describe('List of artifact paths generated in the current phase'),
+        force: z.boolean().optional()
+          .describe('Force advancement even if gates would block (use with caution)')
       }
-    }, async ({ outputs }) => {
+    }, async ({ outputs, force }) => {
       try {
         const service = new WorkflowService(repoPath);
 
@@ -624,7 +644,7 @@ export class AIContextMCPServer {
           };
         }
 
-        const nextPhase = await service.advance(outputs);
+        const nextPhase = await service.advance(outputs, { force });
 
         if (nextPhase) {
           return {
@@ -653,6 +673,21 @@ export class AIContextMCPServer {
           };
         }
       } catch (error) {
+        // Handle gate errors specially
+        if (error instanceof WorkflowGateError) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                success: false,
+                error: error.message,
+                gate: error.gate,
+                transition: error.transition,
+                hint: error.hint,
+              }, null, 2)
+            }]
+          };
+        }
         return {
           content: [{
             type: 'text' as const,
@@ -816,7 +851,219 @@ export class AIContextMCPServer {
       }
     });
 
-    this.log('Registered 6 workflow tools');
+    // workflowGetGates - Get current gate status
+    this.server.registerTool('workflowGetGates', {
+      description: 'Get current gate status, what\'s blocking, hints for resolution.',
+      inputSchema: {}
+    }, async () => {
+      try {
+        const service = new WorkflowService(repoPath);
+
+        if (!(await service.hasWorkflow())) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                success: false,
+                error: 'No workflow found. Run workflowInit first.'
+              }, null, 2)
+            }]
+          };
+        }
+
+        const gateResult = await service.checkGates();
+        const settings = await service.getSettings();
+        const approval = await service.getApproval();
+        const summary = await service.getSummary();
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              currentPhase: {
+                code: summary.currentPhase,
+                name: PHASE_NAMES_EN[summary.currentPhase],
+              },
+              canAdvance: gateResult.canAdvance,
+              gates: gateResult.gates,
+              blockingReason: gateResult.blockingReason,
+              hint: gateResult.hint,
+              settings: {
+                autonomous_mode: settings.autonomous_mode,
+                require_plan: settings.require_plan,
+                require_approval: settings.require_approval,
+              },
+              approval: approval ? {
+                plan_created: approval.plan_created,
+                plan_approved: approval.plan_approved,
+                approved_by: approval.approved_by,
+                approved_at: approval.approved_at,
+              } : null,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // workflowApprovePlan - Approve the linked plan
+    this.server.registerTool('workflowApprovePlan', {
+      description: 'Approve the plan, updates status.yaml and plans.json. Required before advancing R → E unless autonomous mode is enabled.',
+      inputSchema: {
+        planSlug: z.string().optional()
+          .describe('Plan slug to approve (optional if only one plan linked)'),
+        approver: z.enum(PREVC_ROLES as unknown as [string, ...string[]]).optional()
+          .describe('Role approving the plan'),
+        notes: z.string().optional()
+          .describe('Optional approval notes')
+      }
+    }, async ({ planSlug, approver, notes }) => {
+      try {
+        const service = new WorkflowService(repoPath);
+
+        if (!(await service.hasWorkflow())) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                success: false,
+                error: 'No workflow found. Run workflowInit first.'
+              }, null, 2)
+            }]
+          };
+        }
+
+        // Get current approval status
+        const currentApproval = await service.getApproval();
+        if (!currentApproval?.plan_created) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                success: false,
+                error: 'No plan is linked to approve. Link a plan first using linkPlan.',
+                hint: 'Use scaffoldPlan to create a plan, then linkPlan to link it to the workflow.'
+              }, null, 2)
+            }]
+          };
+        }
+
+        // Approve the plan
+        const approval = await service.approvePlan(
+          approver || 'reviewer',
+          notes
+        );
+
+        // Also update the plan reference if planSlug is provided
+        if (planSlug) {
+          const planLinker = createPlanLinker(repoPath);
+          const plans = await planLinker.getLinkedPlans();
+          const planRef = plans.active.find(p => p.slug === planSlug);
+          if (planRef) {
+            planRef.approval_status = 'approved';
+            planRef.approved_at = approval.approved_at;
+            planRef.approved_by = approval.approved_by as string;
+          }
+        }
+
+        // Check gates after approval
+        const gateResult = await service.checkGates();
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              message: 'Plan approved successfully',
+              approval: {
+                plan_approved: approval.plan_approved,
+                approved_by: approval.approved_by,
+                approved_at: approval.approved_at,
+                approval_notes: approval.approval_notes,
+              },
+              canAdvanceToExecution: gateResult.gates.approval_required.passed,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // workflowSetAutonomous - Enable/disable autonomous mode
+    this.server.registerTool('workflowSetAutonomous', {
+      description: 'Enables/disables autonomous mode. When enabled, bypasses plan and approval gates.',
+      inputSchema: {
+        enabled: z.boolean().describe('Whether to enable autonomous mode'),
+        reason: z.string().optional().describe('Optional reason for changing the setting')
+      }
+    }, async ({ enabled, reason }) => {
+      try {
+        const service = new WorkflowService(repoPath);
+
+        if (!(await service.hasWorkflow())) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                success: false,
+                error: 'No workflow found. Run workflowInit first.'
+              }, null, 2)
+            }]
+          };
+        }
+
+        const settings = await service.setAutonomousMode(enabled);
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              message: `Autonomous mode ${enabled ? 'enabled' : 'disabled'}${reason ? `: ${reason}` : ''}`,
+              settings: {
+                autonomous_mode: settings.autonomous_mode,
+                require_plan: settings.require_plan,
+                require_approval: settings.require_approval,
+              },
+              effect: enabled
+                ? 'All workflow gates are now bypassed. Use workflowAdvance freely.'
+                : 'Workflow gates are now enforced based on settings.',
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    this.log('Registered 9 workflow tools');
 
     // Register extended workflow tools (start, report, export, stack detection)
     this.registerExtendedWorkflowTools();
@@ -1564,12 +1811,27 @@ export class AIContextMCPServer {
           };
         }
 
+        // Also mark plan as created in workflow approval tracking
+        const service = new WorkflowService(repoPath);
+        if (await service.hasWorkflow()) {
+          await service.markPlanCreated(planSlug);
+        }
+
+        // Check if this unblocks the P → R gate
+        let canAdvanceToReview = false;
+        if (await service.hasWorkflow()) {
+          const gateResult = await service.checkGates();
+          canAdvanceToReview = gateResult.gates.plan_required.passed;
+        }
+
         return {
           content: [{
             type: 'text' as const,
             text: JSON.stringify({
               success: true,
               plan: ref,
+              planCreatedForGates: true,
+              canAdvanceToReview,
             }, null, 2)
           }]
         };

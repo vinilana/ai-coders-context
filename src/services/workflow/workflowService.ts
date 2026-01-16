@@ -17,6 +17,9 @@ import {
   CollaborationSession,
   CollaborationManager,
   CollaborationSynthesis,
+  WorkflowSettings,
+  PlanApproval,
+  GateCheckResult,
   getScaleName,
   getScaleFromName,
   PHASE_NAMES_PT,
@@ -44,6 +47,12 @@ export interface WorkflowInitOptions {
   description?: string;
   scale?: string | ProjectScale;
   files?: string[];
+  /** Enable autonomous mode (bypasses all gates) */
+  autonomous?: boolean;
+  /** Require a linked plan before advancing P → R */
+  requirePlan?: boolean;
+  /** Require plan approval before advancing R → E */
+  requireApproval?: boolean;
 }
 
 /**
@@ -97,10 +106,23 @@ export class WorkflowService {
       scale = detectProjectScale(context);
     }
 
+    // Build settings overrides
+    const settings: Partial<WorkflowSettings> | undefined =
+      options.autonomous !== undefined ||
+      options.requirePlan !== undefined ||
+      options.requireApproval !== undefined
+        ? {
+            autonomous_mode: options.autonomous,
+            require_plan: options.requirePlan,
+            require_approval: options.requireApproval,
+          }
+        : undefined;
+
     // Initialize workflow
     const status = await this.orchestrator.initWorkflowWithScale(
       options.name,
-      scale
+      scale,
+      settings
     );
 
     this.deps.ui?.displaySuccess(
@@ -159,9 +181,9 @@ export class WorkflowService {
   /**
    * Advance to the next phase
    */
-  async advance(outputs?: string[]): Promise<PrevcPhase | null> {
+  async advance(outputs?: string[], options?: { force?: boolean }): Promise<PrevcPhase | null> {
     const currentPhase = await this.orchestrator.getCurrentPhase();
-    const nextPhase = await this.orchestrator.completePhase(outputs);
+    const nextPhase = await this.orchestrator.completePhase(outputs, options);
 
     if (nextPhase) {
       this.deps.ui?.displaySuccess(
@@ -172,6 +194,55 @@ export class WorkflowService {
     }
 
     return nextPhase;
+  }
+
+  /**
+   * Check workflow gates for the current phase transition
+   */
+  async checkGates(): Promise<GateCheckResult> {
+    return this.orchestrator.checkGates();
+  }
+
+  /**
+   * Set workflow settings
+   */
+  async setSettings(settings: Partial<WorkflowSettings>): Promise<WorkflowSettings> {
+    return this.orchestrator.setSettings(settings);
+  }
+
+  /**
+   * Get workflow settings
+   */
+  async getSettings(): Promise<WorkflowSettings> {
+    return this.orchestrator.getSettings();
+  }
+
+  /**
+   * Enable or disable autonomous mode
+   */
+  async setAutonomousMode(enabled: boolean): Promise<WorkflowSettings> {
+    return this.orchestrator.setSettings({ autonomous_mode: enabled });
+  }
+
+  /**
+   * Mark that a plan has been created/linked
+   */
+  async markPlanCreated(planSlug: string): Promise<void> {
+    return this.orchestrator.markPlanCreated(planSlug);
+  }
+
+  /**
+   * Approve the plan
+   */
+  async approvePlan(approver: PrevcRole | string, notes?: string): Promise<PlanApproval> {
+    return this.orchestrator.approvePlan(approver, notes);
+  }
+
+  /**
+   * Get approval status
+   */
+  async getApproval(): Promise<PlanApproval | undefined> {
+    return this.orchestrator.getApproval();
   }
 
   /**

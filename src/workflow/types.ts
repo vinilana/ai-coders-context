@@ -118,6 +118,39 @@ export interface WorkflowPlanRef {
 }
 
 /**
+ * Workflow settings for gate control
+ */
+export interface WorkflowSettings {
+  /** Skip all gates and plan requirements */
+  autonomous_mode: boolean;
+  /** Require a linked plan before advancing P → R */
+  require_plan: boolean;
+  /** Require plan approval before advancing R → E */
+  require_approval: boolean;
+}
+
+/**
+ * Gate types for workflow phase transitions
+ */
+export type GateType = 'plan_required' | 'approval_required';
+
+/**
+ * Plan approval status tracking
+ */
+export interface PlanApproval {
+  /** Whether a plan has been created/linked */
+  plan_created: boolean;
+  /** Whether the plan has been approved */
+  plan_approved: boolean;
+  /** Who approved the plan */
+  approved_by?: PrevcRole | string;
+  /** When the plan was approved */
+  approved_at?: string;
+  /** Optional notes from approver */
+  approval_notes?: string;
+}
+
+/**
  * Project metadata in the workflow status
  */
 export interface ProjectMetadata {
@@ -129,6 +162,8 @@ export interface ProjectMetadata {
   plan?: string;
   /** All linked plans */
   plans?: WorkflowPlanRef[];
+  /** Workflow settings for gate control */
+  settings?: WorkflowSettings;
 }
 
 /**
@@ -138,6 +173,8 @@ export interface PrevcStatus {
   project: ProjectMetadata;
   phases: Record<PrevcPhase, PhaseStatus>;
   roles: Partial<Record<PrevcRole, RoleStatus>>;
+  /** Plan approval tracking */
+  approval?: PlanApproval;
 }
 
 /**
