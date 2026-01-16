@@ -122,6 +122,15 @@ export class SkillExportService {
    * Get skills to export
    */
   private async getSkillsToExport(repoPath: string, options: SkillExportOptions): Promise<Skill[]> {
+    const fs = await import('fs-extra');
+    const skillsPath = path.join(repoPath, '.context', 'skills');
+    const skillsExist = await fs.pathExists(skillsPath);
+
+    // If skills directory doesn't exist and includeBuiltIn is not enabled, return empty
+    if (!skillsExist && !options.includeBuiltIn) {
+      return [];
+    }
+
     const registry = createSkillRegistry(repoPath);
     const discovered = await registry.discoverAll();
 

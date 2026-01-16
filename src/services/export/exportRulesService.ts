@@ -258,6 +258,11 @@ export class ExportRulesService {
    * @param indexMode - 'readme' to only read README.md files, 'all' to read all matching files
    */
   private async readSourceRules(sourcePath: string, indexMode?: 'readme' | 'all'): Promise<RuleFile[]> {
+    // Check if source directory exists
+    if (!await fs.pathExists(sourcePath)) {
+      return [];
+    }
+
     const rules: RuleFile[] = [];
 
     try {
@@ -299,6 +304,11 @@ export class ExportRulesService {
    * This is useful when you want to export just the index files that reference other docs
    */
   private async readReadmeIndexFiles(sourcePath: string): Promise<RuleFile[]> {
+    // Check if source directory exists
+    if (!await fs.pathExists(sourcePath)) {
+      return [];
+    }
+
     const rules: RuleFile[] = [];
 
     try {

@@ -31,6 +31,7 @@ The AI agent MUST then fill each generated file using the provided context and i
       projectType: overrideProjectType,
       disableFiltering = false,
       autoFill = true,
+      skipContentGeneration = true, // Default true to reduce response size
     } = input;
 
     const resolvedRepoPath = path.resolve(repoPath);
@@ -145,9 +146,11 @@ The AI agent MUST then fill each generated file using the provided context and i
         }
       }
 
-      // Build semantic context if autoFill is enabled
+      // Build semantic context only if autoFill is enabled AND skipContentGeneration is false
       let semanticContext: string | undefined;
-      if (autoFill && generatedFiles.length > 0) {
+      const shouldGenerateContent = autoFill && !skipContentGeneration;
+
+      if (shouldGenerateContent && generatedFiles.length > 0) {
         try {
           semanticContext = await getOrBuildContext(resolvedRepoPath);
         } catch (contextError) {
@@ -156,7 +159,7 @@ The AI agent MUST then fill each generated file using the provided context and i
         }
       }
 
-      // Build requiredActions with pre-generated content for each file
+      // Build requiredActions - with or without pre-generated content
       const requiredActions: RequiredAction[] = [];
 
       if (autoFill && generatedFiles.length > 0) {
@@ -164,8 +167,8 @@ The AI agent MUST then fill each generated file using the provided context and i
           const file = generatedFiles[i];
           let suggestedContent: string | undefined;
 
-          // Pre-generate content for each file
-          if (semanticContext) {
+          // Only pre-generate content if skipContentGeneration is false
+          if (!skipContentGeneration && semanticContext) {
             try {
               const templateContent = await fs.readFile(file.path, 'utf-8');
               if (file.type === 'doc') {
@@ -192,7 +195,37 @@ The AI agent MUST then fill each generated file using the provided context and i
         }
       }
 
-      // Return with structured action protocol
+      // When skipContentGeneration is true, return a lean response
+      if (skipContentGeneration) {
+        return {
+          status: 'success',
+          operationType: 'scaffold_only',
+
+          // Lightweight list of scaffolded files
+          scaffoldedFiles: generatedFiles.map(f => ({
+            filePath: f.path,
+            relativePath: f.relativePath,
+            type: f.type,
+          })),
+
+          // Instructions for next steps
+          fillInstructions: generatedFiles.length > 0
+            ? 'Use fillSingleFile tool to generate content for each file, or fillScaffolding with limit parameter for batch processing.'
+            : undefined,
+
+          // Metadata fields
+          docsGenerated,
+          agentsGenerated,
+          outputDir,
+          classification: classification ? {
+            projectType: classification.primaryType,
+            confidence: classification.confidence,
+            reasoning: classification.reasoning,
+          } : undefined,
+        };
+      }
+
+      // Full response with pre-generated content (when skipContentGeneration is false)
       const hasActionsRequired = requiredActions.length > 0;
 
       return {

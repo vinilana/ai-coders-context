@@ -330,6 +330,8 @@ export const InitializeContextInputSchema = z.object({
     .describe('Generate all agents/docs regardless of project type'),
   autoFill: z.boolean().default(true).optional()
     .describe('Automatically fill scaffolding with codebase-aware content (default: true)'),
+  skipContentGeneration: z.boolean().default(true).optional()
+    .describe('Skip pre-generating content for MCP to reduce response size. Use fillSingleFile or fillScaffolding tools to generate content on demand. (default: true)'),
 });
 
 export const InitializeContextOutputSchema = z.object({

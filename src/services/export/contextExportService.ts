@@ -56,6 +56,7 @@ export class ContextExportService {
    */
   async run(repoPath: string, options: ContextExportOptions = {}): Promise<ContextExportResult> {
     const absolutePath = path.resolve(repoPath);
+    const fs = await import('fs-extra');
 
     const result: ContextExportResult = {
       ...createEmptyResult(),
@@ -68,8 +69,9 @@ export class ContextExportService {
     const preset = options.preset || 'all';
     const errors: Array<{ type: string; error: string }> = [];
 
-    // Export docs
-    if (!options.skipDocs) {
+    // Export docs - only if .context/docs exists
+    const docsPath = path.join(absolutePath, '.context/docs');
+    if (!options.skipDocs && await fs.pathExists(docsPath)) {
       try {
         this.deps.ui.startSpinner('Exporting docs...');
         const docsService = new ExportRulesService(this.deps);
@@ -87,15 +89,18 @@ export class ContextExportService {
         errors.push({ type: 'docs', error: error instanceof Error ? error.message : String(error) });
         this.deps.ui.stopSpinner();
       }
+    } else if (!options.skipDocs) {
+      // Docs directory doesn't exist - skip silently
     }
 
-    // Export agents
-    if (!options.skipAgents) {
+    // Export agents - only if .context/agents exists
+    const agentsPath = path.join(absolutePath, '.context/agents');
+    if (!options.skipAgents && await fs.pathExists(agentsPath)) {
       try {
         this.deps.ui.startSpinner('Exporting agents...');
         const syncService = new SyncService(this.deps);
         await syncService.run({
-          source: path.join(absolutePath, '.context/agents'),
+          source: agentsPath,
           preset: preset as PresetName,
           mode: options.agentMode || 'symlink',
           force: options.force || false,
@@ -106,17 +111,19 @@ export class ContextExportService {
         result.agentsExported = 1;
         this.deps.ui.stopSpinner();
       } catch (error) {
-        // Agents might not exist, which is OK
         const errorMsg = error instanceof Error ? error.message : String(error);
         if (!errorMsg.includes('sourceMissing') && !errorMsg.includes('no agents')) {
           errors.push({ type: 'agents', error: errorMsg });
         }
         this.deps.ui.stopSpinner();
       }
+    } else if (!options.skipAgents) {
+      // Agents directory doesn't exist - skip silently
     }
 
-    // Export skills
-    if (!options.skipSkills) {
+    // Export skills - only if .context/skills exists
+    const skillsPath = path.join(absolutePath, '.context/skills');
+    if (!options.skipSkills && await fs.pathExists(skillsPath)) {
       try {
         this.deps.ui.startSpinner('Exporting skills...');
         const skillsService = new SkillExportService(this.deps);
@@ -134,6 +141,8 @@ export class ContextExportService {
         errors.push({ type: 'skills', error: error instanceof Error ? error.message : String(error) });
         this.deps.ui.stopSpinner();
       }
+    } else if (!options.skipSkills) {
+      // Skills directory doesn't exist - skip silently
     }
 
     // Update error count

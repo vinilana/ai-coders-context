@@ -296,9 +296,11 @@ export class AIContextMCPServer {
         include: z.array(z.string()).optional().describe('Include patterns'),
         exclude: z.array(z.string()).optional().describe('Exclude patterns'),
         autoFill: z.boolean().default(true).optional()
-          .describe('Automatically fill scaffolding with codebase-aware content (default: true)')
+          .describe('Automatically fill scaffolding with codebase-aware content (default: true)'),
+        skipContentGeneration: z.boolean().default(true).optional()
+          .describe('Skip pre-generating content to reduce response size. Use fillSingleFile or fillScaffolding tools to generate content on demand. (default: true)')
       }
-    }, async ({ repoPath, type, outputDir, semantic, include, exclude, autoFill }) => {
+    }, async ({ repoPath, type, outputDir, semantic, include, exclude, autoFill, skipContentGeneration }) => {
       const result = await initializeContextTool.execute!(
         {
           repoPath: repoPath || this.options.repoPath || process.cwd(),
@@ -307,7 +309,8 @@ export class AIContextMCPServer {
           semantic,
           include,
           exclude,
-          autoFill
+          autoFill,
+          skipContentGeneration
         },
         { toolCallId: '', messages: [] }
       );
