@@ -5,6 +5,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.3] - 2026-01-16
+
+### Added
+
+- **MCP Export Tools**: New granular export tools for docs, agents, and skills
+  - `exportDocs` - Export documentation from `.context/docs/` with README indexing mode
+  - `exportAgents` - Export agents from `.context/agents/` (symlink by default)
+  - `exportContext` - Unified export of docs, agents, and skills in one operation
+
+- **MCP Import Tools**: Individual import tools for each content type
+  - `importDocs` - Import documentation from AI tool directories into `.context/docs/`
+  - `importAgents` - Import agents from AI tool directories into `.context/agents/`
+  - `importSkills` - Import skills from AI tool directories into `.context/skills/`
+
+- **README Index Mode**: New `indexMode` option for docs export
+  - `readme` (default) - Export only README.md files as indices
+  - `all` - Export all matching files (previous behavior)
+  - Cleaner exports that reference documentation indices
+
+- **Content Type Registry**: Extensible registry for future content types
+  - `ContentTypeRegistry` in `src/services/shared/contentTypeRegistry.ts`
+  - Supports docs, agents, skills, plans
+  - Easy addition of new content types (prompts, workflows, etc.)
+
+- **Unified Context Export Service**: Orchestrates export of all content types
+  - `ContextExportService` combines docs, agents, and skills export
+  - Configurable skip options for each content type
+  - Consistent error handling and reporting
+
+### Changed
+
+- **Agents Export Default**: Changed default sync mode from `markdown` to `symlink`
+  - Symlinks keep AI tool directories automatically synchronized
+  - Changes in `.context/agents/` reflect immediately in target directories
+
+### Technical Details
+
+#### New Files
+- `src/services/export/contextExportService.ts` - Unified export orchestrator
+- `src/services/shared/contentTypeRegistry.ts` - Extensible content type definitions
+
+#### Modified Files
+- `src/services/mcp/mcpServer.ts` - Added 7 new MCP tools (export + import)
+- `src/services/export/exportRulesService.ts` - Added `indexMode` option
+- `src/services/export/index.ts` - Export ContextExportService
+- `src/services/shared/index.ts` - Export ContentTypeRegistry
+
 ## [0.6.2] - 2026-01-16
 
 ### Added
