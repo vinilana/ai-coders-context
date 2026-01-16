@@ -1,7 +1,8 @@
 /**
  * MCP Server - Model Context Protocol server for Claude Code integration
  *
- * Exposes code analysis tools and semantic context as MCP resources.
+ * Exposes 8 gateway tools that consolidate 58 original tools for reduced context
+ * and simpler tool selection for AI agents.
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -9,53 +10,38 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import * as path from 'path';
 
-import {
-  readFileTool,
-  listFilesTool,
-  analyzeSymbolsTool,
-  getFileStructureTool,
-  searchCodeTool,
-  checkScaffoldingTool,
-  initializeContextTool,
-  scaffoldPlanTool,
-  fillScaffoldingTool,
-  listFilesToFillTool,
-  fillSingleFileTool,
-  getCodebaseMapTool,
-  getOrBuildContext
-} from '../ai/tools';
-import { getToolDescription } from '../ai/toolRegistry';
+import { readFileTool } from '../ai/tools';
 import { SemanticContextBuilder, type ContextFormat } from '../semantic/contextBuilder';
 import { VERSION } from '../../version';
-import { DEFAULT_MODELS } from '../ai/providerFactory';
 import { WorkflowService } from '../workflow';
-
-// Default model for MCP tools that require LLM
-const DEFAULT_MODEL = DEFAULT_MODELS.google || 'gemini-3-flash-preview';
-import { StartService } from '../start';
-import { ReportService } from '../report';
-import { ExportRulesService, EXPORT_PRESETS, ContextExportService } from '../export';
-import { StackDetector } from '../stack';
-import { ReverseQuickSyncService, ToolDetector, ImportSkillsService } from '../reverseSync';
-import { ImportRulesService, ImportAgentsService } from '../import';
-import { SyncService } from '../sync';
-import type { PresetName } from '../sync/types';
 import {
   PREVC_ROLES,
   PHASE_NAMES_EN,
-  ROLE_DISPLAY_NAMES,
   getScaleName,
   ProjectScale,
   PrevcPhase,
-  PrevcRole,
-  agentOrchestrator,
-  documentLinker,
-  AgentType,
   AGENT_TYPES,
-  createPlanLinker,
-  WorkflowGateError,
-  NoPlanToApproveError,
 } from '../../workflow';
+
+import {
+  handleExplore,
+  handleContext,
+  handleWorkflow,
+  handleProject,
+  handleSync,
+  handlePlan,
+  handleAgent,
+  handleSkill,
+  type ExploreParams,
+  type ContextParams,
+  type WorkflowParams,
+  type ProjectParams,
+  type SyncParams,
+  type PlanParams,
+  type AgentParams,
+  type SkillParams,
+  type MCPToolResponse,
+} from './gatewayTools';
 
 export interface MCPServerOptions {
   /** Default repository path for tools */
@@ -64,6 +50,8 @@ export interface MCPServerOptions {
   name?: string;
   /** Enable verbose logging */
   verbose?: boolean;
+  /** Optional injected SemanticContextBuilder for testing */
+  contextBuilder?: SemanticContextBuilder;
 }
 
 export class AIContextMCPServer {
@@ -84,2177 +72,372 @@ export class AIContextMCPServer {
       version: VERSION
     });
 
-    this.contextBuilder = new SemanticContextBuilder();
+    // Support dependency injection for testing, with default fallback
+    this.contextBuilder = options.contextBuilder ?? new SemanticContextBuilder();
 
-    this.registerTools();
+    this.registerGatewayTools();
     this.registerResources();
   }
 
   /**
-   * Register code analysis tools
+   * Register 8 gateway tools that consolidate all functionality
    */
-  private registerTools(): void {
-    // readFile tool
-    this.server.registerTool('readFile', {
-      description: getToolDescription('readFile'),
+  private registerGatewayTools(): void {
+    const repoPath = this.options.repoPath || process.cwd();
+
+    // Gateway 1: explore - File and code exploration
+    this.server.registerTool('explore', {
+      description: `File and code exploration. Actions:
+- read: Read file contents (params: filePath, encoding?)
+- list: List files matching pattern (params: pattern, cwd?, ignore?)
+- analyze: Analyze symbols in a file (params: filePath, symbolTypes?)
+- search: Search code with regex (params: pattern, fileGlob?, maxResults?, cwd?)
+- getStructure: Get directory structure (params: rootPath?, maxDepth?, includePatterns?)`,
       inputSchema: {
-        filePath: z.string().describe('Absolute or relative path to the file to read'),
-        encoding: z.enum(['utf-8', 'ascii', 'binary']).default('utf-8').optional()
-      }
-    }, async ({ filePath, encoding }) => {
-      const result = await readFileTool.execute!(
-        { filePath, encoding },
-        { toolCallId: '', messages: [] }
-      );
-
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify(result, null, 2)
-        }]
-      };
-    });
-
-    // listFiles tool
-    this.server.registerTool('listFiles', {
-      description: getToolDescription('listFiles'),
-      inputSchema: {
-        pattern: z.string().describe('Glob pattern to match files (e.g., "**/*.ts")'),
-        cwd: z.string().optional().describe('Working directory for the glob pattern'),
-        ignore: z.array(z.string()).optional().describe('Patterns to ignore')
-      }
-    }, async ({ pattern, cwd, ignore }) => {
-      const result = await listFilesTool.execute!(
-        { pattern, cwd: cwd || this.options.repoPath, ignore },
-        { toolCallId: '', messages: [] }
-      );
-
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify(result, null, 2)
-        }]
-      };
-    });
-
-    // analyzeSymbols tool
-    this.server.registerTool('analyzeSymbols', {
-      description: getToolDescription('analyzeSymbols'),
-      inputSchema: {
-        filePath: z.string().describe('Path to the file to analyze'),
-        symbolTypes: z.array(z.enum(['class', 'interface', 'function', 'type', 'enum']))
-          .optional()
-          .describe('Types of symbols to extract')
-      }
-    }, async ({ filePath, symbolTypes }) => {
-      const result = await analyzeSymbolsTool.execute!(
-        { filePath, symbolTypes },
-        { toolCallId: '', messages: [] }
-      );
-
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify(result, null, 2)
-        }]
-      };
-    });
-
-    // getFileStructure tool
-    this.server.registerTool('getFileStructure', {
-      description: getToolDescription('getFileStructure'),
-      inputSchema: {
-        rootPath: z.string().describe('Root path of the repository'),
-        maxDepth: z.number().optional().default(3).describe('Maximum directory depth'),
+        action: z.enum(['read', 'list', 'analyze', 'search', 'getStructure'])
+          .describe('Action to perform'),
+        filePath: z.string().optional()
+          .describe('(read, analyze) File path to read or analyze'),
+        pattern: z.string().optional()
+          .describe('(list, search) Glob pattern for list, regex pattern for search'),
+        cwd: z.string().optional()
+          .describe('(list, search) Working directory'),
+        encoding: z.enum(['utf-8', 'ascii', 'binary']).optional()
+          .describe('(read) File encoding'),
+        ignore: z.array(z.string()).optional()
+          .describe('(list) Patterns to ignore'),
+        symbolTypes: z.array(z.enum(['class', 'interface', 'function', 'type', 'enum'])).optional()
+          .describe('(analyze) Types of symbols to extract'),
+        fileGlob: z.string().optional()
+          .describe('(search) Glob pattern to filter files'),
+        maxResults: z.number().optional()
+          .describe('(search) Maximum results to return'),
+        rootPath: z.string().optional()
+          .describe('(getStructure) Root path for structure'),
+        maxDepth: z.number().optional()
+          .describe('(getStructure) Maximum directory depth'),
         includePatterns: z.array(z.string()).optional()
+          .describe('(getStructure) Include patterns'),
       }
-    }, async ({ rootPath, maxDepth, includePatterns }) => {
-      const result = await getFileStructureTool.execute!(
-        { rootPath: rootPath || this.options.repoPath || '.', maxDepth, includePatterns },
-        { toolCallId: '', messages: [] }
-      );
-
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify(result, null, 2)
-        }]
-      };
+    }, async (params): Promise<MCPToolResponse> => {
+      return handleExplore(params as ExploreParams, { repoPath });
     });
 
-    // searchCode tool
-    this.server.registerTool('searchCode', {
-      description: getToolDescription('searchCode'),
+    // Gateway 2: context - Context scaffolding and semantic context
+    this.server.registerTool('context', {
+      description: `Context scaffolding and semantic context. Actions:
+- check: Check if .context scaffolding exists (params: repoPath?)
+- init: Initialize .context scaffolding (params: repoPath?, type?, outputDir?, semantic?, autoFill?, skipContentGeneration?)
+- fill: Fill scaffolding with AI content (params: repoPath?, outputDir?, target?, offset?, limit?)
+- fillSingle: Fill a single scaffold file (params: repoPath?, filePath)
+- listToFill: List files that need filling (params: repoPath?, outputDir?, target?)
+- getMap: Get codebase map section (params: repoPath?, section?)
+- buildSemantic: Build semantic context (params: repoPath?, contextType?, targetFile?, options?)
+- scaffoldPlan: Create a plan template (params: planName, repoPath?, title?, summary?, autoFill?)`,
       inputSchema: {
-        pattern: z.string().describe('Regex pattern to search for'),
-        fileGlob: z.string().optional().describe('Glob pattern to filter files'),
-        maxResults: z.number().optional().default(50),
-        cwd: z.string().optional().describe('Working directory for the search')
-      }
-    }, async ({ pattern, fileGlob, maxResults, cwd }) => {
-      const result = await searchCodeTool.execute!(
-        {
-          pattern,
-          fileGlob,
-          maxResults,
-          cwd: cwd || this.options.repoPath
-        } as any,
-        { toolCallId: '', messages: [] }
-      );
-
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify(result, null, 2)
-        }]
-      };
-    });
-
-    // buildSemanticContext tool - higher-level context building
-    this.server.registerTool('buildSemanticContext', {
-      description: getToolDescription('buildSemanticContext'),
-      inputSchema: {
-        repoPath: z.string().describe('Path to the repository'),
-        contextType: z.enum(['documentation', 'playbook', 'plan', 'compact'])
-          .default('compact')
-          .describe('Type of context to build'),
-        targetFile: z.string().optional().describe('Optional target file for focused context'),
+        action: z.enum(['check', 'init', 'fill', 'fillSingle', 'listToFill', 'getMap', 'buildSemantic', 'scaffoldPlan'])
+          .describe('Action to perform'),
+        repoPath: z.string().optional()
+          .describe('Repository path (defaults to cwd)'),
+        outputDir: z.string().optional()
+          .describe('Output directory (default: ./.context)'),
+        type: z.enum(['docs', 'agents', 'both']).optional()
+          .describe('(init) Type of scaffolding to create'),
+        semantic: z.boolean().optional()
+          .describe('(init, scaffoldPlan) Enable semantic analysis'),
+        include: z.array(z.string()).optional()
+          .describe('(init) Include patterns'),
+        exclude: z.array(z.string()).optional()
+          .describe('(init) Exclude patterns'),
+        autoFill: z.boolean().optional()
+          .describe('(init, scaffoldPlan) Auto-fill with codebase content'),
+        skipContentGeneration: z.boolean().optional()
+          .describe('(init) Skip pre-generating content'),
+        target: z.enum(['docs', 'agents', 'plans', 'all']).optional()
+          .describe('(fill, listToFill) Which scaffolding to target'),
+        offset: z.number().optional()
+          .describe('(fill) Skip first N files'),
+        limit: z.number().optional()
+          .describe('(fill) Max files to return'),
+        filePath: z.string().optional()
+          .describe('(fillSingle) Absolute path to scaffold file'),
+        section: z.enum([
+          'all', 'stack', 'structure', 'architecture', 'symbols',
+          'symbols.classes', 'symbols.interfaces', 'symbols.functions',
+          'symbols.types', 'symbols.enums', 'publicAPI', 'dependencies', 'stats'
+        ]).optional()
+          .describe('(getMap) Section to retrieve'),
+        contextType: z.enum(['documentation', 'playbook', 'plan', 'compact']).optional()
+          .describe('(buildSemantic) Type of context to build'),
+        targetFile: z.string().optional()
+          .describe('(buildSemantic) Target file for focused context'),
         options: z.object({
           useLSP: z.boolean().optional(),
           maxContextLength: z.number().optional(),
           includeDocumentation: z.boolean().optional(),
           includeSignatures: z.boolean().optional()
         }).optional()
+          .describe('(buildSemantic) Builder options'),
+        planName: z.string().optional()
+          .describe('(scaffoldPlan) Name of the plan'),
+        title: z.string().optional()
+          .describe('(scaffoldPlan) Plan title'),
+        summary: z.string().optional()
+          .describe('(scaffoldPlan) Plan summary/goal'),
       }
-    }, async ({ repoPath, contextType, targetFile, options }) => {
-      const isLocalBuilder = !!options;
-      const builder = isLocalBuilder
-        ? new SemanticContextBuilder(options)
-        : this.contextBuilder;
-
-      try {
-        let context: string;
-        const resolvedPath = repoPath || this.options.repoPath || '.';
-
-        switch (contextType) {
-          case 'documentation':
-            context = await builder.buildDocumentationContext(resolvedPath, targetFile);
-            break;
-          case 'playbook':
-            context = await builder.buildPlaybookContext(resolvedPath, targetFile || 'generic');
-            break;
-          case 'plan':
-            context = await builder.buildPlanContext(resolvedPath, targetFile);
-            break;
-          case 'compact':
-          default:
-            context = await builder.buildCompactContext(resolvedPath);
-            break;
-        }
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: context
-          }]
-        };
-      } finally {
-        if (isLocalBuilder) {
-          await builder.shutdown();
-        }
-      }
+    }, async (params): Promise<MCPToolResponse> => {
+      return handleContext(params as ContextParams, { repoPath, contextBuilder: this.contextBuilder });
     });
 
-    // checkScaffolding tool
-    this.server.registerTool('checkScaffolding', {
-      description: getToolDescription('checkScaffolding'),
+    // Gateway 3: workflow - PREVC workflow management
+    this.server.registerTool('workflow', {
+      description: `PREVC workflow management. Actions:
+- init: Initialize workflow (params: name, description?, scale?, autonomous?, require_plan?, require_approval?, archive_previous?)
+- status: Get current workflow status
+- advance: Advance to next phase (params: outputs?, force?)
+- handoff: Handoff between roles (params: from, to, artifacts)
+- collaborate: Start collaboration session (params: topic, participants?)
+- createDoc: Create workflow document (params: type, docName)
+- getGates: Check gate status
+- approvePlan: Approve linked plan (params: planSlug?, approver?, notes?)
+- setAutonomous: Toggle autonomous mode (params: enabled, reason?)`,
       inputSchema: {
-        repoPath: z.string().optional().describe('Repository path to check (defaults to cwd)')
-      }
-    }, async ({ repoPath }) => {
-      const result = await checkScaffoldingTool.execute!(
-        { repoPath: repoPath || this.options.repoPath },
-        { toolCallId: '', messages: [] }
-      );
-
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify(result, null, 2)
-        }]
-      };
-    });
-
-    // initializeContext tool
-    this.server.registerTool('initializeContext', {
-      description: getToolDescription('initializeContext', true),
-      inputSchema: {
-        repoPath: z.string().describe('Repository path to initialize'),
-        type: z.enum(['docs', 'agents', 'both']).default('both').optional()
-          .describe('Type of scaffolding to create'),
-        outputDir: z.string().optional().describe('Output directory (default: ./.context)'),
-        semantic: z.boolean().default(true).optional()
-          .describe('Enable semantic analysis for richer templates'),
-        include: z.array(z.string()).optional().describe('Include patterns'),
-        exclude: z.array(z.string()).optional().describe('Exclude patterns'),
-        autoFill: z.boolean().default(true).optional()
-          .describe('Automatically fill scaffolding with codebase-aware content (default: true)'),
-        skipContentGeneration: z.boolean().default(true).optional()
-          .describe('Skip pre-generating content to reduce response size. Use fillSingleFile or fillScaffolding tools to generate content on demand. (default: true)')
-      }
-    }, async ({ repoPath, type, outputDir, semantic, include, exclude, autoFill, skipContentGeneration }) => {
-      const result = await initializeContextTool.execute!(
-        {
-          repoPath: repoPath || this.options.repoPath || process.cwd(),
-          type,
-          outputDir,
-          semantic,
-          include,
-          exclude,
-          autoFill,
-          skipContentGeneration
-        },
-        { toolCallId: '', messages: [] }
-      );
-
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify(result, null, 2)
-        }]
-      };
-    });
-
-    // scaffoldPlan tool
-    this.server.registerTool('scaffoldPlan', {
-      description: getToolDescription('scaffoldPlan'),
-      inputSchema: {
-        planName: z.string().describe('Name of the plan (will be slugified)'),
-        repoPath: z.string().optional().describe('Repository path'),
-        outputDir: z.string().optional().describe('Output directory'),
-        title: z.string().optional().describe('Plan title (defaults to formatted planName)'),
-        summary: z.string().optional().describe('Plan summary/goal'),
-        semantic: z.boolean().default(true).optional().describe('Enable semantic analysis'),
-        autoFill: z.boolean().default(true).optional()
-          .describe('Automatically fill plan with codebase-aware content (default: true)')
-      }
-    }, async ({ planName, repoPath, outputDir, title, summary, semantic, autoFill }) => {
-      const result = await scaffoldPlanTool.execute!(
-        {
-          planName,
-          repoPath: repoPath || this.options.repoPath || process.cwd(),
-          outputDir,
-          title,
-          summary,
-          semantic,
-          autoFill
-        },
-        { toolCallId: '', messages: [] }
-      );
-
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify(result, null, 2)
-        }]
-      };
-    });
-
-    // fillScaffolding tool (with pagination)
-    this.server.registerTool('fillScaffolding', {
-      description: getToolDescription('fillScaffolding', true),
-      inputSchema: {
-        repoPath: z.string().describe('Repository path'),
-        outputDir: z.string().optional().describe('Scaffold directory (default: ./.context)'),
-        target: z.enum(['docs', 'agents', 'plans', 'all']).default('all').optional()
-          .describe('Which scaffolding to fill'),
-        offset: z.number().optional().describe('Skip first N files (for pagination)'),
-        limit: z.number().optional().describe('Max files to return (default: 3, use 0 for all)')
-      }
-    }, async ({ repoPath, outputDir, target, offset, limit }) => {
-      const result = await fillScaffoldingTool.execute!(
-        {
-          repoPath: repoPath || this.options.repoPath || process.cwd(),
-          outputDir,
-          target,
-          offset,
-          limit
-        },
-        { toolCallId: '', messages: [] }
-      );
-
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify(result, null, 2)
-        }]
-      };
-    });
-
-    // listFilesToFill tool - lightweight listing without content
-    this.server.registerTool('listFilesToFill', {
-      description: getToolDescription('listFilesToFill', true),
-      inputSchema: {
-        repoPath: z.string().describe('Repository path'),
-        outputDir: z.string().optional().describe('Scaffold directory (default: ./.context)'),
-        target: z.enum(['docs', 'agents', 'plans', 'all']).default('all').optional()
-          .describe('Which scaffolding to list')
-      }
-    }, async ({ repoPath, outputDir, target }) => {
-      const result = await listFilesToFillTool.execute!(
-        {
-          repoPath: repoPath || this.options.repoPath || process.cwd(),
-          outputDir,
-          target
-        },
-        { toolCallId: '', messages: [] }
-      );
-
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify(result, null, 2)
-        }]
-      };
-    });
-
-    // fillSingleFile tool - process one file at a time
-    this.server.registerTool('fillSingleFile', {
-      description: getToolDescription('fillSingleFile', true),
-      inputSchema: {
-        repoPath: z.string().describe('Repository path'),
-        filePath: z.string().describe('Absolute path to the scaffold file to fill')
-      }
-    }, async ({ repoPath, filePath }) => {
-      const result = await fillSingleFileTool.execute!(
-        {
-          repoPath: repoPath || this.options.repoPath || process.cwd(),
-          filePath
-        },
-        { toolCallId: '', messages: [] }
-      );
-
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify(result, null, 2)
-        }]
-      };
-    });
-
-    // getCodebaseMap tool - retrieve sections of the codebase map JSON
-    this.server.registerTool('getCodebaseMap', {
-      description: getToolDescription('getCodebaseMap', true),
-      inputSchema: {
-        repoPath: z.string().optional().describe('Repository path (defaults to cwd)'),
-        section: z.enum([
-          'all',
-          'stack',
-          'structure',
-          'architecture',
-          'symbols',
-          'symbols.classes',
-          'symbols.interfaces',
-          'symbols.functions',
-          'symbols.types',
-          'symbols.enums',
-          'publicAPI',
-          'dependencies',
-          'stats'
-        ]).default('all').optional()
-          .describe('Section of the codebase map to retrieve. Use specific sections to reduce token usage.')
-      }
-    }, async ({ repoPath, section }) => {
-      const result = await getCodebaseMapTool.execute!(
-        {
-          repoPath: repoPath || this.options.repoPath || process.cwd(),
-          section
-        },
-        { toolCallId: '', messages: [] }
-      );
-
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify(result, null, 2)
-        }]
-      };
-    });
-
-    this.log('Registered 13 tools');
-
-    // Register PREVC workflow tools
-    this.registerWorkflowTools();
-  }
-
-  /**
-   * Register PREVC workflow tools
-   */
-  private registerWorkflowTools(): void {
-    const repoPath = this.options.repoPath || process.cwd();
-
-    // workflowInit - Initialize a PREVC workflow
-    this.server.registerTool('workflowInit', {
-      description: 'Initialize a PREVC workflow with automatic scale detection. PREVC = Planejamento, Revisão, Execução, Validação, Confirmação.',
-      inputSchema: {
-        name: z.string().describe('Name of the project/feature'),
-        description: z.string().optional().describe('Description for scale detection'),
+        action: z.enum(['init', 'status', 'advance', 'handoff', 'collaborate', 'createDoc', 'getGates', 'approvePlan', 'setAutonomous'])
+          .describe('Action to perform'),
+        name: z.string().optional()
+          .describe('(init) Workflow/project name'),
+        description: z.string().optional()
+          .describe('(init) Description for scale detection'),
         scale: z.enum(['QUICK', 'SMALL', 'MEDIUM', 'LARGE', 'ENTERPRISE']).optional()
-          .describe('Project scale (auto-detected if not provided)'),
+          .describe('(init) Project scale'),
         autonomous: z.boolean().optional()
-          .describe('Enable autonomous mode (bypasses plan and approval gates)'),
+          .describe('(init) Enable autonomous mode'),
         require_plan: z.boolean().optional()
-          .describe('Require a linked plan before advancing P → R'),
+          .describe('(init) Require plan before P → R'),
         require_approval: z.boolean().optional()
-          .describe('Require plan approval before advancing R → E'),
+          .describe('(init) Require approval before R → E'),
         archive_previous: z.boolean().optional()
-          .describe('How to handle existing workflow: true = archive to .context/workflow/archive/, false = delete. Required if workflow already exists.')
-      }
-    }, async ({ name, description, scale, autonomous, require_plan, require_approval, archive_previous }) => {
-      try {
-        const resolvedRepoPath = path.resolve(repoPath);
-        const service = new WorkflowService(resolvedRepoPath);
-        const status = await service.init({
-          name,
-          description,
-          scale: scale as string | undefined,
-          autonomous,
-          requirePlan: require_plan,
-          requireApproval: require_approval,
-          archivePrevious: archive_previous,
-        });
-
-        // Include file paths for visibility
-        const contextPath = path.join(resolvedRepoPath, '.context');
-        const statusFilePath = path.join(contextPath, 'workflow', 'status.yaml');
-
-        const settings = await service.getSettings();
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              message: `Workflow initialized: ${name}`,
-              scale: getScaleName(status.project.scale as ProjectScale),
-              currentPhase: status.project.current_phase,
-              phases: Object.keys(status.phases).filter(
-                (p) => status.phases[p as PrevcPhase].status !== 'skipped'
-              ),
-              settings: {
-                autonomous_mode: settings.autonomous_mode,
-                require_plan: settings.require_plan,
-                require_approval: settings.require_approval,
-              },
-              statusFilePath,
-              contextPath,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // workflowStatus - Get current workflow status
-    this.server.registerTool('workflowStatus', {
-      description: 'Get the current status of the PREVC workflow including phases, roles, and progress.',
-      inputSchema: {}
-    }, async () => {
-      try {
-        const resolvedRepoPath = path.resolve(repoPath);
-        const service = new WorkflowService(resolvedRepoPath);
-
-        if (!(await service.hasWorkflow())) {
-          return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: false,
-                error: 'No workflow found. Run workflowInit first.',
-                statusFilePath: path.join(resolvedRepoPath, '.context', 'workflow', 'status.yaml')
-              }, null, 2)
-            }]
-          };
-        }
-
-        const summary = await service.getSummary();
-        const status = await service.getStatus();
-        const statusFilePath = path.join(resolvedRepoPath, '.context', 'workflow', 'status.yaml');
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              name: summary.name,
-              scale: getScaleName(summary.scale as ProjectScale),
-              currentPhase: {
-                code: summary.currentPhase,
-                name: PHASE_NAMES_EN[summary.currentPhase],
-              },
-              progress: summary.progress,
-              isComplete: summary.isComplete,
-              phases: status.phases,
-              roles: status.roles,
-              statusFilePath,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // workflowAdvance - Advance to the next phase
-    this.server.registerTool('workflowAdvance', {
-      description: 'Complete the current phase and advance to the next phase in the PREVC workflow.',
-      inputSchema: {
+          .describe('(init) Archive existing workflow'),
         outputs: z.array(z.string()).optional()
-          .describe('List of artifact paths generated in the current phase'),
+          .describe('(advance) Artifact paths'),
         force: z.boolean().optional()
-          .describe('Force advancement even if gates would block (use with caution)')
-      }
-    }, async ({ outputs, force }) => {
-      try {
-        const service = new WorkflowService(repoPath);
-
-        if (!(await service.hasWorkflow())) {
-          return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: false,
-                error: 'No workflow found. Run workflowInit first.'
-              }, null, 2)
-            }]
-          };
-        }
-
-        const nextPhase = await service.advance(outputs, { force });
-
-        if (nextPhase) {
-          return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: true,
-                message: `Advanced to ${PHASE_NAMES_EN[nextPhase]} phase`,
-                nextPhase: {
-                  code: nextPhase,
-                  name: PHASE_NAMES_EN[nextPhase],
-                }
-              }, null, 2)
-            }]
-          };
-        } else {
-          return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: true,
-                message: 'Workflow completed!',
-                isComplete: true
-              }, null, 2)
-            }]
-          };
-        }
-      } catch (error) {
-        // Handle gate errors specially
-        if (error instanceof WorkflowGateError) {
-          return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: false,
-                error: error.message,
-                gate: error.gate,
-                transition: error.transition,
-                hint: error.hint,
-              }, null, 2)
-            }]
-          };
-        }
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // workflowHandoff - Handoff between roles
-    this.server.registerTool('workflowHandoff', {
-      description: 'Perform a handoff from one role to another within the PREVC workflow.',
-      inputSchema: {
-        from: z.enum(PREVC_ROLES as unknown as [string, ...string[]])
-          .describe('Role handing off'),
-        to: z.enum(PREVC_ROLES as unknown as [string, ...string[]])
-          .describe('Role receiving handoff'),
-        artifacts: z.array(z.string()).describe('Artifacts being handed off')
-      }
-    }, async ({ from, to, artifacts }) => {
-      try {
-        const service = new WorkflowService(repoPath);
-
-        if (!(await service.hasWorkflow())) {
-          return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: false,
-                error: 'No workflow found. Run workflowInit first.'
-              }, null, 2)
-            }]
-          };
-        }
-
-        await service.handoff(from as PrevcRole, to as PrevcRole, artifacts);
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              message: `Handoff complete: ${ROLE_DISPLAY_NAMES[from as PrevcRole]} → ${ROLE_DISPLAY_NAMES[to as PrevcRole]}`,
-              from: { role: from, displayName: ROLE_DISPLAY_NAMES[from as PrevcRole] },
-              to: { role: to, displayName: ROLE_DISPLAY_NAMES[to as PrevcRole] },
-              artifacts
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // workflowCollaborate - Start a collaboration session
-    this.server.registerTool('workflowCollaborate', {
-      description: 'Start a multi-role collaboration session for complex decisions or brainstorming.',
-      inputSchema: {
-        topic: z.string().describe('Topic for the collaboration session'),
-        participants: z.array(z.enum(PREVC_ROLES as unknown as [string, ...string[]]))
-          .optional()
-          .describe('Roles to participate (auto-selected if not provided)')
-      }
-    }, async ({ topic, participants }) => {
-      try {
-        const service = new WorkflowService(repoPath);
-        const session = await service.startCollaboration(
-          topic,
-          participants as PrevcRole[] | undefined
-        );
-        const status = session.getStatus();
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              message: `Collaboration session started: ${topic}`,
-              sessionId: status.id,
-              topic: status.topic,
-              participants: status.participants.map((p) => ({
-                role: p,
-                displayName: ROLE_DISPLAY_NAMES[p],
-              })),
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // workflowCreateDoc - Create a document for the current phase
-    this.server.registerTool('workflowCreateDoc', {
-      description: 'Create a document template for the current phase of the PREVC workflow.',
-      inputSchema: {
-        type: z.enum(['prd', 'tech-spec', 'architecture', 'adr', 'test-plan', 'changelog'])
-          .describe('Type of document to create'),
-        name: z.string().describe('Name/title for the document')
-      }
-    }, async ({ type, name }) => {
-      try {
-        const service = new WorkflowService(repoPath);
-
-        if (!(await service.hasWorkflow())) {
-          return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: false,
-                error: 'No workflow found. Run workflowInit first.'
-              }, null, 2)
-            }]
-          };
-        }
-
-        // For now, return the document path that should be created
-        const docPath = `.context/workflow/docs/${type}-${name.toLowerCase().replace(/\s+/g, '-')}.md`;
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              message: `Document template ready: ${type}`,
-              documentType: type,
-              suggestedPath: docPath,
-              name,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // workflowGetGates - Get current gate status
-    this.server.registerTool('workflowGetGates', {
-      description: 'Get current gate status, what\'s blocking, hints for resolution.',
-      inputSchema: {}
-    }, async () => {
-      try {
-        const service = new WorkflowService(repoPath);
-
-        if (!(await service.hasWorkflow())) {
-          return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: false,
-                error: 'No workflow found. Run workflowInit first.'
-              }, null, 2)
-            }]
-          };
-        }
-
-        const gateResult = await service.checkGates();
-        const settings = await service.getSettings();
-        const approval = await service.getApproval();
-        const summary = await service.getSummary();
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              currentPhase: {
-                code: summary.currentPhase,
-                name: PHASE_NAMES_EN[summary.currentPhase],
-              },
-              canAdvance: gateResult.canAdvance,
-              gates: gateResult.gates,
-              blockingReason: gateResult.blockingReason,
-              hint: gateResult.hint,
-              settings: {
-                autonomous_mode: settings.autonomous_mode,
-                require_plan: settings.require_plan,
-                require_approval: settings.require_approval,
-              },
-              approval: approval ? {
-                plan_created: approval.plan_created,
-                plan_approved: approval.plan_approved,
-                approved_by: approval.approved_by,
-                approved_at: approval.approved_at,
-              } : null,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // workflowApprovePlan - Approve the linked plan
-    this.server.registerTool('workflowApprovePlan', {
-      description: 'Approve the plan, updates status.yaml and plans.json. Required before advancing R → E unless autonomous mode is enabled.',
-      inputSchema: {
+          .describe('(advance) Force advancement'),
+        from: z.enum(PREVC_ROLES as unknown as [string, ...string[]]).optional()
+          .describe('(handoff) Role handing off'),
+        to: z.enum(PREVC_ROLES as unknown as [string, ...string[]]).optional()
+          .describe('(handoff) Role receiving'),
+        artifacts: z.array(z.string()).optional()
+          .describe('(handoff) Artifacts to hand off'),
+        topic: z.string().optional()
+          .describe('(collaborate) Collaboration topic'),
+        participants: z.array(z.enum(PREVC_ROLES as unknown as [string, ...string[]])).optional()
+          .describe('(collaborate) Participating roles'),
+        type: z.enum(['prd', 'tech-spec', 'architecture', 'adr', 'test-plan', 'changelog']).optional()
+          .describe('(createDoc) Document type'),
+        docName: z.string().optional()
+          .describe('(createDoc) Document name'),
         planSlug: z.string().optional()
-          .describe('Plan slug to approve (optional if only one plan linked)'),
+          .describe('(approvePlan) Plan to approve'),
         approver: z.enum(PREVC_ROLES as unknown as [string, ...string[]]).optional()
-          .describe('Role approving the plan'),
+          .describe('(approvePlan) Approving role'),
         notes: z.string().optional()
-          .describe('Optional approval notes')
+          .describe('(approvePlan) Approval notes'),
+        enabled: z.boolean().optional()
+          .describe('(setAutonomous) Enable/disable'),
+        reason: z.string().optional()
+          .describe('(setAutonomous) Reason for change'),
       }
-    }, async ({ planSlug, approver, notes }) => {
-      try {
-        const service = new WorkflowService(repoPath);
-
-        if (!(await service.hasWorkflow())) {
-          return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: false,
-                error: 'No workflow found. Run workflowInit first.'
-              }, null, 2)
-            }]
-          };
-        }
-
-        // Get current approval status
-        const currentApproval = await service.getApproval();
-        if (!currentApproval?.plan_created) {
-          return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: false,
-                error: 'No plan is linked to approve. Link a plan first using linkPlan.',
-                hint: 'Use scaffoldPlan to create a plan, then linkPlan to link it to the workflow.'
-              }, null, 2)
-            }]
-          };
-        }
-
-        // Approve the plan
-        const approval = await service.approvePlan(
-          approver || 'reviewer',
-          notes
-        );
-
-        // Also update the plan reference if planSlug is provided
-        if (planSlug) {
-          const planLinker = createPlanLinker(repoPath);
-          const plans = await planLinker.getLinkedPlans();
-          const planRef = plans.active.find(p => p.slug === planSlug);
-          if (planRef) {
-            planRef.approval_status = 'approved';
-            planRef.approved_at = approval.approved_at;
-            planRef.approved_by = approval.approved_by as string;
-          }
-        }
-
-        // Check gates after approval
-        const gateResult = await service.checkGates();
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              message: 'Plan approved successfully',
-              approval: {
-                plan_approved: approval.plan_approved,
-                approved_by: approval.approved_by,
-                approved_at: approval.approved_at,
-                approval_notes: approval.approval_notes,
-              },
-              canAdvanceToExecution: gateResult.gates.approval_required.passed,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
+    }, async (params): Promise<MCPToolResponse> => {
+      return handleWorkflow(params as WorkflowParams, { repoPath });
     });
 
-    // workflowSetAutonomous - Enable/disable autonomous mode
-    this.server.registerTool('workflowSetAutonomous', {
-      description: 'Enables/disables autonomous mode. When enabled, bypasses plan and approval gates.',
+    // Gateway 4: project - Project initialization and reporting
+    this.server.registerTool('project', {
+      description: `Project initialization and reporting. Actions:
+- start: Start new project with scaffolding + workflow (params: featureName, template?, skipFill?, skipWorkflow?)
+- report: Generate progress report (params: format?, includeStack?)
+- detectStack: Detect technology stack
+- detectAITools: Detect AI tool configurations (params: repoPath?)`,
       inputSchema: {
-        enabled: z.boolean().describe('Whether to enable autonomous mode'),
-        reason: z.string().optional().describe('Optional reason for changing the setting')
-      }
-    }, async ({ enabled, reason }) => {
-      try {
-        const service = new WorkflowService(repoPath);
-
-        if (!(await service.hasWorkflow())) {
-          return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: false,
-                error: 'No workflow found. Run workflowInit first.'
-              }, null, 2)
-            }]
-          };
-        }
-
-        const settings = await service.setAutonomousMode(enabled);
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              message: `Autonomous mode ${enabled ? 'enabled' : 'disabled'}${reason ? `: ${reason}` : ''}`,
-              settings: {
-                autonomous_mode: settings.autonomous_mode,
-                require_plan: settings.require_plan,
-                require_approval: settings.require_approval,
-              },
-              effect: enabled
-                ? 'All workflow gates are now bypassed. Use workflowAdvance freely.'
-                : 'Workflow gates are now enforced based on settings.',
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    this.log('Registered 9 workflow tools');
-
-    // Register extended workflow tools (start, report, export, stack detection)
-    this.registerExtendedWorkflowTools();
-  }
-
-  /**
-   * Register extended workflow tools (start, report, export, stack detection)
-   */
-  private registerExtendedWorkflowTools(): void {
-    const repoPath = this.options.repoPath || process.cwd();
-
-    // projectStart - Unified start command
-    this.server.registerTool('projectStart', {
-      description: 'Start a new project with unified setup: scaffolding + context fill + workflow initialization. Supports workflow templates (hotfix, feature, mvp).',
-      inputSchema: {
-        featureName: z.string().describe('Feature/project name'),
+        action: z.enum(['start', 'report', 'detectStack', 'detectAITools'])
+          .describe('Action to perform'),
+        featureName: z.string().optional()
+          .describe('(start) Feature/project name'),
         template: z.enum(['hotfix', 'feature', 'mvp', 'auto']).optional()
-          .describe('Workflow template (hotfix=quick fix, feature=standard, mvp=complete)'),
-        skipFill: z.boolean().optional().describe('Skip AI-assisted context filling'),
-        skipWorkflow: z.boolean().optional().describe('Skip workflow initialization'),
+          .describe('(start) Workflow template'),
+        skipFill: z.boolean().optional()
+          .describe('(start) Skip AI context filling'),
+        skipWorkflow: z.boolean().optional()
+          .describe('(start) Skip workflow init'),
+        format: z.enum(['json', 'markdown', 'dashboard']).optional()
+          .describe('(report) Output format'),
+        includeStack: z.boolean().optional()
+          .describe('(report) Include stack info'),
+        repoPath: z.string().optional()
+          .describe('(detectAITools) Repository path'),
       }
-    }, async ({ featureName, template, skipFill, skipWorkflow }) => {
-      try {
-        const startService = new StartService({
-          ui: {
-            displayOutput: () => {},
-            displaySuccess: () => {},
-            displayError: () => {},
-            displayInfo: () => {},
-            displayWarning: () => {},
-            startSpinner: () => {},
-            stopSpinner: () => {},
-            updateSpinner: () => {},
-            prompt: async () => '',
-            confirm: async () => true,
-          } as any,
-          t: (key: string) => key,
-          version: VERSION,
-          defaultModel: 'claude-3-5-sonnet-20241022',
-        });
-
-        const result = await startService.run(repoPath, {
-          featureName,
-          template: template as any,
-          skipFill,
-          skipWorkflow,
-        });
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: result.workflowStarted || result.initialized,
-              initialized: result.initialized,
-              filled: result.filled,
-              workflowStarted: result.workflowStarted,
-              scale: result.scale ? getScaleName(result.scale) : null,
-              featureName: result.featureName,
-              stack: result.stackDetected ? {
-                primaryLanguage: result.stackDetected.primaryLanguage,
-                frameworks: result.stackDetected.frameworks,
-              } : null,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
+    }, async (params): Promise<MCPToolResponse> => {
+      return handleProject(params as ProjectParams, { repoPath });
     });
 
-    // projectReport - Generate visual reports
-    this.server.registerTool('projectReport', {
-      description: 'Generate a visual progress report for the current PREVC workflow. Shows phases, roles, deliverables, and a visual dashboard.',
+    // Gateway 5: sync - Import/export synchronization
+    this.server.registerTool('sync', {
+      description: `Import/export synchronization with AI tools. Actions:
+- exportRules: Export rules to AI tools (params: preset?, force?, dryRun?)
+- exportDocs: Export docs to AI tools (params: preset?, indexMode?, force?, dryRun?)
+- exportAgents: Export agents to AI tools (params: preset?, mode?, force?, dryRun?)
+- exportContext: Export all context (params: preset?, skipDocs?, skipAgents?, skipSkills?, docsIndexMode?, agentMode?, force?, dryRun?)
+- exportSkills: Export skills to AI tools (params: preset?, includeBuiltIn?, force?)
+- reverseSync: Import from AI tools to .context/ (params: skipRules?, skipAgents?, skipSkills?, mergeStrategy?, dryRun?, force?, addMetadata?)
+- importDocs: Import docs from AI tools (params: autoDetect?, force?, dryRun?)
+- importAgents: Import agents from AI tools (params: autoDetect?, force?, dryRun?)
+- importSkills: Import skills from AI tools (params: autoDetect?, mergeStrategy?, force?, dryRun?)`,
       inputSchema: {
-        format: z.enum(['json', 'markdown', 'dashboard']).default('dashboard').optional()
-          .describe('Output format: json (raw data), markdown (formatted), dashboard (visual)'),
-        includeStack: z.boolean().optional().describe('Include technology stack info'),
+        action: z.enum(['exportRules', 'exportDocs', 'exportAgents', 'exportContext', 'exportSkills', 'reverseSync', 'importDocs', 'importAgents', 'importSkills'])
+          .describe('Action to perform'),
+        preset: z.string().optional()
+          .describe('Target AI tool preset'),
+        force: z.boolean().optional()
+          .describe('Overwrite existing files'),
+        dryRun: z.boolean().optional()
+          .describe('Preview without writing'),
+        indexMode: z.enum(['readme', 'all']).optional()
+          .describe('(exportDocs) Index mode'),
+        mode: z.enum(['symlink', 'markdown']).optional()
+          .describe('(exportAgents) Sync mode'),
+        skipDocs: z.boolean().optional()
+          .describe('(exportContext) Skip docs'),
+        skipAgents: z.boolean().optional()
+          .describe('(exportContext, reverseSync) Skip agents'),
+        skipSkills: z.boolean().optional()
+          .describe('(exportContext, reverseSync) Skip skills'),
+        skipRules: z.boolean().optional()
+          .describe('(reverseSync) Skip rules'),
+        docsIndexMode: z.enum(['readme', 'all']).optional()
+          .describe('(exportContext) Docs index mode'),
+        agentMode: z.enum(['symlink', 'markdown']).optional()
+          .describe('(exportContext) Agent sync mode'),
+        includeBuiltInSkills: z.boolean().optional()
+          .describe('(exportContext) Include built-in skills'),
+        includeBuiltIn: z.boolean().optional()
+          .describe('(exportSkills) Include built-in skills'),
+        mergeStrategy: z.enum(['skip', 'overwrite', 'merge', 'rename']).optional()
+          .describe('(reverseSync, importSkills) Conflict handling'),
+        autoDetect: z.boolean().optional()
+          .describe('(import*) Auto-detect files'),
+        addMetadata: z.boolean().optional()
+          .describe('(reverseSync) Add frontmatter metadata'),
+        repoPath: z.string().optional()
+          .describe('Repository path'),
       }
-    }, async ({ format, includeStack }) => {
-      try {
-        const reportService = new ReportService({
-          ui: {
-            displayOutput: () => {},
-            displaySuccess: () => {},
-            displayError: () => {},
-            displayInfo: () => {},
-            displayWarning: () => {},
-            startSpinner: () => {},
-            stopSpinner: () => {},
-            updateSpinner: () => {},
-          } as any,
-          t: (key: string) => key,
-          version: VERSION,
-        });
-
-        const report = await reportService.generate(repoPath, { includeStack });
-
-        let output: string;
-        if (format === 'json') {
-          output = JSON.stringify(report, null, 2);
-        } else if (format === 'dashboard') {
-          output = reportService.generateVisualDashboard(report);
-        } else {
-          // Markdown format - use visual dashboard as fallback
-          output = reportService.generateVisualDashboard(report);
-        }
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: output
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
+    }, async (params): Promise<MCPToolResponse> => {
+      return handleSync(params as SyncParams, { repoPath });
     });
 
-    // exportRules - Export rules to AI tools
-    this.server.registerTool('exportRules', {
-      description: 'Export context rules to AI tool directories (Cursor, Claude, GitHub Copilot, Windsurf, Cline, Aider, Codex, Antigravity, Trae). Bidirectional rules sync.',
+    // Gateway 6: plan - Plan management and execution tracking
+    this.server.registerTool('plan', {
+      description: `Plan management and execution tracking. Actions:
+- link: Link plan to workflow (params: planSlug)
+- getLinked: Get all linked plans
+- getDetails: Get detailed plan info (params: planSlug)
+- getForPhase: Get plans for PREVC phase (params: phase)
+- updatePhase: Update plan phase status (params: planSlug, phaseId, status)
+- recordDecision: Record a decision (params: planSlug, title, description, phase?, alternatives?)
+- updateStep: Update step status (params: planSlug, phaseId, stepIndex, status, output?, notes?)
+- getStatus: Get plan execution status (params: planSlug)
+- syncMarkdown: Sync tracking to markdown (params: planSlug)`,
       inputSchema: {
-        preset: z.enum(['cursor', 'claude', 'github', 'windsurf', 'cline', 'aider', 'codex', 'antigravity', 'trae', 'all']).default('all')
-          .describe('Target AI tool preset or "all" for all supported tools'),
-        force: z.boolean().optional().describe('Overwrite existing files'),
-        dryRun: z.boolean().optional().describe('Preview changes without writing'),
+        action: z.enum(['link', 'getLinked', 'getDetails', 'getForPhase', 'updatePhase', 'recordDecision', 'updateStep', 'getStatus', 'syncMarkdown'])
+          .describe('Action to perform'),
+        planSlug: z.string().optional()
+          .describe('Plan slug/identifier'),
+        phaseId: z.string().optional()
+          .describe('(updatePhase, updateStep) Phase ID'),
+        status: z.enum(['pending', 'in_progress', 'completed', 'skipped']).optional()
+          .describe('(updatePhase, updateStep) New status'),
+        phase: z.enum(['P', 'R', 'E', 'V', 'C']).optional()
+          .describe('(getForPhase, recordDecision) PREVC phase'),
+        title: z.string().optional()
+          .describe('(recordDecision) Decision title'),
+        description: z.string().optional()
+          .describe('(recordDecision) Decision description'),
+        alternatives: z.array(z.string()).optional()
+          .describe('(recordDecision) Considered alternatives'),
+        stepIndex: z.number().optional()
+          .describe('(updateStep) Step number (1-based)'),
+        output: z.string().optional()
+          .describe('(updateStep) Step output artifact'),
+        notes: z.string().optional()
+          .describe('(updateStep) Execution notes'),
       }
-    }, async ({ preset, force, dryRun }) => {
-      try {
-        const exportService = new ExportRulesService({
-          ui: {
-            displayOutput: () => {},
-            displaySuccess: () => {},
-            displayError: () => {},
-            displayInfo: () => {},
-            displayWarning: () => {},
-            startSpinner: () => {},
-            stopSpinner: () => {},
-            updateSpinner: () => {},
-          } as any,
-          t: (key: string) => key,
-          version: VERSION,
-        });
-
-        const result = await exportService.run(repoPath, { preset, force, dryRun });
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              filesCreated: result.filesCreated,
-              filesSkipped: result.filesSkipped,
-              filesFailed: result.filesFailed,
-              targets: result.targets,
-              errors: result.errors,
-              dryRun: dryRun || false,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
+    }, async (params): Promise<MCPToolResponse> => {
+      return handlePlan(params as PlanParams, { repoPath });
     });
 
-    // exportDocs - Export documentation to AI tools (with README indexing support)
-    this.server.registerTool('exportDocs', {
-      description: 'Export documentation from .context/docs/ to AI tool directories. Uses README.md files as indices by default for cleaner exports.',
+    // Gateway 7: agent - Agent orchestration and discovery
+    this.server.registerTool('agent', {
+      description: `Agent orchestration and discovery. Actions:
+- discover: Discover all agents (built-in + custom)
+- getInfo: Get agent details (params: agentType)
+- orchestrate: Select agents for task/phase/role (params: task?, phase?, role?)
+- getSequence: Get agent handoff sequence (params: task, includeReview?, phases?)
+- getDocs: Get agent documentation (params: agent)
+- getPhaseDocs: Get phase documentation (params: phase)
+- listTypes: List all agent types`,
       inputSchema: {
-        preset: z.enum(['cursor', 'claude', 'github', 'windsurf', 'cline', 'aider', 'codex', 'antigravity', 'trae', 'all']).default('all')
-          .describe('Target AI tool preset or "all" for all supported tools'),
-        indexMode: z.enum(['readme', 'all']).default('readme')
-          .describe('Index mode: "readme" exports only README.md files (recommended), "all" exports all matching files'),
-        force: z.boolean().optional().describe('Overwrite existing files'),
-        dryRun: z.boolean().optional().describe('Preview changes without writing'),
+        action: z.enum(['discover', 'getInfo', 'orchestrate', 'getSequence', 'getDocs', 'getPhaseDocs', 'listTypes'])
+          .describe('Action to perform'),
+        agentType: z.string().optional()
+          .describe('(getInfo) Agent type identifier'),
+        task: z.string().optional()
+          .describe('(orchestrate, getSequence) Task description'),
+        phase: z.enum(['P', 'R', 'E', 'V', 'C']).optional()
+          .describe('(orchestrate, getPhaseDocs) PREVC phase'),
+        role: z.enum(PREVC_ROLES as unknown as [string, ...string[]]).optional()
+          .describe('(orchestrate) PREVC role'),
+        includeReview: z.boolean().optional()
+          .describe('(getSequence) Include code review'),
+        phases: z.array(z.enum(['P', 'R', 'E', 'V', 'C'])).optional()
+          .describe('(getSequence) Phases to include'),
+        agent: z.enum(AGENT_TYPES as unknown as [string, ...string[]]).optional()
+          .describe('(getDocs) Agent type for docs'),
       }
-    }, async ({ preset, indexMode, force, dryRun }) => {
-      try {
-        const exportService = new ExportRulesService({
-          ui: {
-            displayOutput: () => {},
-            displaySuccess: () => {},
-            displayError: () => {},
-            displayInfo: () => {},
-            displayWarning: () => {},
-            startSpinner: () => {},
-            stopSpinner: () => {},
-            updateSpinner: () => {},
-          } as any,
-          t: (key: string) => key,
-          version: VERSION,
-        });
-
-        const result = await exportService.run(repoPath, { preset, indexMode, force, dryRun });
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              filesCreated: result.filesCreated,
-              filesSkipped: result.filesSkipped,
-              filesFailed: result.filesFailed,
-              targets: result.targets,
-              errors: result.errors,
-              indexMode: indexMode || 'readme',
-              dryRun: dryRun || false,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
+    }, async (params): Promise<MCPToolResponse> => {
+      return handleAgent(params as AgentParams, { repoPath });
     });
 
-    // exportAgents - Export agents to AI tool directories
-    this.server.registerTool('exportAgents', {
-      description: 'Export agents from .context/agents/ to AI tool directories (Claude, Cursor, GitHub Copilot, Windsurf, Cline, Continue, Antigravity, Trae).',
+    // Gateway 8: skill - Skill management
+    this.server.registerTool('skill', {
+      description: `Skill management for on-demand expertise. Actions:
+- list: List all skills (params: includeContent?)
+- getContent: Get skill content (params: skillSlug)
+- getForPhase: Get skills for PREVC phase (params: phase)
+- scaffold: Generate skill files (params: skills?, force?)
+- export: Export skills to AI tools (params: preset?, includeBuiltIn?, force?)
+- fill: Fill skills with codebase content (params: skills?, force?)`,
       inputSchema: {
-        preset: z.enum(['claude', 'cursor', 'github', 'windsurf', 'cline', 'continue', 'antigravity', 'trae', 'all']).default('all')
-          .describe('Target AI tool preset or "all" for all supported tools'),
-        mode: z.enum(['symlink', 'markdown']).default('symlink')
-          .describe('Sync mode: symlink creates links (recommended), markdown creates reference files'),
-        force: z.boolean().optional().describe('Overwrite existing files'),
-        dryRun: z.boolean().optional().describe('Preview changes without writing'),
+        action: z.enum(['list', 'getContent', 'getForPhase', 'scaffold', 'export', 'fill'])
+          .describe('Action to perform'),
+        skillSlug: z.string().optional()
+          .describe('(getContent) Skill identifier'),
+        phase: z.enum(['P', 'R', 'E', 'V', 'C']).optional()
+          .describe('(getForPhase) PREVC phase'),
+        skills: z.array(z.string()).optional()
+          .describe('(scaffold, fill) Specific skills to process'),
+        includeContent: z.boolean().optional()
+          .describe('(list) Include full content'),
+        includeBuiltIn: z.boolean().optional()
+          .describe('(export, fill) Include built-in skills'),
+        preset: z.enum(['claude', 'gemini', 'codex', 'antigravity', 'all']).optional()
+          .describe('(export) Target AI tool'),
+        force: z.boolean().optional()
+          .describe('(scaffold, export) Overwrite existing'),
       }
-    }, async ({ preset, mode, force, dryRun }) => {
-      try {
-        const syncService = new SyncService({
-          ui: {
-            displayOutput: () => {},
-            displaySuccess: () => {},
-            displayError: () => {},
-            displayInfo: () => {},
-            displayWarning: () => {},
-            displayWelcome: () => {},
-            displayStep: () => {},
-            startSpinner: () => {},
-            stopSpinner: () => {},
-            updateSpinner: () => {},
-          } as any,
-          t: (key: string) => key,
-          version: VERSION,
-        });
-
-        // Run sync with the specified preset
-        await syncService.run({
-          source: '.context/agents',
-          preset: preset as PresetName,
-          mode: mode as 'symlink' | 'markdown',
-          force: force || false,
-          dryRun: dryRun || false,
-        });
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              preset,
-              mode,
-              dryRun: dryRun || false,
-              message: `Agents exported to ${preset} targets`,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
+    }, async (params): Promise<MCPToolResponse> => {
+      return handleSkill(params as SkillParams, { repoPath });
     });
 
-    // exportContext - Unified export of docs, agents, and skills
-    this.server.registerTool('exportContext', {
-      description: 'Unified export of docs, agents, and skills to AI tool directories. Combines exportDocs, exportAgents, and exportSkills in one operation.',
-      inputSchema: {
-        preset: z.enum(['cursor', 'claude', 'github', 'windsurf', 'cline', 'aider', 'codex', 'antigravity', 'trae', 'all']).default('all')
-          .describe('Target AI tool preset or "all" for all supported tools'),
-        skipDocs: z.boolean().optional().describe('Skip docs export'),
-        skipAgents: z.boolean().optional().describe('Skip agents export'),
-        skipSkills: z.boolean().optional().describe('Skip skills export'),
-        docsIndexMode: z.enum(['readme', 'all']).default('readme')
-          .describe('Index mode for docs: "readme" exports only README.md files, "all" exports all matching files'),
-        agentMode: z.enum(['symlink', 'markdown']).default('symlink')
-          .describe('Sync mode for agents: symlink (recommended) or markdown reference'),
-        includeBuiltInSkills: z.boolean().optional().describe('Include built-in skills'),
-        force: z.boolean().optional().describe('Overwrite existing files'),
-        dryRun: z.boolean().optional().describe('Preview changes without writing'),
-      }
-    }, async ({ preset, skipDocs, skipAgents, skipSkills, docsIndexMode, agentMode, includeBuiltInSkills, force, dryRun }) => {
-      try {
-        const contextExportService = new ContextExportService({
-          ui: {
-            displayOutput: () => {},
-            displaySuccess: () => {},
-            displayError: () => {},
-            displayInfo: () => {},
-            displayWarning: () => {},
-            startSpinner: () => {},
-            stopSpinner: () => {},
-            updateSpinner: () => {},
-          } as any,
-          t: (key: string) => key,
-          version: VERSION,
-        });
-
-        const result = await contextExportService.run(repoPath, {
-          preset,
-          skipDocs,
-          skipAgents,
-          skipSkills,
-          docsIndexMode,
-          agentMode,
-          includeBuiltInSkills,
-          force,
-          dryRun,
-        });
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              docsExported: result.docsExported,
-              agentsExported: result.agentsExported,
-              skillsExported: result.skillsExported,
-              targets: result.targets,
-              errors: result.errors,
-              dryRun: dryRun || false,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // detectStack - Detect project technology stack
-    this.server.registerTool('detectStack', {
-      description: 'Detect the project technology stack including languages, frameworks, build tools, and test frameworks. Useful for intelligent defaults.',
-      inputSchema: {}
-    }, async () => {
-      try {
-        const detector = new StackDetector();
-        const stackInfo = await detector.detect(repoPath);
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              stack: stackInfo,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    this.log('Registered 7 extended workflow tools');
-
-    // Register reverse sync tools
-    this.registerReverseSyncTools();
-
-    // Register plan-workflow integration tools
-    this.registerPlanTools();
-  }
-
-  /**
-   * Register reverse sync tools for importing from AI tool directories
-   */
-  private registerReverseSyncTools(): void {
-    const repoPath = this.options.repoPath || process.cwd();
-
-    // detectAITools - Detect which AI tools have configurations
-    this.server.registerTool('detectAITools', {
-      description: 'Detect which AI tools have configuration files in the repository. Returns a summary of rules, agents, and skills found for each tool.',
-      inputSchema: {
-        repoPath: z.string().optional().describe('Repository path (defaults to cwd)'),
-      }
-    }, async ({ repoPath: inputPath }) => {
-      try {
-        const detector = new ToolDetector();
-        const result = await detector.detect(inputPath || repoPath);
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              ...result
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // reverseQuickSync - Import from AI tool directories to .context/
-    this.server.registerTool('reverseQuickSync', {
-      description: 'Import rules, agents, and skills from AI tool directories (.claude/, .cursor/, etc.) into .context/. Reverse of Quick Sync.',
-      inputSchema: {
-        repoPath: z.string().optional().describe('Repository path (defaults to cwd)'),
-        skipRules: z.boolean().optional().describe('Skip importing rules'),
-        skipAgents: z.boolean().optional().describe('Skip importing agents'),
-        skipSkills: z.boolean().optional().describe('Skip importing skills'),
-        mergeStrategy: z.enum(['skip', 'overwrite', 'merge', 'rename']).default('skip')
-          .describe('How to handle conflicts with existing files'),
-        dryRun: z.boolean().optional().describe('Preview changes without importing'),
-        force: z.boolean().optional().describe('Force overwrite without confirmation'),
-        addMetadata: z.boolean().default(true).optional()
-          .describe('Add frontmatter metadata to imported files'),
-      }
-    }, async ({ repoPath: inputPath, skipRules, skipAgents, skipSkills, mergeStrategy, dryRun, force, addMetadata }) => {
-      try {
-        // Create a minimal UI interface for MCP
-        const mcpUI = {
-          displayWelcome: () => {},
-          displayPrevcExplanation: () => {},
-          displaySuccess: () => {},
-          displayInfo: () => {},
-          displayWarning: () => {},
-          displayError: () => {},
-          startSpinner: () => {},
-          updateSpinner: () => {},
-          stopSpinner: () => {},
-          displayBox: () => {},
-        };
-
-        const service = new ReverseQuickSyncService({
-          ui: mcpUI as any,
-          t: (key: string) => key,
-          version: VERSION,
-        });
-
-        const targetPath = inputPath || repoPath;
-        const result = await service.run(targetPath, {
-          skipRules: skipRules || false,
-          skipAgents: skipAgents || false,
-          skipSkills: skipSkills || false,
-          mergeStrategy: mergeStrategy || 'skip',
-          dryRun: dryRun || false,
-          force: force || false,
-          metadata: addMetadata !== false,
-        });
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              ...result,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // importDocs - Import docs from AI tool directories
-    this.server.registerTool('importDocs', {
-      description: 'Import documentation/rules from AI tool directories into .context/docs/. Auto-detects rule files from Claude, Cursor, GitHub Copilot, etc.',
-      inputSchema: {
-        repoPath: z.string().optional().describe('Repository path (defaults to cwd)'),
-        autoDetect: z.boolean().default(true).optional()
-          .describe('Auto-detect rule files from AI tool directories'),
-        force: z.boolean().optional().describe('Force overwrite existing files'),
-        dryRun: z.boolean().optional().describe('Preview changes without importing'),
-      }
-    }, async ({ repoPath: inputPath, autoDetect, force, dryRun }) => {
-      try {
-        const mcpUI = {
-          displayWelcome: () => {},
-          displaySuccess: () => {},
-          displayInfo: () => {},
-          displayWarning: () => {},
-          displayError: () => {},
-          startSpinner: () => {},
-          updateSpinner: () => {},
-          stopSpinner: () => {},
-        };
-
-        const service = new ImportRulesService({
-          ui: mcpUI as any,
-          t: (key: string) => key,
-          version: VERSION,
-        });
-
-        const targetPath = inputPath || repoPath;
-        await service.run({
-          autoDetect: autoDetect !== false,
-          force: force || false,
-          dryRun: dryRun || false,
-        }, targetPath);
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              message: 'Docs imported successfully',
-              dryRun: dryRun || false,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // importAgents - Import agents from AI tool directories
-    this.server.registerTool('importAgents', {
-      description: 'Import agents from AI tool directories into .context/agents/. Auto-detects agent files from Claude, Cursor, GitHub Copilot, etc.',
-      inputSchema: {
-        repoPath: z.string().optional().describe('Repository path (defaults to cwd)'),
-        autoDetect: z.boolean().default(true).optional()
-          .describe('Auto-detect agent files from AI tool directories'),
-        force: z.boolean().optional().describe('Force overwrite existing files'),
-        dryRun: z.boolean().optional().describe('Preview changes without importing'),
-      }
-    }, async ({ repoPath: inputPath, autoDetect, force, dryRun }) => {
-      try {
-        const mcpUI = {
-          displayWelcome: () => {},
-          displaySuccess: () => {},
-          displayInfo: () => {},
-          displayWarning: () => {},
-          displayError: () => {},
-          startSpinner: () => {},
-          updateSpinner: () => {},
-          stopSpinner: () => {},
-        };
-
-        const service = new ImportAgentsService({
-          ui: mcpUI as any,
-          t: (key: string) => key,
-          version: VERSION,
-        });
-
-        const targetPath = inputPath || repoPath;
-        await service.run({
-          autoDetect: autoDetect !== false,
-          force: force || false,
-          dryRun: dryRun || false,
-        }, targetPath);
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              message: 'Agents imported successfully',
-              dryRun: dryRun || false,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // importSkills - Import skills from AI tool directories
-    this.server.registerTool('importSkills', {
-      description: 'Import skills from AI tool directories into .context/skills/. Auto-detects skill files from Claude, Gemini, Codex, etc.',
-      inputSchema: {
-        repoPath: z.string().optional().describe('Repository path (defaults to cwd)'),
-        autoDetect: z.boolean().default(true).optional()
-          .describe('Auto-detect skill files from AI tool directories'),
-        mergeStrategy: z.enum(['skip', 'overwrite', 'merge', 'rename']).default('skip')
-          .describe('How to handle conflicts with existing files'),
-        force: z.boolean().optional().describe('Force overwrite existing files'),
-        dryRun: z.boolean().optional().describe('Preview changes without importing'),
-      }
-    }, async ({ repoPath: inputPath, autoDetect, mergeStrategy, force, dryRun }) => {
-      try {
-        const mcpUI = {
-          displayWelcome: () => {},
-          displaySuccess: () => {},
-          displayInfo: () => {},
-          displayWarning: () => {},
-          displayError: () => {},
-          startSpinner: () => {},
-          updateSpinner: () => {},
-          stopSpinner: () => {},
-        };
-
-        const service = new ImportSkillsService({
-          ui: mcpUI as any,
-          t: (key: string) => key,
-          version: VERSION,
-        });
-
-        const targetPath = inputPath || repoPath;
-        const result = await service.run({
-          autoDetect: autoDetect !== false,
-          mergeStrategy: mergeStrategy || 'skip',
-          force: force || false,
-          dryRun: dryRun || false,
-        }, targetPath);
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              skillsImported: result.filesCreated,
-              filesSkipped: result.filesSkipped,
-              filesFailed: result.filesFailed,
-              dryRun: dryRun || false,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    this.log('Registered 5 reverse sync tools');
-  }
-
-  /**
-   * Register plan-workflow integration tools
-   */
-  private registerPlanTools(): void {
-    const repoPath = this.options.repoPath || process.cwd();
-
-    // linkPlan - Link a plan to the current workflow
-    this.server.registerTool('linkPlan', {
-      description: 'Link an implementation plan to the current PREVC workflow. Plans provide detailed steps mapped to workflow phases.',
-      inputSchema: {
-        planSlug: z.string().describe('Plan slug/identifier (filename without .md)'),
-      }
-    }, async ({ planSlug }) => {
-      try {
-        const linker = createPlanLinker(repoPath);
-        const ref = await linker.linkPlan(planSlug);
-
-        if (!ref) {
-          return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: false,
-                error: `Plan not found: ${planSlug}`,
-              }, null, 2)
-            }]
-          };
-        }
-
-        // Also mark plan as created in workflow approval tracking
-        const service = new WorkflowService(repoPath);
-        if (await service.hasWorkflow()) {
-          await service.markPlanCreated(planSlug);
-        }
-
-        // Check if this unblocks the P → R gate
-        let canAdvanceToReview = false;
-        if (await service.hasWorkflow()) {
-          const gateResult = await service.checkGates();
-          canAdvanceToReview = gateResult.gates.plan_required.passed;
-        }
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              plan: ref,
-              planCreatedForGates: true,
-              canAdvanceToReview,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // getLinkedPlans - Get all plans linked to the workflow
-    this.server.registerTool('getLinkedPlans', {
-      description: 'Get all implementation plans linked to the current PREVC workflow.',
-      inputSchema: {}
-    }, async () => {
-      try {
-        const linker = createPlanLinker(repoPath);
-        const plans = await linker.getLinkedPlans();
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              plans,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // getPlanDetails - Get detailed plan with PREVC mapping
-    this.server.registerTool('getPlanDetails', {
-      description: 'Get detailed plan information including phases mapped to PREVC, agents, and documentation.',
-      inputSchema: {
-        planSlug: z.string().describe('Plan slug/identifier'),
-      }
-    }, async ({ planSlug }) => {
-      try {
-        const linker = createPlanLinker(repoPath);
-        const plan = await linker.getLinkedPlan(planSlug);
-
-        if (!plan) {
-          return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: false,
-                error: `Plan not found or not linked: ${planSlug}`,
-              }, null, 2)
-            }]
-          };
-        }
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              plan: {
-                ...plan,
-                phasesWithPrevc: plan.phases.map(p => ({
-                  ...p,
-                  prevcPhaseName: PHASE_NAMES_EN[p.prevcPhase],
-                })),
-              },
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // getPlansForPhase - Get plans relevant to current PREVC phase
-    this.server.registerTool('getPlansForPhase', {
-      description: 'Get all plans that have work items for a specific PREVC phase.',
-      inputSchema: {
-        phase: z.enum(['P', 'R', 'E', 'V', 'C']).describe('PREVC phase'),
-      }
-    }, async ({ phase }) => {
-      try {
-        const linker = createPlanLinker(repoPath);
-        const plans = await linker.getPlansForPhase(phase as PrevcPhase);
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              phase,
-              phaseName: PHASE_NAMES_EN[phase as PrevcPhase],
-              plans: plans.map(p => ({
-                slug: p.ref.slug,
-                title: p.ref.title,
-                phasesInThisPrevc: p.phases
-                  .filter(ph => ph.prevcPhase === phase)
-                  .map(ph => ({ id: ph.id, name: ph.name, status: ph.status })),
-                hasPendingWork: linker.hasPendingWorkForPhase(p, phase as PrevcPhase),
-              })),
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // updatePlanPhase - Update plan phase status
-    this.server.registerTool('updatePlanPhase', {
-      description: 'Update the status of a plan phase (syncs with PREVC workflow tracking).',
-      inputSchema: {
-        planSlug: z.string().describe('Plan slug/identifier'),
-        phaseId: z.string().describe('Phase ID within the plan (e.g., "phase-1")'),
-        status: z.enum(['pending', 'in_progress', 'completed', 'skipped']).describe('New status'),
-      }
-    }, async ({ planSlug, phaseId, status }) => {
-      try {
-        const linker = createPlanLinker(repoPath);
-        const success = await linker.updatePlanPhase(planSlug, phaseId, status as any);
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success,
-              planSlug,
-              phaseId,
-              status,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // recordDecision - Record a decision in a plan
-    this.server.registerTool('recordDecision', {
-      description: 'Record a decision made during plan execution. Decisions are tracked and can be referenced later.',
-      inputSchema: {
-        planSlug: z.string().describe('Plan slug/identifier'),
-        title: z.string().describe('Decision title'),
-        description: z.string().describe('Decision description and rationale'),
-        phase: z.enum(['P', 'R', 'E', 'V', 'C']).optional().describe('Related PREVC phase'),
-        alternatives: z.array(z.string()).optional().describe('Alternatives that were considered'),
-      }
-    }, async ({ planSlug, title, description, phase, alternatives }) => {
-      try {
-        const linker = createPlanLinker(repoPath);
-        const decision = await linker.recordDecision(planSlug, {
-          title,
-          description,
-          phase: phase as PrevcPhase | undefined,
-          alternatives,
-          status: 'accepted',
-        });
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              decision,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // updatePlanStep - Update individual step status within a plan phase
-    this.server.registerTool('updatePlanStep', {
-      description: 'Update the status of a specific step within a plan phase. Automatically syncs changes to the plan markdown file.',
-      inputSchema: {
-        planSlug: z.string().describe('Plan slug/identifier'),
-        phaseId: z.string().describe('Phase ID (e.g., "phase-1", "phase-2")'),
-        stepIndex: z.number().describe('Step number (1-based index)'),
-        status: z.enum(['pending', 'in_progress', 'completed', 'skipped']).describe('New step status'),
-        output: z.string().optional().describe('Output artifact or result from this step'),
-        notes: z.string().optional().describe('Execution notes or comments'),
-      }
-    }, async ({ planSlug, phaseId, stepIndex, status, output, notes }) => {
-      try {
-        const linker = createPlanLinker(repoPath);
-        const success = await linker.updatePlanStep(
-          planSlug,
-          phaseId,
-          stepIndex,
-          status as any,
-          { output, notes }
-        );
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success,
-              planSlug,
-              phaseId,
-              stepIndex,
-              status,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // getPlanExecutionStatus - Get detailed execution status for a plan
-    this.server.registerTool('getPlanExecutionStatus', {
-      description: 'Get detailed execution status for a plan, including all phases and individual step progress.',
-      inputSchema: {
-        planSlug: z.string().describe('Plan slug/identifier'),
-      }
-    }, async ({ planSlug }) => {
-      try {
-        const linker = createPlanLinker(repoPath);
-        const status = await linker.getPlanExecutionStatus(planSlug);
-
-        if (!status) {
-          return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: false,
-                error: 'Plan tracking not found. The plan may not have any execution data yet.',
-              }, null, 2)
-            }]
-          };
-        }
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              ...status,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // syncPlanMarkdown - Manually sync plan execution tracking to markdown file
-    this.server.registerTool('syncPlanMarkdown', {
-      description: 'Manually sync plan execution tracking to the plan markdown file. Updates checkboxes, timestamps, and execution history.',
-      inputSchema: {
-        planSlug: z.string().describe('Plan slug/identifier'),
-      }
-    }, async ({ planSlug }) => {
-      try {
-        const linker = createPlanLinker(repoPath);
-        const success = await linker.syncPlanMarkdown(planSlug);
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success,
-              planSlug,
-              message: success ? 'Plan markdown synced successfully' : 'Failed to sync - plan or tracking not found',
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // discoverAgents - Discover all available agents (built-in + custom)
-    this.server.registerTool('discoverAgents', {
-      description: 'Discover all available agents including custom ones. Scans .context/agents/ for custom agent playbooks.',
-      inputSchema: {}
-    }, async () => {
-      try {
-        const linker = createPlanLinker(repoPath);
-        const agents = await linker.discoverAgents();
-
-        const builtIn = agents.filter(a => !a.isCustom);
-        const custom = agents.filter(a => a.isCustom);
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              totalAgents: agents.length,
-              builtInCount: builtIn.length,
-              customCount: custom.length,
-              agents: {
-                builtIn: builtIn.map(a => a.type),
-                custom: custom.map(a => ({ type: a.type, path: a.path })),
-              },
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // getAgentInfo - Get detailed info about a specific agent
-    this.server.registerTool('getAgentInfo', {
-      description: 'Get detailed information about a specific agent (built-in or custom). Returns path, existence status, title, and description.',
-      inputSchema: {
-        agentType: z.string().describe('Agent type/identifier (e.g., "code-reviewer" or "agente-de-marketing")'),
-      }
-    }, async ({ agentType }) => {
-      try {
-        const linker = createPlanLinker(repoPath);
-        const info = await linker.getAgentInfo(agentType);
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              agent: info,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    this.log('Registered 8 plan-workflow tools');
+    this.log('Registered 8 gateway tools');
   }
 
   /**
@@ -2336,9 +519,6 @@ export class AIContextMCPServer {
 
     // Register PREVC workflow resources
     this.registerWorkflowResources();
-
-    // Register orchestration tools
-    this.registerOrchestrationTools();
   }
 
   /**
@@ -2405,585 +585,6 @@ export class AIContextMCPServer {
   }
 
   /**
-   * Register agent orchestration tools
-   */
-  private registerOrchestrationTools(): void {
-    // orchestrateAgents - Select agents for a task, phase, or role
-    this.server.registerTool('orchestrateAgents', {
-      description: 'Select appropriate agents based on task description, PREVC phase, or role. Returns recommended agents with their descriptions and relevant documentation.',
-      inputSchema: {
-        task: z.string().optional().describe('Task description for intelligent agent selection'),
-        phase: z.enum(['P', 'R', 'E', 'V', 'C']).optional().describe('PREVC phase to get agents for'),
-        role: z.enum(PREVC_ROLES).optional().describe('PREVC role to get agents for'),
-      },
-    }, async ({ task, phase, role }) => {
-      try {
-        let agents: AgentType[] = [];
-        let source = '';
-
-        if (task) {
-          agents = agentOrchestrator.selectAgentsByTask(task);
-          source = `task: "${task}"`;
-        } else if (phase) {
-          agents = agentOrchestrator.getAgentsForPhase(phase as PrevcPhase);
-          source = `phase: ${phase} (${PHASE_NAMES_EN[phase as PrevcPhase]})`;
-        } else if (role) {
-          agents = agentOrchestrator.getAgentsForRole(role as PrevcRole);
-          source = `role: ${ROLE_DISPLAY_NAMES[role as PrevcRole]}`;
-        } else {
-          return {
-            content: [{ type: 'text', text: 'Error: Provide task, phase, or role parameter' }],
-          };
-        }
-
-        const agentDetails = agents.map((agent) => ({
-          type: agent,
-          description: agentOrchestrator.getAgentDescription(agent),
-          docs: documentLinker.getDocPathsForAgent(agent),
-        }));
-
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              source,
-              agents: agentDetails,
-              count: agents.length,
-            }, null, 2),
-          }],
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text',
-            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
-          }],
-        };
-      }
-    });
-
-    // getAgentSequence - Get recommended agent sequence for a task
-    this.server.registerTool('getAgentSequence', {
-      description: 'Get recommended sequence of agents for a task, including handoff order. Useful for planning multi-agent workflows.',
-      inputSchema: {
-        task: z.string().describe('Task description'),
-        includeReview: z.boolean().optional().describe('Include code review in sequence (default: true)'),
-        phases: z.array(z.enum(['P', 'R', 'E', 'V', 'C'])).optional().describe('PREVC phases to include (for phase-based sequencing)'),
-      },
-    }, async ({ task, includeReview, phases }) => {
-      try {
-        let sequence: AgentType[];
-
-        if (phases && phases.length > 0) {
-          sequence = agentOrchestrator.getAgentHandoffSequence(phases as PrevcPhase[]);
-        } else {
-          sequence = agentOrchestrator.getTaskAgentSequence(
-            task,
-            includeReview !== false
-          );
-        }
-
-        const sequenceDetails = sequence.map((agent, index) => ({
-          order: index + 1,
-          agent,
-          description: agentOrchestrator.getAgentDescription(agent),
-          primaryDoc: documentLinker.getPrimaryDocForAgent(agent)?.path || null,
-        }));
-
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              task,
-              sequence: sequenceDetails,
-              totalAgents: sequence.length,
-            }, null, 2),
-          }],
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text',
-            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
-          }],
-        };
-      }
-    });
-
-    // getAgentDocs - Get documentation relevant to an agent
-    this.server.registerTool('getAgentDocs', {
-      description: 'Get documentation guides relevant to a specific agent type. Helps agents find the right context.',
-      inputSchema: {
-        agent: z.enum(AGENT_TYPES).describe('Agent type to get documentation for'),
-      },
-    }, async ({ agent }) => {
-      try {
-        if (!agentOrchestrator.isValidAgentType(agent)) {
-          return {
-            content: [{
-              type: 'text',
-              text: `Error: Invalid agent type "${agent}". Valid types: ${AGENT_TYPES.join(', ')}`,
-            }],
-          };
-        }
-
-        const docs = documentLinker.getDocsForAgent(agent as AgentType);
-        const agentDesc = agentOrchestrator.getAgentDescription(agent as AgentType);
-
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              agent,
-              description: agentDesc,
-              documentation: docs.map((doc) => ({
-                type: doc.type,
-                title: doc.title,
-                path: doc.path,
-                description: doc.description,
-              })),
-            }, null, 2),
-          }],
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text',
-            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
-          }],
-        };
-      }
-    });
-
-    // getPhaseDocs - Get documentation for a PREVC phase
-    this.server.registerTool('getPhaseDocs', {
-      description: 'Get documentation relevant to a PREVC workflow phase. Helps understand what documentation is needed at each phase.',
-      inputSchema: {
-        phase: z.enum(['P', 'R', 'E', 'V', 'C']).describe('PREVC phase (P=Planning, R=Review, E=Execution, V=Validation, C=Confirmation)'),
-      },
-    }, async ({ phase }) => {
-      try {
-        const docs = documentLinker.getDocsForPhase(phase as PrevcPhase);
-        const agents = agentOrchestrator.getAgentsForPhase(phase as PrevcPhase);
-
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              phase,
-              phaseName: PHASE_NAMES_EN[phase as PrevcPhase],
-              documentation: docs.map((doc) => ({
-                type: doc.type,
-                title: doc.title,
-                path: doc.path,
-                description: doc.description,
-              })),
-              recommendedAgents: agents.map((agent) => ({
-                type: agent,
-                description: agentOrchestrator.getAgentDescription(agent),
-              })),
-            }, null, 2),
-          }],
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text',
-            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
-          }],
-        };
-      }
-    });
-
-    // listAgentTypes - List all available agent types
-    this.server.registerTool('listAgentTypes', {
-      description: 'List all available agent types with their descriptions. Use this to understand what agents are available.',
-      inputSchema: {},
-    }, async () => {
-      const agents = agentOrchestrator.getAllAgentTypes().map((agent) => ({
-        type: agent,
-        description: agentOrchestrator.getAgentDescription(agent),
-        primaryDoc: documentLinker.getPrimaryDocForAgent(agent)?.title || null,
-      }));
-
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify({
-            agents,
-            total: agents.length,
-          }, null, 2),
-        }],
-      };
-    });
-
-    this.log('Registered 5 orchestration tools');
-
-    // Register skill tools
-    this.registerSkillTools();
-  }
-
-  /**
-   * Register skill tools for on-demand expertise
-   */
-  private registerSkillTools(): void {
-    const repoPath = this.options.repoPath || process.cwd();
-
-    // Import skill registry
-    const { createSkillRegistry, BUILT_IN_SKILLS, SKILL_TO_PHASES } = require('../../workflow/skills');
-
-    // listSkills - List all available skills
-    this.server.registerTool('listSkills', {
-      description: 'List all available skills (built-in + custom). Skills are on-demand expertise for specific tasks.',
-      inputSchema: {
-        includeContent: z.boolean().optional().describe('Include full skill content in response'),
-      }
-    }, async ({ includeContent }) => {
-      try {
-        const registry = createSkillRegistry(repoPath);
-        const discovered = await registry.discoverAll();
-
-        const format = (skill: any) => ({
-          slug: skill.slug,
-          name: skill.metadata.name,
-          description: skill.metadata.description,
-          phases: skill.metadata.phases || [],
-          isBuiltIn: skill.isBuiltIn,
-          ...(includeContent ? { content: skill.content } : {}),
-        });
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              totalSkills: discovered.all.length,
-              builtInCount: discovered.builtIn.length,
-              customCount: discovered.custom.length,
-              skills: {
-                builtIn: discovered.builtIn.map(format),
-                custom: discovered.custom.map(format),
-              },
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // getSkillContent - Get full content of a specific skill
-    this.server.registerTool('getSkillContent', {
-      description: 'Get the full content of a skill by slug. Returns the SKILL.md content with instructions.',
-      inputSchema: {
-        skillSlug: z.string().describe('Skill slug/identifier (e.g., "commit-message", "pr-review")'),
-      }
-    }, async ({ skillSlug }) => {
-      try {
-        const registry = createSkillRegistry(repoPath);
-        const content = await registry.getSkillContent(skillSlug);
-
-        if (!content) {
-          return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: false,
-                error: `Skill not found: ${skillSlug}`,
-                availableSkills: BUILT_IN_SKILLS,
-              }, null, 2)
-            }]
-          };
-        }
-
-        const skill = await registry.getSkillMetadata(skillSlug);
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              skill: {
-                slug: skillSlug,
-                name: skill?.metadata.name,
-                description: skill?.metadata.description,
-                phases: skill?.metadata.phases,
-                isBuiltIn: skill?.isBuiltIn,
-              },
-              content,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // getSkillsForPhase - Get skills relevant to a PREVC phase
-    this.server.registerTool('getSkillsForPhase', {
-      description: 'Get all skills relevant to a specific PREVC phase. Useful for knowing which skills to activate during workflow execution.',
-      inputSchema: {
-        phase: z.enum(['P', 'R', 'E', 'V', 'C']).describe('PREVC phase'),
-      }
-    }, async ({ phase }) => {
-      try {
-        const registry = createSkillRegistry(repoPath);
-        const skills = await registry.getSkillsForPhase(phase);
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              phase,
-              phaseName: PHASE_NAMES_EN[phase as PrevcPhase],
-              skills: skills.map((s: any) => ({
-                slug: s.slug,
-                name: s.metadata.name,
-                description: s.metadata.description,
-                isBuiltIn: s.isBuiltIn,
-              })),
-              count: skills.length,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // scaffoldSkills - Generate skill files
-    this.server.registerTool('scaffoldSkills', {
-      description: 'Scaffold skill files in .context/skills/. Creates SKILL.md files for built-in or custom skills.',
-      inputSchema: {
-        skills: z.array(z.string()).optional().describe('Specific skills to scaffold (default: all built-in)'),
-        force: z.boolean().optional().describe('Overwrite existing skill files'),
-      }
-    }, async ({ skills, force }) => {
-      try {
-        const { createSkillGenerator } = require('../../generators/skills');
-        const generator = createSkillGenerator({ repoPath });
-        const result = await generator.generate({ skills, force });
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              skillsDir: result.skillsDir,
-              generated: result.generatedSkills,
-              skipped: result.skippedSkills,
-              indexPath: result.indexPath,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // exportSkills - Export skills to AI tool directories
-    this.server.registerTool('exportSkills', {
-      description: 'Export skills to AI tool directories (Claude Code, Gemini CLI, Codex, Antigravity). Copies skills to .claude/skills/, .gemini/skills/, .agent/workflows/, etc.',
-      inputSchema: {
-        preset: z.enum(['claude', 'gemini', 'codex', 'antigravity', 'all']).default('all')
-          .describe('Target AI tool or "all" for all supported tools'),
-        includeBuiltIn: z.boolean().optional().describe('Include built-in skills even if not scaffolded'),
-        force: z.boolean().optional().describe('Overwrite existing files'),
-      }
-    }, async ({ preset, includeBuiltIn, force }) => {
-      try {
-        const { SkillExportService } = require('../export/skillExportService');
-        const exportService = new SkillExportService({
-          ui: {
-            displayOutput: () => {},
-            displaySuccess: () => {},
-            displayError: () => {},
-            displayWarning: () => {},
-            startSpinner: () => {},
-            stopSpinner: () => {},
-            updateSpinner: () => {},
-          },
-          t: (key: string) => key,
-          version: VERSION,
-        });
-
-        const result = await exportService.run(repoPath, {
-          preset,
-          includeBuiltIn,
-          force,
-        });
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: result.filesCreated > 0,
-              targets: result.targets,
-              skillsExported: result.skillsExported,
-              filesCreated: result.filesCreated,
-              filesSkipped: result.filesSkipped,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // fillSkills - Return fill instructions for skill files (NO API key required)
-    this.server.registerTool('fillSkills', {
-      description: `Fill/personalize skill files with codebase-aware content.
-Returns semantic context and fill instructions for the AI agent to process.
-The AI agent MUST then fill each skill file using the provided context and instructions.`,
-      inputSchema: {
-        skills: z.array(z.string()).optional().describe('Specific skills to fill (default: all scaffolded)'),
-        force: z.boolean().optional().describe('Include already-filled skills'),
-      }
-    }, async ({ skills, force }) => {
-      try {
-        const fs = require('fs-extra');
-        const registry = createSkillRegistry(repoPath);
-        const skillsDir = path.join(repoPath, '.context', 'skills');
-
-        // Check if skills directory exists
-        if (!await fs.pathExists(skillsDir)) {
-          return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: false,
-                error: 'Skills directory does not exist. Run scaffoldSkills first.',
-                skillsDir,
-              }, null, 2)
-            }]
-          };
-        }
-
-        // Discover skills to fill
-        const discovered = await registry.discoverAll();
-        let skillsToFill = discovered.all;
-
-        // Filter by specific skills if provided
-        if (skills && skills.length > 0) {
-          skillsToFill = skillsToFill.filter((s: { slug: string }) => skills.includes(s.slug));
-        }
-
-        // Filter out already-filled skills unless force is set
-        if (!force) {
-          skillsToFill = skillsToFill.filter((s: { path: string }) => {
-            // Check if skill file exists and has minimal content (likely a template)
-            if (!fs.existsSync(s.path)) return true;
-            const content = fs.readFileSync(s.path, 'utf-8');
-            // Consider it unfilled if it's a template (has placeholder markers)
-            return content.includes('<!-- TODO') || content.includes('[PLACEHOLDER]') || content.length < 500;
-          });
-        }
-
-        if (skillsToFill.length === 0) {
-          return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: true,
-                message: 'No skills need filling. Use force=true to refill existing skills.',
-                skillsDir,
-              }, null, 2)
-            }]
-          };
-        }
-
-        // Build semantic context
-        let semanticContext: string | undefined;
-        try {
-          semanticContext = await getOrBuildContext(repoPath);
-        } catch (contextError) {
-          // Continue without semantic context
-          semanticContext = undefined;
-        }
-
-        // Build fill instructions for each skill
-        const fillInstructions = skillsToFill.map((skill: { path: string; slug: string; metadata: { name?: string; description?: string }; isBuiltIn: boolean }) => ({
-          skillPath: skill.path,
-          skillSlug: skill.slug,
-          skillName: skill.metadata.name || skill.slug,
-          description: skill.metadata.description || '',
-          isBuiltIn: skill.isBuiltIn,
-          instructions: getSkillFillInstructions(skill.slug),
-        }));
-
-        // Build comprehensive fill prompt
-        const fillPrompt = buildSkillFillPrompt(fillInstructions, semanticContext);
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              skillsToFill: fillInstructions,
-              semanticContext,
-              fillPrompt,
-              instructions: 'IMPORTANT: You MUST now fill each skill file using the semantic context and fill instructions provided. Write the content to each skillPath.',
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    this.log('Registered 6 skill tools');
-  }
-
-  /**
    * Start the MCP server with stdio transport
    */
   async start(): Promise<void> {
@@ -3009,142 +610,6 @@ The AI agent MUST then fill each skill file using the provided context and instr
       process.stderr.write(`[mcp] ${message}\n`);
     }
   }
-}
-
-/**
- * Get fill instructions for a skill based on its type
- */
-function getSkillFillInstructions(skillSlug: string): string {
-  const instructions: Record<string, string> = {
-    'commit-message': `Fill this skill with:
-- Commit message format conventions for this project
-- Examples of good commit messages from the codebase
-- Branch naming conventions if applicable
-- Semantic versioning guidelines`,
-
-    'pr-review': `Fill this skill with:
-- PR review checklist specific to this codebase
-- Code quality standards to check
-- Testing requirements before merge
-- Documentation expectations`,
-
-    'code-review': `Fill this skill with:
-- Code review guidelines for this project
-- Common patterns to look for
-- Security and performance considerations
-- Style and convention checks`,
-
-    'test-generation': `Fill this skill with:
-- Testing framework and conventions used
-- Test file organization patterns
-- Mocking strategies for this codebase
-- Coverage requirements`,
-
-    'documentation': `Fill this skill with:
-- Documentation standards for this project
-- JSDoc/TSDoc conventions
-- README structure expectations
-- API documentation guidelines`,
-
-    'refactoring': `Fill this skill with:
-- Refactoring patterns common in this codebase
-- Code smell detection guidelines
-- Safe refactoring procedures
-- Testing requirements after refactoring`,
-
-    'bug-investigation': `Fill this skill with:
-- Debugging workflow for this codebase
-- Common bug patterns and their fixes
-- Logging and error handling conventions
-- Test verification steps`,
-
-    'feature-breakdown': `Fill this skill with:
-- Feature decomposition approach
-- Task estimation guidelines
-- Dependency identification process
-- Integration points to consider`,
-
-    'api-design': `Fill this skill with:
-- API design patterns used in this project
-- Endpoint naming conventions
-- Request/response format standards
-- Versioning and deprecation policies`,
-
-    'security-audit': `Fill this skill with:
-- Security checklist for this codebase
-- Common vulnerabilities to check
-- Authentication/authorization patterns
-- Data validation requirements`,
-  };
-
-  return instructions[skillSlug] || `Fill this skill with project-specific content for ${skillSlug}:
-- Identify relevant patterns from the codebase
-- Include specific examples from the project
-- Add conventions and best practices
-- Reference important files and components`;
-}
-
-/**
- * Build comprehensive fill prompt for skills
- */
-function buildSkillFillPrompt(
-  skills: Array<{
-    skillPath: string;
-    skillSlug: string;
-    skillName: string;
-    description: string;
-    instructions: string;
-  }>,
-  semanticContext?: string
-): string {
-  const lines: string[] = [];
-
-  lines.push('# Skill Fill Instructions');
-  lines.push('');
-  lines.push('You MUST fill each of the following skill files with codebase-specific content.');
-  lines.push('');
-
-  if (semanticContext) {
-    lines.push('## Codebase Context');
-    lines.push('');
-    lines.push('Use this semantic context to understand the codebase:');
-    lines.push('');
-    lines.push('```');
-    lines.push(semanticContext.length > 6000 ? semanticContext.substring(0, 6000) + '\n...(truncated)' : semanticContext);
-    lines.push('```');
-    lines.push('');
-  }
-
-  lines.push('## Skills to Fill');
-  lines.push('');
-
-  for (const skill of skills) {
-    lines.push(`### ${skill.skillName} (${skill.skillSlug})`);
-    lines.push(`**Path:** \`${skill.skillPath}\``);
-    if (skill.description) {
-      lines.push(`**Description:** ${skill.description}`);
-    }
-    lines.push('');
-    lines.push('**Fill Instructions:**');
-    lines.push(skill.instructions);
-    lines.push('');
-  }
-
-  lines.push('## Action Required');
-  lines.push('');
-  lines.push('For each skill listed above:');
-  lines.push('1. Read the current skill template');
-  lines.push('2. Generate codebase-specific content based on the instructions and context');
-  lines.push('3. Write the filled content to the skill file');
-  lines.push('');
-  lines.push('Each skill should be personalized with:');
-  lines.push('- Specific examples from this codebase');
-  lines.push('- Project-specific conventions and patterns');
-  lines.push('- References to relevant files and components');
-  lines.push('');
-  lines.push('DO NOT leave placeholder text. Each skill must have meaningful, project-specific content.');
-
-  return lines.join('\n');
 }
 
 /**
