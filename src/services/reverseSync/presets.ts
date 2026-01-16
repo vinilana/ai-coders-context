@@ -45,6 +45,16 @@ export const SKILL_SOURCES: RuleSource[] = [
     ],
     description: 'OpenAI Codex CLI skills directory',
   },
+  // Google Antigravity
+  {
+    name: 'antigravity-workflows',
+    paths: ['.agent/workflows'],
+    patterns: [
+      '**/.agent/workflows/*/SKILL.md',
+      '**/.agent/workflows/**/*.md',
+    ],
+    description: 'Google Antigravity workflows directory',
+  },
 ];
 
 // ============================================================================
@@ -65,6 +75,8 @@ export const TOOL_NAME_MAP: Record<string, string> = {
   '.codex': 'codex',
   '.aider': 'aider',
   '.zed': 'zed',
+  '.agent': 'antigravity',
+  '.trae': 'trae',
 };
 
 /**
@@ -81,6 +93,8 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   codex: 'Codex CLI',
   aider: 'Aider',
   zed: 'Zed Editor',
+  antigravity: 'Google Antigravity',
+  trae: 'Trae AI',
 };
 
 /**
@@ -97,6 +111,8 @@ export const TOOL_CAPABILITIES: Record<string, { rules: boolean; agents: boolean
   codex: { rules: true, agents: false, skills: true },
   aider: { rules: true, agents: false, skills: false },
   zed: { rules: true, agents: false, skills: false },
+  antigravity: { rules: true, agents: true, skills: true },
+  trae: { rules: true, agents: true, skills: false },
 };
 
 /**
@@ -144,6 +160,7 @@ export function getToolIdFromPath(filePath: string): string {
   if (normalizedPath.includes('.windsurfrules')) return 'windsurf';
   if (normalizedPath.includes('.clinerules')) return 'cline';
   if (normalizedPath.includes('.continuerules')) return 'continue';
+  if (normalizedPath.includes('GEMINI.md')) return 'antigravity';
 
   return 'unknown';
 }

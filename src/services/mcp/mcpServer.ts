@@ -947,9 +947,9 @@ export class AIContextMCPServer {
 
     // exportRules - Export rules to AI tools
     this.server.registerTool('exportRules', {
-      description: 'Export context rules to AI tool directories (Cursor, Claude, GitHub Copilot, Windsurf, Cline, Aider, Codex). Bidirectional rules sync.',
+      description: 'Export context rules to AI tool directories (Cursor, Claude, GitHub Copilot, Windsurf, Cline, Aider, Codex, Antigravity, Trae). Bidirectional rules sync.',
       inputSchema: {
-        preset: z.enum(['cursor', 'claude', 'github', 'windsurf', 'cline', 'aider', 'codex', 'all']).default('all')
+        preset: z.enum(['cursor', 'claude', 'github', 'windsurf', 'cline', 'aider', 'codex', 'antigravity', 'trae', 'all']).default('all')
           .describe('Target AI tool preset or "all" for all supported tools'),
         force: z.boolean().optional().describe('Overwrite existing files'),
         dryRun: z.boolean().optional().describe('Preview changes without writing'),
@@ -2042,9 +2042,9 @@ export class AIContextMCPServer {
 
     // exportSkills - Export skills to AI tool directories
     this.server.registerTool('exportSkills', {
-      description: 'Export skills to AI tool directories (Claude Code, Gemini CLI, Codex). Copies skills to .claude/skills/, .gemini/skills/, etc.',
+      description: 'Export skills to AI tool directories (Claude Code, Gemini CLI, Codex, Antigravity). Copies skills to .claude/skills/, .gemini/skills/, .agent/workflows/, etc.',
       inputSchema: {
-        preset: z.enum(['claude', 'gemini', 'codex', 'all']).default('all')
+        preset: z.enum(['claude', 'gemini', 'codex', 'antigravity', 'all']).default('all')
           .describe('Target AI tool or "all" for all supported tools'),
         includeBuiltIn: z.boolean().optional().describe('Include built-in skills even if not scaffolded'),
         force: z.boolean().optional().describe('Overwrite existing files'),

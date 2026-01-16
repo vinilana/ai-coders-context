@@ -5,6 +5,89 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] - 2026-01-16
+
+### Added
+
+- **Google Antigravity Support**: Full bidirectional sync support for Google Antigravity
+  - Rules export to `.agent/rules/` directory
+  - Agents sync to `.agent/agents/` directory
+  - Workflows (skills) export to `.agent/workflows/` directory
+  - New `antigravity` preset for export and sync commands
+  - MCP tools updated to include `antigravity` preset option
+
+- **Trae AI Support**: Full bidirectional sync support for Trae AI
+  - Rules export to `.trae/rules/` directory
+  - Agents sync to `.trae/agents/` directory
+  - New `trae` preset for export and sync commands
+  - MCP tools updated to include `trae` preset option
+
+- **Windsurf Directory Format**: Changed Windsurf rules export from single file to directory format
+  - Now exports to `.windsurf/rules/` as multiple markdown files
+  - Aligns with Windsurf documentation (12,000 char limit per file)
+
+- **Reverse Quick Sync**: Import rules, agents, and skills from AI tool directories into `.context/`
+  - Inverse of Quick Sync - consolidates scattered AI tool configurations into centralized `.context/`
+  - New `reverse-sync` CLI command with comprehensive options
+  - Interactive mode with component selection and merge strategy prompts
+  - Supports 12 AI tools: Claude, Cursor, GitHub Copilot, Windsurf, Cline, Continue, Gemini, Codex, Aider, Zed, Antigravity, Trae
+
+- **Tool Detection**: High-level detection of which AI tools are present in a repository
+  - `ToolDetector` class aggregates results from rules, agents, and skills detectors
+  - Returns summary grouped by tool with file counts
+  - MCP tool: `detectAITools`
+
+- **Skills Detection**: New detector for skills from AI tool directories
+  - `SkillsDetector` class scans `.claude/skills/`, `.gemini/skills/`, `.codex/skills/`
+  - Parses SKILL.md frontmatter for metadata (name, description, phases, tags)
+  - Follows existing AgentsDetector pattern
+
+- **Import Skills Service**: Import skills with merge strategy support
+  - `ImportSkillsService` class with four merge strategies: skip, overwrite, merge, rename
+  - Adds frontmatter metadata to imported files (source_tool, source_path, imported_at)
+  - Preserves skill directory structure during import
+
+- **Merge Strategies**: Flexible conflict handling for imports
+  - `skip` - Skip existing files (default)
+  - `overwrite` - Replace existing files
+  - `merge` - Append content with separator
+  - `rename` - Create `{name}-{tool}.md` for conflicts
+
+- **MCP Tools for Reverse Sync**:
+  - `detectAITools` - Detect AI tool configurations with summary
+  - `reverseQuickSync` - Import from AI tool directories to `.context/`
+
+- **CLI Command**: `npx @ai-coders/context reverse-sync [options]`
+  - `--dry-run` - Preview changes without importing
+  - `--force` - Overwrite existing files
+  - `--skip-agents`, `--skip-skills`, `--skip-rules` - Skip specific components
+  - `--merge-strategy <strategy>` - How to handle conflicts
+  - `--no-metadata` - Skip frontmatter metadata addition
+  - `-v, --verbose` - Verbose output
+
+- **Interactive Menu**: Added "Reverse Sync (import from AI tools)" option
+  - Component selection (rules, agents, skills)
+  - Merge strategy selection
+  - Detection summary display
+
+- **i18n Support**: Full English and Portuguese translations for reverse sync
+
+### Technical Details
+
+#### New Files
+- `src/services/reverseSync/types.ts` - Types and interfaces
+- `src/services/reverseSync/presets.ts` - SKILL_SOURCES and tool mappings
+- `src/services/reverseSync/skillsDetector.ts` - Skills detection
+- `src/services/reverseSync/toolDetector.ts` - High-level tool detection
+- `src/services/reverseSync/importSkillsService.ts` - Skills import service
+- `src/services/reverseSync/reverseQuickSyncService.ts` - Main orchestrator
+- `src/services/reverseSync/index.ts` - Module exports
+
+#### Modified Files
+- `src/index.ts` - Added `reverse-sync` CLI command and interactive menu option
+- `src/services/mcp/mcpServer.ts` - Added `detectAITools` and `reverseQuickSync` MCP tools
+- `src/utils/i18n.ts` - Added reverse sync translations (EN/PT)
+
 ## [0.6.1] - 2026-01-15
 
 ### Added

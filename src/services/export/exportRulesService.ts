@@ -64,7 +64,13 @@ export const EXPORT_PRESETS: Record<string, ExportTarget[]> = {
     { name: 'copilot-instructions', path: '.github/copilot-instructions.md', format: 'single', description: 'GitHub Copilot instructions' },
   ],
   windsurf: [
-    { name: 'windsurf-rules-dir', path: '.windsurf/rules', format: 'single', description: 'Windsurf rules file' },
+    { name: 'windsurf-rules-dir', path: '.windsurf/rules', format: 'directory', description: 'Windsurf rules directory' },
+  ],
+  antigravity: [
+    { name: 'antigravity-rules', path: '.agent/rules', format: 'directory', description: 'Google Antigravity rules directory' },
+  ],
+  trae: [
+    { name: 'trae-rules', path: '.trae/rules', format: 'directory', description: 'Trae AI rules directory' },
   ],
   agents: [
     { name: 'agents-md', path: 'AGENTS.md', format: 'single', description: 'Universal AGENTS.md file' },

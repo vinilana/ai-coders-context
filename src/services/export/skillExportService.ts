@@ -55,6 +55,9 @@ export const SKILL_EXPORT_PRESETS: Record<string, SkillExportTarget[]> = {
   codex: [
     { name: 'codex-skills', path: '.codex/skills', description: 'Codex CLI skills directory' },
   ],
+  antigravity: [
+    { name: 'antigravity-workflows', path: '.agent/workflows', description: 'Google Antigravity workflows directory' },
+  ],
   all: [], // Populated dynamically below
 };
 

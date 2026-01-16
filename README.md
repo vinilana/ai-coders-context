@@ -19,10 +19,12 @@ Every AI coding tool invented its own way to organize context:
 .windsurf/rules/        # Windsurf
 .github/agents/         # Copilot
 .cline/                 # Cline
+.agent/rules/           # Google Antigravity
+.trae/rules/            # Trae AI
 AGENTS.md               # Codex
 ```
 
-Using multiple tools? Enjoy duplicating your rules, agents, and documentation across 6 different formats. Context fragmentation is real.
+Using multiple tools? Enjoy duplicating your rules, agents, and documentation across 8 different formats. Context fragmentation is real.
 
 ## The Solution
 
@@ -79,7 +81,7 @@ https://www.youtube.com/watch?v=5BPrfZAModk
 2. **Generates agent playbooks** — 14 specialized AI agents (code-reviewer, bug-fixer, architect, etc.)
 3. **Manages workflows** — PREVC process with scale detection and visual dashboards
 4. **Provides skills** — On-demand expertise (commit messages, PR reviews, security audits)
-5. **Syncs everywhere** — Export to Cursor, Claude, Copilot, Windsurf, Cline, Codex, and more
+5. **Syncs everywhere** — Export to Cursor, Claude, Copilot, Windsurf, Cline, Codex, Antigravity, Trae, and more
 6. **Keeps it updated** — Detects code changes and suggests documentation updates
 
 ## Quick Start
@@ -274,6 +276,36 @@ Add to your Codex CLI config (`~/.codex/config.toml`):
 [mcp_servers.ai-context]
 command = "npx"
 args = ["--yes", "@ai-coders/context@latest", "mcp"]
+```
+
+### Google Antigravity
+
+Add to your Antigravity MCP config (`~/.gemini/mcp_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "ai-context": {
+      "command": "npx",
+      "args": ["@ai-coders/context", "mcp"]
+    }
+  }
+}
+```
+
+### Trae AI
+
+Add to your Trae AI MCP config (Settings > MCP Servers):
+
+```json
+{
+  "mcpServers": {
+    "ai-context": {
+      "command": "npx",
+      "args": ["@ai-coders/context", "mcp"]
+    }
+  }
+}
 ```
 
 ### Local Development

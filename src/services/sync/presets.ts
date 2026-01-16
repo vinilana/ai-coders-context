@@ -31,6 +31,16 @@ export const TARGET_PRESETS: Record<Exclude<PresetName, 'all'>, TargetPreset> = 
     name: 'continue',
     path: '.continue/agents',
     description: 'Continue.dev agents directory'
+  },
+  antigravity: {
+    name: 'antigravity',
+    path: '.agent/agents',
+    description: 'Google Antigravity agents directory'
+  },
+  trae: {
+    name: 'trae',
+    path: '.trae/agents',
+    description: 'Trae AI agents directory'
   }
 };
 
@@ -59,5 +69,5 @@ export function getPresetByPath(targetPath: string): TargetPreset | undefined {
 }
 
 export function getAllPresetNames(): PresetName[] {
-  return ['claude', 'github', 'cursor', 'windsurf', 'cline', 'continue', 'all'];
+  return ['claude', 'github', 'cursor', 'windsurf', 'cline', 'continue', 'antigravity', 'trae', 'all'];
 }
