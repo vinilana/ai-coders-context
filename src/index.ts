@@ -27,6 +27,7 @@ import { ExportRulesService, EXPORT_PRESETS } from './services/export';
 import { ReportService } from './services/report';
 import { StackDetector } from './services/stack';
 import { QuickSyncService, QuickSyncOptions } from './services/quickSync';
+import { ReverseQuickSyncService, type MergeStrategy } from './services/reverseSync';
 import { AutoAdvanceDetector } from './services/workflow/autoAdvance';
 import { getScaleName, PHASE_NAMES_PT, PHASE_NAMES_EN, ROLE_DISPLAY_NAMES, ROLE_DISPLAY_NAMES_EN, type PrevcRole, ProjectScale } from './workflow';
 import { DEFAULT_MODELS, getApiKeyFromEnv } from './services/ai/providerFactory';
@@ -380,6 +381,39 @@ program
       }, repoPath);
     } catch (error) {
       ui.displayError(t('errors.import.failed'), error as Error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('reverse-sync')
+  .description('Import rules, agents, and skills from AI tool directories into .context/')
+  .argument('[repo-path]', 'Repository path to scan', process.cwd())
+  .option('--dry-run', 'Preview changes without importing')
+  .option('-f, --force', 'Overwrite existing files')
+  .option('--skip-agents', 'Skip importing agents')
+  .option('--skip-skills', 'Skip importing skills')
+  .option('--skip-rules', 'Skip importing rules')
+  .option('--merge-strategy <strategy>', 'How to handle conflicts: skip|overwrite|merge|rename', 'skip')
+  .option('--format <format>', 'Output format for rules: markdown|raw|formatted', 'formatted')
+  .option('--no-metadata', 'Do not add import metadata to files')
+  .option('-v, --verbose', 'Verbose output')
+  .action(async (repoPath: string, options: any) => {
+    try {
+      const service = new ReverseQuickSyncService({ ui, t, version: VERSION });
+      await service.run(repoPath, {
+        dryRun: options.dryRun,
+        force: options.force,
+        skipAgents: options.skipAgents,
+        skipSkills: options.skipSkills,
+        skipRules: options.skipRules,
+        mergeStrategy: options.mergeStrategy as MergeStrategy,
+        format: options.format,
+        metadata: options.metadata !== false,
+        verbose: options.verbose,
+      });
+    } catch (error) {
+      ui.displayError(t('errors.reverseSync.failed'), error as Error);
       process.exit(1);
     }
   });
@@ -962,7 +996,7 @@ async function selectLocale(showWelcome: boolean): Promise<void> {
   }
 }
 
-type InteractiveAction = 'scaffold' | 'fill' | 'plan' | 'syncAgents' | 'update' | 'workflow' | 'skills' | 'changeLanguage' | 'exit' | 'quickSync' | 'agents' | 'settings';
+type InteractiveAction = 'scaffold' | 'fill' | 'plan' | 'syncAgents' | 'update' | 'workflow' | 'skills' | 'changeLanguage' | 'exit' | 'quickSync' | 'reverseSync' | 'agents' | 'settings';
 type StateAction = 'create' | 'fill' | 'menu' | 'exit' | 'scaffold';
 
 async function runInteractive(): Promise<void> {
@@ -1176,6 +1210,7 @@ async function runFullMenu(daysBehind?: number): Promise<void> {
     const choices = [
       // Quick Actions (most used)
       { name: t('prompts.main.choice.quickSync'), value: 'quickSync' as InteractiveAction },
+      { name: t('prompts.main.choice.reverseSync'), value: 'reverseSync' as InteractiveAction },
       { name: t('prompts.main.choice.startWorkflow'), value: 'workflow' as InteractiveAction },
       { name: t('prompts.main.choice.createPlan'), value: 'plan' as InteractiveAction },
       new inquirer.Separator(),
@@ -1211,6 +1246,8 @@ async function runFullMenu(daysBehind?: number): Promise<void> {
 
     if (action === 'quickSync') {
       await runQuickSync();
+    } else if (action === 'reverseSync') {
+      await runReverseSync();
     } else if (action === 'scaffold') {
       await runInteractiveScaffold();
     } else if (action === 'fill') {
@@ -2301,6 +2338,110 @@ async function runQuickSync(): Promise<void> {
   }
 
   ui.displaySuccess(t('success.quickSync.complete'));
+}
+
+// ============================================================================
+// Reverse Quick Sync - Import from AI tool directories
+// ============================================================================
+
+async function runReverseSync(): Promise<void> {
+  const projectPath = process.cwd();
+
+  // Create service
+  const reverseSyncService = new ReverseQuickSyncService({
+    ui,
+    t,
+    version: VERSION,
+  });
+
+  // Step 1: Detect available tools
+  ui.startSpinner(t('prompts.reverseSync.detecting'));
+  const detection = await reverseSyncService.detect(projectPath);
+  ui.stopSpinner();
+
+  if (detection.summary.totalFiles === 0) {
+    ui.displayWarning(t('prompts.reverseSync.noFilesFound'));
+    return;
+  }
+
+  // Display detection summary
+  console.log('');
+  console.log(t('prompts.reverseSync.detected'));
+  console.log('');
+  for (const tool of detection.tools) {
+    if (tool.detected) {
+      const parts: string[] = [];
+      if (tool.counts.rules > 0) parts.push(`${tool.counts.rules} rules`);
+      if (tool.counts.agents > 0) parts.push(`${tool.counts.agents} agents`);
+      if (tool.counts.skills > 0) parts.push(`${tool.counts.skills} skills`);
+      console.log(`  ${colors.success('✓')} ${colors.primary(tool.displayName)} (${parts.join(', ')})`);
+    }
+  }
+  console.log('');
+
+  // Step 2: Select components to import
+  const { components } = await inquirer.prompt<{ components: string[] }>([
+    {
+      type: 'checkbox',
+      name: 'components',
+      message: t('prompts.reverseSync.selectComponents'),
+      choices: [
+        {
+          name: `Rules (${detection.summary.totalRules} files)`,
+          value: 'rules',
+          checked: detection.summary.totalRules > 0,
+          disabled: detection.summary.totalRules === 0,
+        },
+        {
+          name: `Agents (${detection.summary.totalAgents} files)`,
+          value: 'agents',
+          checked: detection.summary.totalAgents > 0,
+          disabled: detection.summary.totalAgents === 0,
+        },
+        {
+          name: `Skills (${detection.summary.totalSkills} files)`,
+          value: 'skills',
+          checked: detection.summary.totalSkills > 0,
+          disabled: detection.summary.totalSkills === 0,
+        },
+      ],
+    },
+  ]);
+
+  if (components.length === 0) {
+    ui.displayWarning(t('prompts.reverseSync.noComponentsSelected'));
+    return;
+  }
+
+  // Step 3: Select merge strategy
+  const { mergeStrategy } = await inquirer.prompt<{ mergeStrategy: MergeStrategy }>([
+    {
+      type: 'list',
+      name: 'mergeStrategy',
+      message: t('prompts.reverseSync.mergeStrategy'),
+      choices: [
+        { name: t('prompts.reverseSync.strategy.skip'), value: 'skip' },
+        { name: t('prompts.reverseSync.strategy.overwrite'), value: 'overwrite' },
+        { name: t('prompts.reverseSync.strategy.merge'), value: 'merge' },
+        { name: t('prompts.reverseSync.strategy.rename'), value: 'rename' },
+      ],
+    },
+  ]);
+
+  // Step 4: Run import
+  const result = await reverseSyncService.run(projectPath, {
+    skipRules: !components.includes('rules'),
+    skipAgents: !components.includes('agents'),
+    skipSkills: !components.includes('skills'),
+    mergeStrategy,
+    verbose: false,
+  });
+
+  // Display result
+  const totalImported = result.rulesImported + result.agentsImported + result.skillsImported;
+  if (totalImported > 0) {
+    ui.displaySuccess(t('success.reverseSync.complete', { count: totalImported }));
+  }
 }
 
 // ============================================================================

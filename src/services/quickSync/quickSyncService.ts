@@ -95,16 +95,14 @@ export class QuickSyncService {
             version: this.version,
           });
 
-          // Use selected targets or default to 'all' preset
+          // Use selected targets (preset names) or default to 'all' preset
+          // SyncService now understands preset names in the target array
           const hasCustomTargets = options.agentTargets && options.agentTargets.length > 0;
-          const customTargetPaths = hasCustomTargets
-            ? options.agentTargets!.map(t => path.join(absolutePath, `.${t}`, 'agents'))
-            : undefined;
 
           await syncService.run({
             source: agentsPath,
             preset: hasCustomTargets ? undefined : 'all',
-            target: customTargetPaths,
+            target: hasCustomTargets ? options.agentTargets : undefined,
             force: options.force,
             dryRun: options.dryRun,
             verbose: false,
@@ -142,15 +140,13 @@ export class QuickSyncService {
             version: this.version,
           });
 
-          // Use selected targets or default to 'all' preset
+          // Use selected targets (preset names) or default to 'all' preset
+          // SkillExportService now understands preset names in the targets array
           const hasCustomTargets = options.skillTargets && options.skillTargets.length > 0;
-          const customTargetPaths = hasCustomTargets
-            ? options.skillTargets!.map(t => path.join(absolutePath, `.${t}`, 'skills'))
-            : undefined;
 
           const exportResult = await skillExportService.run(absolutePath, {
             preset: hasCustomTargets ? undefined : 'all',
-            targets: customTargetPaths,
+            targets: hasCustomTargets ? options.skillTargets : undefined,
             force: options.force,
             dryRun: options.dryRun,
             verbose: false,

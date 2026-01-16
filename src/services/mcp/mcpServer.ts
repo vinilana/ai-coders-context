@@ -36,6 +36,7 @@ import { StartService } from '../start';
 import { ReportService } from '../report';
 import { ExportRulesService, EXPORT_PRESETS } from '../export';
 import { StackDetector } from '../stack';
+import { ReverseQuickSyncService, ToolDetector } from '../reverseSync';
 import {
   PREVC_ROLES,
   PHASE_NAMES_EN,
@@ -1032,8 +1033,123 @@ export class AIContextMCPServer {
 
     this.log('Registered 4 extended workflow tools');
 
+    // Register reverse sync tools
+    this.registerReverseSyncTools();
+
     // Register plan-workflow integration tools
     this.registerPlanTools();
+  }
+
+  /**
+   * Register reverse sync tools for importing from AI tool directories
+   */
+  private registerReverseSyncTools(): void {
+    const repoPath = this.options.repoPath || process.cwd();
+
+    // detectAITools - Detect which AI tools have configurations
+    this.server.registerTool('detectAITools', {
+      description: 'Detect which AI tools have configuration files in the repository. Returns a summary of rules, agents, and skills found for each tool.',
+      inputSchema: {
+        repoPath: z.string().optional().describe('Repository path (defaults to cwd)'),
+      }
+    }, async ({ repoPath: inputPath }) => {
+      try {
+        const detector = new ToolDetector();
+        const result = await detector.detect(inputPath || repoPath);
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              ...result
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    // reverseQuickSync - Import from AI tool directories to .context/
+    this.server.registerTool('reverseQuickSync', {
+      description: 'Import rules, agents, and skills from AI tool directories (.claude/, .cursor/, etc.) into .context/. Reverse of Quick Sync.',
+      inputSchema: {
+        repoPath: z.string().optional().describe('Repository path (defaults to cwd)'),
+        skipRules: z.boolean().optional().describe('Skip importing rules'),
+        skipAgents: z.boolean().optional().describe('Skip importing agents'),
+        skipSkills: z.boolean().optional().describe('Skip importing skills'),
+        mergeStrategy: z.enum(['skip', 'overwrite', 'merge', 'rename']).default('skip')
+          .describe('How to handle conflicts with existing files'),
+        dryRun: z.boolean().optional().describe('Preview changes without importing'),
+        force: z.boolean().optional().describe('Force overwrite without confirmation'),
+        addMetadata: z.boolean().default(true).optional()
+          .describe('Add frontmatter metadata to imported files'),
+      }
+    }, async ({ repoPath: inputPath, skipRules, skipAgents, skipSkills, mergeStrategy, dryRun, force, addMetadata }) => {
+      try {
+        // Create a minimal UI interface for MCP
+        const mcpUI = {
+          displayWelcome: () => {},
+          displayPrevcExplanation: () => {},
+          displaySuccess: () => {},
+          displayInfo: () => {},
+          displayWarning: () => {},
+          displayError: () => {},
+          startSpinner: () => {},
+          updateSpinner: () => {},
+          stopSpinner: () => {},
+          displayBox: () => {},
+        };
+
+        const service = new ReverseQuickSyncService({
+          ui: mcpUI as any,
+          t: (key: string) => key,
+          version: VERSION,
+        });
+
+        const targetPath = inputPath || repoPath;
+        const result = await service.run(targetPath, {
+          skipRules: skipRules || false,
+          skipAgents: skipAgents || false,
+          skipSkills: skipSkills || false,
+          mergeStrategy: mergeStrategy || 'skip',
+          dryRun: dryRun || false,
+          force: force || false,
+          metadata: addMetadata !== false,
+        });
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              ...result,
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            }, null, 2)
+          }]
+        };
+      }
+    });
+
+    this.log('Registered 2 reverse sync tools');
   }
 
   /**

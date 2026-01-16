@@ -197,6 +197,11 @@ export class ExportRulesService {
 
   /**
    * Resolve export targets from options
+   *
+   * Supports three formats:
+   * 1. Preset name via `preset` option (e.g., 'all', 'cursor')
+   * 2. Preset names in `targets` array (e.g., ['claude', 'cursor'])
+   * 3. Direct paths in `targets` array (e.g., ['.custom/rules'])
    */
   private resolveTargets(options: ExportOptions): ExportTarget[] {
     if (options.preset) {
@@ -205,12 +210,25 @@ export class ExportRulesService {
     }
 
     if (options.targets?.length) {
-      return options.targets.map((t) => ({
-        name: path.basename(t),
-        path: t,
-        format: 'single' as const,
-        description: 'Custom target',
-      }));
+      const resolved: ExportTarget[] = [];
+
+      for (const t of options.targets) {
+        // First check if target is a preset name
+        const preset = EXPORT_PRESETS[t.toLowerCase()];
+        if (preset) {
+          resolved.push(...preset);
+        } else {
+          // Treat as a direct path
+          resolved.push({
+            name: path.basename(t),
+            path: t,
+            format: 'single' as const,
+            description: 'Custom target',
+          });
+        }
+      }
+
+      return resolved;
     }
 
     // Default: export to common targets

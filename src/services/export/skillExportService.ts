@@ -248,6 +248,11 @@ export class SkillExportService {
 
   /**
    * Resolve export targets from options
+   *
+   * Supports three formats:
+   * 1. Preset name via `preset` option (e.g., 'all', 'claude')
+   * 2. Preset names in `targets` array (e.g., ['claude', 'gemini'])
+   * 3. Direct paths in `targets` array (e.g., ['.custom/skills'])
    */
   private resolveTargets(options: SkillExportOptions): SkillExportTarget[] {
     if (options.preset) {
@@ -256,11 +261,24 @@ export class SkillExportService {
     }
 
     if (options.targets?.length) {
-      return options.targets.map((t) => ({
-        name: path.basename(t),
-        path: t,
-        description: 'Custom target',
-      }));
+      const resolved: SkillExportTarget[] = [];
+
+      for (const t of options.targets) {
+        // First check if target is a preset name
+        const preset = SKILL_EXPORT_PRESETS[t.toLowerCase()];
+        if (preset) {
+          resolved.push(...preset);
+        } else {
+          // Treat as a direct path
+          resolved.push({
+            name: path.basename(t),
+            path: t,
+            description: 'Custom target',
+          });
+        }
+      }
+
+      return resolved;
     }
 
     // Default: export to all supported tools
