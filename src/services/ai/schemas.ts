@@ -255,7 +255,7 @@ export const DevelopmentPlanSchema = z.object({
 /**
  * Status enum for tools that require follow-up actions
  */
-export const ToolStatusEnum = z.enum(['success', 'requires_action', 'error']);
+export const ToolStatusEnum = z.enum(['success', 'incomplete', 'requires_action', 'error']);
 
 /**
  * Action status enum for tracking required actions
@@ -335,13 +335,36 @@ export const InitializeContextInputSchema = z.object({
 });
 
 export const InitializeContextOutputSchema = z.object({
-  // New structured action protocol fields
-  status: ToolStatusEnum.describe('Operation status - "requires_action" means follow-up actions are needed'),
+  // Immediate action signal - appears first in JSON for AI visibility
+  instruction: z.string().optional()
+    .describe('Human-readable instruction telling the AI what to do immediately'),
+  _warning: z.string().optional()
+    .describe('Warning signal for incomplete operations'),
+
+  // Structured action protocol fields
+  status: ToolStatusEnum.describe('Operation status - "incomplete" means pending writes must be completed'),
+  complete: z.boolean().optional()
+    .describe('Explicit boolean: false means operation is NOT complete'),
   operationType: z.string().optional().describe('Type of operation performed'),
   completionCriteria: z.string().optional()
     .describe('Explicit description of what makes this operation complete'),
+
+  // Fill instructions (the UPDATE_SCAFFOLD_PROMPT)
+  fillInstructions: z.string().optional()
+    .describe('Standard prompt with guidelines for HOW to fill the scaffolded files'),
+
+  // Pending writes (renamed from requiredActions for clarity)
+  pendingWrites: z.array(RequiredActionSchema).optional()
+    .describe('Files that MUST be written. Each has content ready to write.'),
+
+  // Legacy: requiredActions (kept for backwards compatibility)
   requiredActions: z.array(RequiredActionSchema).optional()
-    .describe('List of actions that MUST be completed. Each action has suggestedContent to write.'),
+    .describe('DEPRECATED: Use pendingWrites instead'),
+
+  // Checklist format that AIs recognize
+  checklist: z.array(z.string()).optional()
+    .describe('Human-readable checklist of pending tasks in "[ ] task" format'),
+
   codebaseContext: z.string().optional()
     .describe('Semantic context for understanding the codebase'),
   nextStep: z.object({
@@ -349,7 +372,15 @@ export const InitializeContextOutputSchema = z.object({
     example: z.string().optional().describe('Example tool call'),
   }).optional().describe('Explicit next step with example'),
 
-  // Legacy/metadata fields
+  // Metadata fields
+  _metadata: z.object({
+    docsGenerated: z.number().optional(),
+    agentsGenerated: z.number().optional(),
+    outputDir: z.string(),
+    classification: ProjectClassificationSchema.optional(),
+  }).optional().describe('Metadata about the operation'),
+
+  // Legacy fields (kept for backwards compatibility)
   docsGenerated: z.number().optional(),
   agentsGenerated: z.number().optional(),
   outputDir: z.string(),

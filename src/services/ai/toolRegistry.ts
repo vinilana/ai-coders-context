@@ -72,29 +72,34 @@ The codebase map is generated during initialization with --semantic flag.`
     description: 'Initialize .context scaffolding and create template files.',
     extendedDescription: `Initialize .context scaffolding and create template files.
 
-RESPONSE FORMAT:
-When autoFill=true (default), this tool returns status: "requires_action" with a requiredActions array.
-Each action contains pre-generated suggestedContent that you MUST write to the file.
+⚠️ CRITICAL: This tool returns status: "incomplete" with pending writes.
+You MUST complete ALL file writes BEFORE responding to the user.
+
+RESPONSE HANDLING:
+1. status="incomplete" with pendingWrites[] → IMMEDIATELY fill each file
+2. status="success" → Done, report to user
+3. status="error" → Report error
 
 WORKFLOW:
-1. Call initializeContext - scaffolding is created and content is pre-generated
-2. Response has status: "requires_action" with requiredActions[] array
-3. For EACH action in requiredActions where actionType="WRITE_FILE":
-   - Call Write tool with filePath and suggestedContent
-   - Example: Write({ file_path: action.filePath, content: action.suggestedContent })
-4. The operation is INCOMPLETE until ALL files in requiredActions are written
+1. Call initializeContext - scaffolding is created
+2. Response has status: "incomplete" with pendingWrites[] array
+3. Read the fillInstructions field - it contains guidelines for HOW to fill
+4. For EACH file in pendingWrites:
+   - Call fillSingleFile({ repoPath, filePath }) to get AI-generated content
+   - Call Write({ file_path, content: suggestedContent }) to save
+5. ONLY after ALL writes succeed → report "initialization complete"
 
 IMPORTANT:
-- status: "requires_action" means you MUST complete the requiredActions
-- status: "success" means initialization is complete (no actions needed)
-- status: "error" means initialization failed
+- status: "incomplete" means you MUST complete the pendingWrites
+- The response includes fillInstructions with quality guidelines
+- The checklist[] field shows pending tasks in human-readable format
+- DO NOT say "complete" or "done" until ALL writes succeed
 
-QUALITY REQUIREMENTS:
-After writing the pre-generated content, you MAY enhance the documentation with:
-- Explanations for "why" not just "what"
-- Practical examples where helpful
-- Important caveats or gotchas
-- Design patterns and architectural decisions`
+QUALITY REQUIREMENTS (from fillInstructions):
+- Replace TODO placeholders with accurate information
+- Verify cross-references between docs remain valid
+- Agent playbooks must list accurate responsibilities
+- Focus on accuracy and usefulness for developers`
   },
 
   scaffoldPlan: {

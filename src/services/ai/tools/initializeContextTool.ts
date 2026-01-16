@@ -14,6 +14,7 @@ import {
   ProjectClassification,
 } from '../../stack';
 import { getOrBuildContext, generateDocContent, generateAgentContent } from './fillScaffoldingTool';
+import { UPDATE_SCAFFOLD_PROMPT_FALLBACK } from '../../../prompts/defaults';
 
 export const initializeContextTool = tool({
   description: `Initialize .context scaffolding and create template files.
@@ -195,25 +196,76 @@ The AI agent MUST then fill each generated file using the provided context and i
         }
       }
 
-      // When skipContentGeneration is true, return a lean response
+      // When skipContentGeneration is true, return response with clear incomplete signal
       if (skipContentGeneration) {
+        const hasFilesToFill = generatedFiles.length > 0;
+
+        // Build pendingWrites array (lightweight, without content)
+        const pendingWrites: RequiredAction[] = generatedFiles.map((f, i) => ({
+          order: i + 1,
+          actionType: 'WRITE_FILE' as const,
+          filePath: f.path,
+          fileType: f.type,
+          instructions: f.fillInstructions,
+          status: 'pending' as const,
+        }));
+
+        // Build human-readable checklist
+        const checklist = generatedFiles.map(f => `[ ] Fill ${f.relativePath}`);
+
+        // Build instruction message
+        const instruction = hasFilesToFill
+          ? `⚠️ ACTION REQUIRED: Scaffolding created but ${generatedFiles.length} files need content.
+
+You MUST fill each file with appropriate content based on the codebase.
+
+DO THIS NOW:
+${generatedFiles.slice(0, 5).map((f, i) => `${i + 1}. Read and fill: ${f.relativePath}`).join('\n')}${generatedFiles.length > 5 ? `\n... and ${generatedFiles.length - 5} more files` : ''}
+
+Use fillSingleFile tool for each file to get AI-generated content suggestions.
+After getting suggestions, write the content using the Write tool.
+
+DO NOT say "initialization complete" until ALL files are filled.`
+          : undefined;
+
         return {
-          status: 'success',
+          // Immediate action signals (appear first in JSON)
+          instruction,
+          _warning: hasFilesToFill ? 'INCOMPLETE - ACTION REQUIRED' : undefined,
+
+          // Status signals
+          status: hasFilesToFill ? 'incomplete' : 'success',
+          complete: !hasFilesToFill,
           operationType: 'scaffold_only',
 
-          // Lightweight list of scaffolded files
-          scaffoldedFiles: generatedFiles.map(f => ({
-            filePath: f.path,
-            relativePath: f.relativePath,
-            type: f.type,
-          })),
+          // Fill instructions (the standard prompt for HOW to fill)
+          fillInstructions: hasFilesToFill ? UPDATE_SCAFFOLD_PROMPT_FALLBACK : undefined,
 
-          // Instructions for next steps
-          fillInstructions: generatedFiles.length > 0
-            ? 'Use fillSingleFile tool to generate content for each file, or fillScaffolding with limit parameter for batch processing.'
-            : undefined,
+          // Pending writes (files that need content)
+          pendingWrites: hasFilesToFill ? pendingWrites : undefined,
 
-          // Metadata fields
+          // Human-readable checklist
+          checklist: hasFilesToFill ? checklist : undefined,
+
+          // Next step guidance
+          nextStep: hasFilesToFill ? {
+            action: 'Call fillSingleFile for each file to get content, then Write to save',
+            example: `fillSingleFile({ repoPath: "${resolvedRepoPath}", filePath: "${pendingWrites[0]?.filePath || ''}" })`,
+          } : undefined,
+
+          // Metadata
+          _metadata: {
+            docsGenerated,
+            agentsGenerated,
+            outputDir,
+            classification: classification ? {
+              projectType: classification.primaryType,
+              confidence: classification.confidence,
+              reasoning: classification.reasoning,
+            } : undefined,
+          },
+
+          // Legacy fields for backwards compatibility
           docsGenerated,
           agentsGenerated,
           outputDir,
@@ -228,27 +280,68 @@ The AI agent MUST then fill each generated file using the provided context and i
       // Full response with pre-generated content (when skipContentGeneration is false)
       const hasActionsRequired = requiredActions.length > 0;
 
+      // Build human-readable checklist
+      const checklist = requiredActions.map(a => `[ ] Write to ${a.filePath}`);
+
+      // Build instruction message
+      const instruction = hasActionsRequired
+        ? `⚠️ ACTION REQUIRED: Scaffolding created with ${requiredActions.length} files containing pre-generated content.
+
+You MUST write each suggestedContent to its file path.
+
+DO THIS NOW:
+${requiredActions.slice(0, 5).map((a, i) => `${i + 1}. Write({ file_path: "${a.filePath}", content: pendingWrites[${i}].suggestedContent })`).join('\n')}${requiredActions.length > 5 ? `\n... and ${requiredActions.length - 5} more files` : ''}
+
+DO NOT say "initialization complete" until ALL writes succeed.`
+        : undefined;
+
       return {
-        // Structured action protocol - status indicates if follow-up is needed
-        status: hasActionsRequired ? 'requires_action' : 'success',
+        // Immediate action signals (appear first in JSON)
+        instruction,
+        _warning: hasActionsRequired ? 'INCOMPLETE - ACTION REQUIRED' : undefined,
+
+        // Status signals
+        status: hasActionsRequired ? 'incomplete' : 'success',
+        complete: !hasActionsRequired,
         operationType: 'initialize_and_fill',
         completionCriteria: hasActionsRequired
-          ? 'Write the suggestedContent to each file in requiredActions using the Write tool'
+          ? 'Write the suggestedContent to each file in pendingWrites using the Write tool'
           : undefined,
 
-        // Required actions with pre-generated content
+        // Fill instructions (the standard prompt for HOW to fill)
+        fillInstructions: hasActionsRequired ? UPDATE_SCAFFOLD_PROMPT_FALLBACK : undefined,
+
+        // Pending writes with pre-generated content
+        pendingWrites: hasActionsRequired ? requiredActions : undefined,
+
+        // Legacy: requiredActions (kept for backwards compatibility)
         requiredActions: hasActionsRequired ? requiredActions : undefined,
+
+        // Human-readable checklist
+        checklist: hasActionsRequired ? checklist : undefined,
 
         // Context for reference
         codebaseContext: semanticContext,
 
         // Explicit next step with example
         nextStep: hasActionsRequired ? {
-          action: 'For each item in requiredActions, call Write tool with filePath and suggestedContent',
-          example: `Write({ file_path: "${requiredActions[0]?.filePath || ''}", content: requiredActions[0].suggestedContent })`,
+          action: 'For each item in pendingWrites, call Write tool with filePath and suggestedContent',
+          example: `Write({ file_path: "${requiredActions[0]?.filePath || ''}", content: pendingWrites[0].suggestedContent })`,
         } : undefined,
 
-        // Metadata fields
+        // Metadata
+        _metadata: {
+          docsGenerated,
+          agentsGenerated,
+          outputDir,
+          classification: classification ? {
+            projectType: classification.primaryType,
+            confidence: classification.confidence,
+            reasoning: classification.reasoning,
+          } : undefined,
+        },
+
+        // Legacy fields for backwards compatibility
         docsGenerated,
         agentsGenerated,
         outputDir,
