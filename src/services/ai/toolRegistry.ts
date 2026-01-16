@@ -71,27 +71,30 @@ The codebase map is generated during initialization with --semantic flag.`
     name: 'initializeContext',
     description: 'Initialize .context scaffolding and create template files.',
     extendedDescription: `Initialize .context scaffolding and create template files.
-IMPORTANT: After this tool completes, you MUST fill the generated files:
-1. Use buildSemanticContext to analyze the codebase
-2. Read each generated template file
-3. Write filled content to each file based on the analysis
 
-CRITICAL - Documentation Quality Requirements:
-After filling the files with semantic analysis content, you MUST apply reasoning to significantly IMPROVE the documentation:
+RESPONSE FORMAT:
+When autoFill=true (default), this tool returns status: "requires_action" with a requiredActions array.
+Each action contains pre-generated suggestedContent that you MUST write to the file.
 
-- Architecture docs: Reason about design patterns, identify why certain architectural decisions were made, explain trade-offs, and document implicit design principles that aren't obvious from code alone
-- Data flow docs: Think through edge cases, document error handling paths, explain the reasoning behind data transformations, and clarify complex interactions
-- Agent playbooks: Use your understanding to create actionable, context-aware instructions that go beyond generic templates
-- README files: Synthesize information to create clear, developer-friendly overviews that highlight what's most important
+WORKFLOW:
+1. Call initializeContext - scaffolding is created and content is pre-generated
+2. Response has status: "requires_action" with requiredActions[] array
+3. For EACH action in requiredActions where actionType="WRITE_FILE":
+   - Call Write tool with filePath and suggestedContent
+   - Example: Write({ file_path: action.filePath, content: action.suggestedContent })
+4. The operation is INCOMPLETE until ALL files in requiredActions are written
 
-DO NOT simply copy the semantic analysis output. Use critical thinking to:
-1. Identify gaps in the auto-generated content
-2. Add explanations for "why" not just "what"
-3. Include practical examples where helpful
-4. Highlight important caveats or gotchas
-5. Ensure documentation tells a coherent story
+IMPORTANT:
+- status: "requires_action" means you MUST complete the requiredActions
+- status: "success" means initialization is complete (no actions needed)
+- status: "error" means initialization failed
 
-The goal is documentation that a new developer would find genuinely helpful, not just technically accurate.`
+QUALITY REQUIREMENTS:
+After writing the pre-generated content, you MAY enhance the documentation with:
+- Explanations for "why" not just "what"
+- Practical examples where helpful
+- Important caveats or gotchas
+- Design patterns and architectural decisions`
   },
 
   scaffoldPlan: {

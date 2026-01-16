@@ -253,6 +253,31 @@ export const DevelopmentPlanSchema = z.object({
 // =============================================================================
 
 /**
+ * Status enum for tools that require follow-up actions
+ */
+export const ToolStatusEnum = z.enum(['success', 'requires_action', 'error']);
+
+/**
+ * Action status enum for tracking required actions
+ */
+export const ActionStatusEnum = z.enum(['pending', 'in_progress', 'completed', 'skipped']);
+
+/**
+ * Required action schema for structured action protocol
+ */
+export const RequiredActionSchema = z.object({
+  order: z.number().describe('Sequence order for this action'),
+  actionType: z.enum(['WRITE_FILE', 'CALL_TOOL', 'VERIFY']).describe('Type of action to perform'),
+  filePath: z.string().describe('Absolute path to the file'),
+  fileType: z.enum(['doc', 'agent']).describe('Type of scaffold file'),
+  instructions: z.string().describe('Instructions for filling this file'),
+  suggestedContent: z.string().optional().describe('Pre-generated content to write to the file'),
+  status: ActionStatusEnum.describe('Current status of this action'),
+});
+
+export type RequiredAction = z.infer<typeof RequiredActionSchema>;
+
+/**
  * Project type enum for scaffold filtering
  */
 export const ProjectTypeEnum = z.enum([
@@ -308,12 +333,24 @@ export const InitializeContextInputSchema = z.object({
 });
 
 export const InitializeContextOutputSchema = z.object({
-  success: z.boolean(),
+  // New structured action protocol fields
+  status: ToolStatusEnum.describe('Operation status - "requires_action" means follow-up actions are needed'),
+  operationType: z.string().optional().describe('Type of operation performed'),
+  completionCriteria: z.string().optional()
+    .describe('Explicit description of what makes this operation complete'),
+  requiredActions: z.array(RequiredActionSchema).optional()
+    .describe('List of actions that MUST be completed. Each action has suggestedContent to write.'),
+  codebaseContext: z.string().optional()
+    .describe('Semantic context for understanding the codebase'),
+  nextStep: z.object({
+    action: z.string().describe('What to do next'),
+    example: z.string().optional().describe('Example tool call'),
+  }).optional().describe('Explicit next step with example'),
+
+  // Legacy/metadata fields
   docsGenerated: z.number().optional(),
   agentsGenerated: z.number().optional(),
   outputDir: z.string(),
-  generatedFiles: z.array(z.string()).optional().describe('List of generated template files that need to be filled'),
-  nextSteps: z.array(z.string()).optional().describe('Instructions for the AI agent to fill the templates'),
   classification: ProjectClassificationSchema.optional()
     .describe('Detected project type and classification confidence'),
   error: z.string().optional()

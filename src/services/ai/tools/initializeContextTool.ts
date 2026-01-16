@@ -1,7 +1,7 @@
 import { tool } from 'ai';
 import * as path from 'path';
 import * as fs from 'fs-extra';
-import { InitializeContextInputSchema, type InitializeContextInput } from '../schemas';
+import { InitializeContextInputSchema, type InitializeContextInput, type RequiredAction } from '../schemas';
 import { FileMapper } from '../../../utils/fileMapper';
 import { DocumentationGenerator } from '../../../generators/documentation/documentationGenerator';
 import { AgentGenerator } from '../../../generators/agents/agentGenerator';
@@ -45,7 +45,7 @@ The AI agent MUST then fill each generated file using the provided context and i
       // Validate repo path exists
       if (!await fs.pathExists(resolvedRepoPath)) {
         return {
-          success: false,
+          status: 'error',
           outputDir,
           error: `Repository path does not exist: ${resolvedRepoPath}`
         };
@@ -156,34 +156,78 @@ The AI agent MUST then fill each generated file using the provided context and i
         }
       }
 
-      // Build the response with fill instructions
-      const fillPrompt = autoFill ? buildFillPrompt(generatedFiles, semanticContext) : undefined;
+      // Build requiredActions with pre-generated content for each file
+      const requiredActions: RequiredAction[] = [];
+
+      if (autoFill && generatedFiles.length > 0) {
+        for (let i = 0; i < generatedFiles.length; i++) {
+          const file = generatedFiles[i];
+          let suggestedContent: string | undefined;
+
+          // Pre-generate content for each file
+          if (semanticContext) {
+            try {
+              const templateContent = await fs.readFile(file.path, 'utf-8');
+              if (file.type === 'doc') {
+                suggestedContent = generateDocContent(path.basename(file.path), templateContent, semanticContext);
+              } else if (file.type === 'agent') {
+                const agentType = path.basename(file.path, '.md');
+                suggestedContent = generateAgentContent(agentType, templateContent, semanticContext);
+              }
+            } catch {
+              // If content generation fails, leave undefined
+              suggestedContent = undefined;
+            }
+          }
+
+          requiredActions.push({
+            order: i + 1,
+            actionType: 'WRITE_FILE',
+            filePath: file.path,
+            fileType: file.type,
+            instructions: file.fillInstructions,
+            suggestedContent,
+            status: 'pending',
+          });
+        }
+      }
+
+      // Return with structured action protocol
+      const hasActionsRequired = requiredActions.length > 0;
 
       return {
-        success: true,
+        // Structured action protocol - status indicates if follow-up is needed
+        status: hasActionsRequired ? 'requires_action' : 'success',
+        operationType: 'initialize_and_fill',
+        completionCriteria: hasActionsRequired
+          ? 'Write the suggestedContent to each file in requiredActions using the Write tool'
+          : undefined,
+
+        // Required actions with pre-generated content
+        requiredActions: hasActionsRequired ? requiredActions : undefined,
+
+        // Context for reference
+        codebaseContext: semanticContext,
+
+        // Explicit next step with example
+        nextStep: hasActionsRequired ? {
+          action: 'For each item in requiredActions, call Write tool with filePath and suggestedContent',
+          example: `Write({ file_path: "${requiredActions[0]?.filePath || ''}", content: requiredActions[0].suggestedContent })`,
+        } : undefined,
+
+        // Metadata fields
         docsGenerated,
         agentsGenerated,
         outputDir,
-        generatedFiles: generatedFiles.map(f => ({
-          path: f.path,
-          relativePath: f.relativePath,
-          type: f.type,
-          fillInstructions: f.fillInstructions,
-        })),
         classification: classification ? {
           projectType: classification.primaryType,
           confidence: classification.confidence,
           reasoning: classification.reasoning,
         } : undefined,
-        semanticContext: autoFill ? semanticContext : undefined,
-        fillPrompt,
-        instructions: autoFill
-          ? 'IMPORTANT: You MUST now fill each generated file using the semantic context and fill instructions provided. Write the content to each file path.'
-          : 'Call fillScaffolding tool to get codebase-aware content for each file, then write the suggestedContent to each file.',
       };
     } catch (error) {
       return {
-        success: false,
+        status: 'error',
         outputDir,
         error: error instanceof Error ? error.message : String(error)
       };
@@ -286,50 +330,3 @@ function getAgentFillInstructions(agentType: string): string {
 - Common pitfalls to avoid`;
 }
 
-/**
- * Build a comprehensive fill prompt for the AI agent
- */
-function buildFillPrompt(files: Array<{ path: string; relativePath: string; type: string; fillInstructions: string }>, semanticContext?: string): string {
-  const lines: string[] = [];
-
-  lines.push('# Fill Instructions for Scaffolded Files');
-  lines.push('');
-  lines.push('You MUST fill each of the following files with appropriate content based on the codebase analysis.');
-  lines.push('');
-
-  if (semanticContext) {
-    lines.push('## Codebase Context');
-    lines.push('');
-    lines.push('Use this semantic context to understand the codebase structure:');
-    lines.push('');
-    lines.push('```');
-    // Limit context size to avoid overwhelming the response
-    lines.push(semanticContext.length > 8000 ? semanticContext.substring(0, 8000) + '\n...(truncated)' : semanticContext);
-    lines.push('```');
-    lines.push('');
-  }
-
-  lines.push('## Files to Fill');
-  lines.push('');
-
-  for (const file of files) {
-    lines.push(`### ${file.relativePath}`);
-    lines.push(`**Path:** \`${file.path}\``);
-    lines.push(`**Type:** ${file.type}`);
-    lines.push('');
-    lines.push('**Instructions:**');
-    lines.push(file.fillInstructions);
-    lines.push('');
-  }
-
-  lines.push('## Action Required');
-  lines.push('');
-  lines.push('For each file listed above:');
-  lines.push('1. Read the current template content');
-  lines.push('2. Generate appropriate content based on the instructions and codebase context');
-  lines.push('3. Write the filled content to the file');
-  lines.push('');
-  lines.push('DO NOT skip any files. Each file must be filled with meaningful, codebase-specific content.');
-
-  return lines.join('\n');
-}
