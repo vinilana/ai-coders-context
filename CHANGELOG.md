@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **MCP Action Logging**: Logs every MCP tool invocation to `.context/workflow/actions.jsonl` with sanitized metadata for auditability.
+- **Phase Orchestration Skills**: Workflow responses now include recommended skills alongside agent orchestration for each PREVC phase.
+
+### Changed
+
+- **Workflow Status Serialization**: Omits empty or default sections to keep `status.yaml` minimal and readable.
+
+### Fixed
+
+- **Workflow Init Paths**: Correctly resolves `.context` repo paths to ensure `status.yaml` is created in the expected location.
+- **Plan Index Initialization**: Ensures `.context/workflow/plans.json` is created when starting a workflow.
+
 ## [0.7.0] - 2026-01-17
 
 ### Added

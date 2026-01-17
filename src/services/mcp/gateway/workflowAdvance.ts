@@ -38,6 +38,9 @@ export async function handleWorkflowAdvance(
   options: WorkflowAdvanceOptions
 ): Promise<MCPToolResponse> {
   const repoPath = path.resolve(params.repoPath || options.repoPath);
+  const contextPath = path.basename(repoPath) === '.context'
+    ? repoPath
+    : path.join(repoPath, '.context');
 
   try {
     const service = new WorkflowService(repoPath);
@@ -47,7 +50,7 @@ export async function handleWorkflowAdvance(
         success: false,
         error: 'No workflow found. Initialize a workflow first.',
         suggestion: 'Use workflow-init({ name: "feature-name" }) to start.',
-        statusFilePath: path.join(repoPath, '.context', 'workflow', 'status.yaml')
+        statusFilePath: path.join(contextPath, 'workflow', 'status.yaml')
       });
     }
 
@@ -64,10 +67,7 @@ export async function handleWorkflowAdvance(
           }
         };
 
-        // Add orchestration guidance when advancing to Execution phase
-        if (nextPhase === 'E') {
-          response.orchestration = service.getPhaseOrchestration(nextPhase);
-        }
+        response.orchestration = await service.getPhaseOrchestration(nextPhase);
 
         return createJsonResponse(response);
       } else {

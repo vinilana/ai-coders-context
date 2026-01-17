@@ -31,6 +31,9 @@ export async function handleWorkflowStatus(
   options: WorkflowStatusOptions
 ): Promise<MCPToolResponse> {
   const repoPath = path.resolve(params.repoPath || options.repoPath);
+  const contextPath = path.basename(repoPath) === '.context'
+    ? repoPath
+    : path.join(repoPath, '.context');
 
   try {
     const service = new WorkflowService(repoPath);
@@ -41,13 +44,14 @@ export async function handleWorkflowStatus(
         error: 'No workflow found. Initialize a workflow first.',
         suggestion: 'Use workflow-init({ name: "feature-name" }) to start.',
         note: 'Workflows enable structured PREVC phases. Skip for trivial changes.',
-        statusFilePath: path.join(repoPath, '.context', 'workflow', 'status.yaml')
+        statusFilePath: path.join(contextPath, 'workflow', 'status.yaml')
       });
     }
 
     const summary = await service.getSummary();
     const status = await service.getStatus();
-    const statusFilePath = path.join(repoPath, '.context', 'workflow', 'status.yaml');
+    const statusFilePath = path.join(contextPath, 'workflow', 'status.yaml');
+    const orchestration = await service.getPhaseOrchestration(summary.currentPhase);
 
     return createJsonResponse({
       success: true,
@@ -62,6 +66,7 @@ export async function handleWorkflowStatus(
       phases: status.phases,
       agents: status.agents,
       roles: status.roles,
+      orchestration,
       statusFilePath,
     });
   } catch (error) {

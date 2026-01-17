@@ -71,7 +71,10 @@ export class WorkflowService {
     repoPath: string,
     deps: WorkflowServiceDependencies = {}
   ) {
-    this.contextPath = path.join(repoPath, '.context');
+    const resolvedPath = path.resolve(repoPath);
+    this.contextPath = path.basename(resolvedPath) === '.context'
+      ? resolvedPath
+      : path.join(resolvedPath, '.context');
     this.orchestrator = new PrevcOrchestrator(this.contextPath);
     this.collaborationManager = new CollaborationManager();
     this.deps = deps;
@@ -267,7 +270,7 @@ export class WorkflowService {
   /**
    * Get orchestration guidance for a phase
    */
-  getPhaseOrchestration(phase: PrevcPhase): PhaseOrchestration {
+  async getPhaseOrchestration(phase: PrevcPhase): Promise<PhaseOrchestration> {
     return this.orchestrator.getPhaseOrchestration(phase);
   }
 

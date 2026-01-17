@@ -321,6 +321,17 @@ export interface AgentSequenceStep {
 }
 
 /**
+ * Skill suggestion for orchestration
+ */
+export interface SkillSuggestion {
+  slug: string;
+  name: string;
+  description: string;
+  path: string;
+  isBuiltIn: boolean;
+}
+
+/**
  * Phase orchestration guidance for agent-based workflows
  */
 export interface PhaseOrchestration {
@@ -332,4 +343,6 @@ export interface PhaseOrchestration {
   startWith: string;
   /** Instruction for starting the phase */
   instruction: string;
+  /** Recommended skills for this phase */
+  recommendedSkills?: SkillSuggestion[];
 }

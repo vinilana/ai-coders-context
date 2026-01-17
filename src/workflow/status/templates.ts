@@ -10,26 +10,10 @@ import {
   PrevcRole,
   ProjectScale,
   PhaseStatus,
-  AgentStatus,
-  ExecutionHistory,
   ExecutionAction,
 } from '../types';
 import { PREVC_PHASE_ORDER } from '../phases';
 import { getScaleRoute } from '../scaling';
-
-/**
- * All available roles constant
- */
-const ALL_ROLES: PrevcRole[] = [
-  'planner',
-  'designer',
-  'architect',
-  'developer',
-  'qa',
-  'reviewer',
-  'documenter',
-  'solo-dev',
-];
 
 /**
  * Phase names for resume context
@@ -106,7 +90,7 @@ export interface CreateStatusOptions {
  * Create initial workflow status
  */
 export function createInitialStatus(options: CreateStatusOptions): PrevcStatus {
-  const { name, scale, phases, roles } = options;
+  const { name, scale, phases } = options;
 
   const route = getScaleRoute(scale);
   const activePhasesSet = new Set(phases || route.phases);
@@ -145,35 +129,8 @@ export function createInitialStatus(options: CreateStatusOptions): PrevcStatus {
     started_at: new Date().toISOString(),
   };
 
-  // Get active roles
-  const activeRoles =
-    roles === 'all'
-      ? ALL_ROLES
-      : Array.isArray(roles)
-      ? roles
-      : route.roles === 'all'
-      ? ALL_ROLES.filter(r => r !== 'solo-dev')
-      : route.roles;
-
-  // Create role statuses (legacy - kept for backward compatibility)
-  const roleStatuses: Partial<Record<PrevcRole, object>> = {};
-  for (const role of activeRoles) {
-    roleStatuses[role] = {
-      status: 'pending',
-    };
-  }
-
-  // Create execution history
+  // Create initial status
   const now = new Date().toISOString();
-  const execution: ExecutionHistory = {
-    history: [{
-      timestamp: now,
-      phase: firstPhase,
-      action: 'started',
-    }],
-    last_activity: now,
-    resume_context: generateResumeContext(firstPhase, 'started'),
-  };
 
   return {
     project: {
@@ -183,9 +140,8 @@ export function createInitialStatus(options: CreateStatusOptions): PrevcStatus {
       current_phase: firstPhase,
     },
     phases: phaseStatuses,
-    execution,
     agents: {},
-    roles: roleStatuses,
+    roles: {},
   };
 }
 

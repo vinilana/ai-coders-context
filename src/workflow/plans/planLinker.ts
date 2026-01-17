@@ -51,6 +51,21 @@ export class PlanLinker {
   }
 
   /**
+   * Ensure workflow plan index exists
+   */
+  async ensureWorkflowPlanIndex(): Promise<void> {
+    const plansFile = path.join(this.workflowPath, 'plans.json');
+
+    if (await fs.pathExists(plansFile)) {
+      return;
+    }
+
+    await fs.ensureDir(this.workflowPath);
+    const initialPlans: WorkflowPlans = { active: [], completed: [] };
+    await fs.writeFile(plansFile, JSON.stringify(initialPlans, null, 2), 'utf-8');
+  }
+
+  /**
    * Discover all available agents (built-in + custom)
    * Delegates to AgentRegistry
    */

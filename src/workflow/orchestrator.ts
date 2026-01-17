@@ -24,6 +24,7 @@ import { getRoleConfig } from './prevcConfig';
 import { WorkflowGateChecker, GateCheckResult, getDefaultSettings } from './gates';
 import { PlanLinker } from './plans/planLinker';
 import { AgentOrchestrator, PHASE_TO_AGENTS } from './orchestration/agentOrchestrator';
+import { createSkillRegistry } from './skills';
 
 /**
  * Options for completing a phase
@@ -49,12 +50,14 @@ export interface InitWorkflowOptions {
  * Coordinates the execution of the PREVC workflow.
  */
 export class PrevcOrchestrator {
+  private repoPath: string;
   private contextPath: string;
   private statusManager: PrevcStatusManager;
   private gateChecker: WorkflowGateChecker;
   private planLinker: PlanLinker;
 
   constructor(contextPath: string) {
+    this.repoPath = path.dirname(contextPath);
     this.contextPath = contextPath;
     this.statusManager = new PrevcStatusManager(contextPath);
     this.gateChecker = new WorkflowGateChecker();
@@ -76,12 +79,16 @@ export class PrevcOrchestrator {
     const scale = detectProjectScale(context);
     const route = getScaleRoute(scale);
 
-    return this.statusManager.create({
+    const status = await this.statusManager.create({
       name: context.name,
       scale,
       phases: route.phases,
       roles: route.roles,
     });
+
+    await this.planLinker.ensureWorkflowPlanIndex();
+
+    return status;
   }
 
   /**
@@ -112,6 +119,8 @@ export class PrevcOrchestrator {
       phases: route.phases,
       roles: route.roles,
     });
+
+    await this.planLinker.ensureWorkflowPlanIndex();
 
     // Apply custom settings if provided
     if (settings) {
@@ -251,7 +260,7 @@ export class PrevcOrchestrator {
   /**
    * Get orchestration guidance for a phase
    */
-  getPhaseOrchestration(phase: PrevcPhase): PhaseOrchestration {
+  async getPhaseOrchestration(phase: PrevcPhase): Promise<PhaseOrchestration> {
     const orchestrator = new AgentOrchestrator();
     const agents = PHASE_TO_AGENTS[phase] || [];
     const sequence = orchestrator.getAgentHandoffSequence([phase]);
@@ -263,12 +272,22 @@ export class PrevcOrchestrator {
 
     const startWith = agents.length > 0 ? agents[0] : 'feature-developer';
     const instruction = this.buildOrchestrationInstruction(phase, startWith);
+    const skillRegistry = createSkillRegistry(this.repoPath);
+    const skills = await skillRegistry.getSkillsForPhase(phase);
+    const recommendedSkills = skills.map((skill) => ({
+      slug: skill.slug,
+      name: skill.metadata.name,
+      description: skill.metadata.description,
+      path: skill.path,
+      isBuiltIn: skill.isBuiltIn,
+    }));
 
     return {
       recommendedAgents: agents,
       suggestedSequence,
       startWith,
       instruction,
+      recommendedSkills,
     };
   }
 

@@ -16,6 +16,7 @@ import { readFileTool } from '../ai/tools';
 import { SemanticContextBuilder, type ContextFormat } from '../semantic/contextBuilder';
 import { VERSION } from '../../version';
 import { WorkflowService } from '../workflow';
+import { logMcpAction } from './actionLogger';
 import {
   PREVC_ROLES,
   PHASE_NAMES_EN,
@@ -93,6 +94,10 @@ export class AIContextMCPServer {
    */
   private registerGatewayTools(): void {
     const repoPath = this.options.repoPath || process.cwd();
+    const wrap = <TParams>(
+      toolName: string,
+      handler: (params: TParams) => Promise<MCPToolResponse>
+    ) => this.wrapWithActionLogging(toolName, handler, repoPath);
 
     // Gateway 1: explore - File and code exploration
     this.server.registerTool('explore', {
@@ -128,9 +133,9 @@ export class AIContextMCPServer {
         includePatterns: z.array(z.string()).optional()
           .describe('(getStructure) Include patterns'),
       }
-    }, async (params): Promise<MCPToolResponse> => {
+    }, wrap('explore', async (params): Promise<MCPToolResponse> => {
       return handleExplore(params as ExploreParams, { repoPath });
-    });
+    }));
 
     // Gateway 2: context - Context scaffolding and semantic context
     this.server.registerTool('context', {
@@ -198,9 +203,9 @@ export class AIContextMCPServer {
         summary: z.string().optional()
           .describe('(scaffoldPlan) Plan summary/goal'),
       }
-    }, async (params): Promise<MCPToolResponse> => {
+    }, wrap('context', async (params): Promise<MCPToolResponse> => {
       return handleContext(params as ContextParams, { repoPath, contextBuilder: this.contextBuilder });
-    });
+    }));
 
     // Dedicated Workflow Tools (split from consolidated workflow gateway)
 
@@ -242,9 +247,9 @@ export class AIContextMCPServer {
         archive_previous: z.boolean().optional()
           .describe('Archive existing workflow'),
       }
-    }, async (params): Promise<MCPToolResponse> => {
+    }, wrap('workflow-init', async (params): Promise<MCPToolResponse> => {
       return handleWorkflowInit(params as WorkflowInitParams, { repoPath });
-    });
+    }));
 
     // Tool 3b: workflow-status - Get current workflow status
     this.server.registerTool('workflow-status', {
@@ -254,9 +259,9 @@ Returns: Current phase, all phase statuses, gate settings, linked plans, agent a
       inputSchema: {
         // No required parameters
       }
-    }, async (params): Promise<MCPToolResponse> => {
+    }, wrap('workflow-status', async (params): Promise<MCPToolResponse> => {
       return handleWorkflowStatus(params as WorkflowStatusParams, { repoPath });
-    });
+    }));
 
     // Tool 3c: workflow-advance - Advance to next phase
     this.server.registerTool('workflow-advance', {
@@ -273,9 +278,9 @@ Use force=true to bypass gates, or use workflow-manage({ action: 'setAutonomous'
         force: z.boolean().optional()
           .describe('Force advancement even if gates block'),
       }
-    }, async (params): Promise<MCPToolResponse> => {
+    }, wrap('workflow-advance', async (params): Promise<MCPToolResponse> => {
       return handleWorkflowAdvance(params as WorkflowAdvanceParams, { repoPath });
-    });
+    }));
 
     // Tool 3d: workflow-manage - Manage workflow operations
     this.server.registerTool('workflow-manage', {
@@ -316,9 +321,9 @@ Actions:
         reason: z.string().optional()
           .describe('(setAutonomous) Reason for change'),
       }
-    }, async (params): Promise<MCPToolResponse> => {
+    }, wrap('workflow-manage', async (params): Promise<MCPToolResponse> => {
       return handleWorkflowManage(params as WorkflowManageParams, { repoPath });
-    });
+    }));
 
     // Gateway 5: sync - Import/export synchronization
     this.server.registerTool('sync', {
@@ -370,9 +375,9 @@ Actions:
         repoPath: z.string().optional()
           .describe('Repository path'),
       }
-    }, async (params): Promise<MCPToolResponse> => {
+    }, wrap('sync', async (params): Promise<MCPToolResponse> => {
       return handleSync(params as SyncParams, { repoPath });
-    });
+    }));
 
     // Gateway 6: plan - Plan management and execution tracking
     this.server.registerTool('plan', {
@@ -417,9 +422,9 @@ Actions:
         dryRun: z.boolean().optional()
           .describe('(commitPhase) Preview without committing'),
       }
-    }, async (params): Promise<MCPToolResponse> => {
+    }, wrap('plan', async (params): Promise<MCPToolResponse> => {
       return handlePlan(params as PlanParams, { repoPath });
-    });
+    }));
 
     // Gateway 7: agent - Agent orchestration and discovery
     this.server.registerTool('agent', {
@@ -449,9 +454,9 @@ Actions:
         agent: z.enum(AGENT_TYPES as unknown as [string, ...string[]]).optional()
           .describe('(getDocs) Agent type for docs'),
       }
-    }, async (params): Promise<MCPToolResponse> => {
+    }, wrap('agent', async (params): Promise<MCPToolResponse> => {
       return handleAgent(params as AgentParams, { repoPath });
-    });
+    }));
 
     // Gateway 8: skill - Skill management
     this.server.registerTool('skill', {
@@ -480,9 +485,9 @@ Actions:
         force: z.boolean().optional()
           .describe('(scaffold, export) Overwrite existing'),
       }
-    }, async (params): Promise<MCPToolResponse> => {
+    }, wrap('skill', async (params): Promise<MCPToolResponse> => {
       return handleSkill(params as SkillParams, { repoPath });
-    });
+    }));
 
     this.log('Registered 9 tools (5 consolidated gateways + 4 dedicated workflow tools)');
   }
@@ -629,6 +634,107 @@ Actions:
     );
 
     this.log('Registered 1 workflow resource');
+  }
+
+  private wrapWithActionLogging<TParams>(
+    toolName: string,
+    handler: (params: TParams) => Promise<MCPToolResponse>,
+    defaultRepoPath: string
+  ): (params: TParams) => Promise<MCPToolResponse> {
+    return async (params: TParams) => {
+      const resolvedRepoPath = path.resolve((params as { repoPath?: string })?.repoPath || defaultRepoPath);
+      const action = typeof (params as { action?: string })?.action === 'string'
+        ? (params as { action?: string }).action!
+        : toolName;
+
+      try {
+        const response = await handler(params);
+        await this.logToolResponse(resolvedRepoPath, toolName, action, params, response);
+        return response;
+      } catch (error) {
+        await this.logToolError(resolvedRepoPath, toolName, action, params, error);
+        throw error;
+      }
+    };
+  }
+
+  private async logToolResponse<TParams>(
+    repoPath: string,
+    toolName: string,
+    action: string,
+    params: TParams,
+    response: MCPToolResponse
+  ): Promise<void> {
+    const payload = this.parseResponsePayload(response);
+    const success = typeof payload?.success === 'boolean'
+      ? payload.success
+      : !response.isError;
+    const errorMessage = payload?.error;
+    const resultSummary = payload ? this.buildResultSummary(payload) : undefined;
+
+    await logMcpAction(repoPath, {
+      tool: toolName,
+      action,
+      status: success ? 'success' : 'error',
+      details: {
+        params,
+        ...(resultSummary ? { result: resultSummary } : {}),
+      },
+      ...(success ? {} : { error: errorMessage || 'Tool reported failure' }),
+    });
+  }
+
+  private async logToolError<TParams>(
+    repoPath: string,
+    toolName: string,
+    action: string,
+    params: TParams,
+    error: unknown
+  ): Promise<void> {
+    const message = error instanceof Error ? error.message : String(error);
+
+    await logMcpAction(repoPath, {
+      tool: toolName,
+      action,
+      status: 'error',
+      details: { params },
+      error: message,
+    });
+  }
+
+  private parseResponsePayload(response: MCPToolResponse): Record<string, unknown> | null {
+    const text = response.content?.[0]?.text;
+    if (!text) return null;
+    try {
+      const parsed = JSON.parse(text);
+      return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private buildResultSummary(payload: Record<string, unknown>): Record<string, unknown> | null {
+    const summaryKeys = [
+      'success',
+      'message',
+      'currentPhase',
+      'nextPhase',
+      'phase',
+      'scale',
+      'planSlug',
+      'count',
+      'total',
+      'status',
+    ];
+    const summary: Record<string, unknown> = {};
+
+    for (const key of summaryKeys) {
+      if (key in payload) {
+        summary[key] = payload[key];
+      }
+    }
+
+    return Object.keys(summary).length > 0 ? summary : null;
   }
 
   /**

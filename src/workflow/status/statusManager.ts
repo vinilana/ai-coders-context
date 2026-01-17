@@ -887,30 +887,44 @@ export class PrevcStatusManager {
     lines.push('');
 
     // Agents section (replaces roles as primary tracking)
-    lines.push('agents:');
-    if (status.agents && Object.keys(status.agents).length > 0) {
+    const agentsWithData: Array<[string, AgentStatus]> = [];
+    if (status.agents) {
       for (const [agentName, agentStatus] of Object.entries(status.agents)) {
         if (agentStatus) {
-          lines.push(`  ${agentName}:`);
-          lines.push(`    status: ${agentStatus.status}`);
-          if (agentStatus.started_at) {
-            lines.push(`    started_at: "${agentStatus.started_at}"`);
-          }
-          if (agentStatus.completed_at) {
-            lines.push(`    completed_at: "${agentStatus.completed_at}"`);
-          }
-          if (agentStatus.outputs && agentStatus.outputs.length > 0) {
-            lines.push(`    outputs: [${agentStatus.outputs.map((o) => `"${o}"`).join(', ')}]`);
-          }
+          agentsWithData.push([agentName, agentStatus]);
         }
       }
     }
-    lines.push('');
+    if (agentsWithData.length > 0) {
+      lines.push('agents:');
+      for (const [agentName, agentStatus] of agentsWithData) {
+        lines.push(`  ${agentName}:`);
+        lines.push(`    status: ${agentStatus.status}`);
+        if (agentStatus.started_at) {
+          lines.push(`    started_at: "${agentStatus.started_at}"`);
+        }
+        if (agentStatus.completed_at) {
+          lines.push(`    completed_at: "${agentStatus.completed_at}"`);
+        }
+        if (agentStatus.outputs && agentStatus.outputs.length > 0) {
+          lines.push(`    outputs: [${agentStatus.outputs.map((o) => `"${o}"`).join(', ')}]`);
+        }
+      }
+      lines.push('');
+    }
 
     // Roles section (legacy - kept for backward compatibility)
-    lines.push('roles:');
-    for (const [role, roleStatus] of Object.entries(status.roles)) {
-      if (roleStatus) {
+    const rolesWithData: Array<[string, RoleStatus]> = [];
+    if (status.roles) {
+      for (const [role, roleStatus] of Object.entries(status.roles)) {
+        if (roleStatus && Object.keys(roleStatus).length > 0) {
+          rolesWithData.push([role, roleStatus]);
+        }
+      }
+    }
+    if (rolesWithData.length > 0) {
+      lines.push('roles:');
+      for (const [role, roleStatus] of rolesWithData) {
         lines.push(`  ${role}:`);
         if (roleStatus.status) {
           lines.push(`    status: ${roleStatus.status}`);
@@ -928,11 +942,11 @@ export class PrevcStatusManager {
           lines.push(`    outputs: [${roleStatus.outputs.map((o) => `"${o}"`).join(', ')}]`);
         }
       }
+      lines.push('');
     }
-    lines.push('');
 
     // Execution section (new - replaces roles as primary tracking)
-    if (status.execution) {
+    if (status.execution && status.execution.history.length > 0) {
       lines.push('execution:');
       lines.push('  history:');
       for (const entry of status.execution.history) {
@@ -971,27 +985,43 @@ export class PrevcStatusManager {
     }
 
     // Settings section
-    if (status.project.settings) {
+    const defaultSettings = getDefaultSettings(status.project.scale);
+    const settings = status.project.settings;
+    const shouldWriteSettings = settings
+      && (
+        settings.autonomous_mode !== defaultSettings.autonomous_mode ||
+        settings.require_plan !== defaultSettings.require_plan ||
+        settings.require_approval !== defaultSettings.require_approval
+      );
+    if (shouldWriteSettings && settings) {
       lines.push('settings:');
-      lines.push(`  autonomous_mode: ${status.project.settings.autonomous_mode}`);
-      lines.push(`  require_plan: ${status.project.settings.require_plan}`);
-      lines.push(`  require_approval: ${status.project.settings.require_approval}`);
+      lines.push(`  autonomous_mode: ${settings.autonomous_mode}`);
+      lines.push(`  require_plan: ${settings.require_plan}`);
+      lines.push(`  require_approval: ${settings.require_approval}`);
       lines.push('');
     }
 
     // Approval section
-    if (status.approval) {
+    const approval = status.approval;
+    const shouldWriteApproval = approval && (
+      approval.plan_created ||
+      approval.plan_approved ||
+      Boolean(approval.approved_by) ||
+      Boolean(approval.approved_at) ||
+      Boolean(approval.approval_notes)
+    );
+    if (shouldWriteApproval && approval) {
       lines.push('approval:');
-      lines.push(`  plan_created: ${status.approval.plan_created}`);
-      lines.push(`  plan_approved: ${status.approval.plan_approved}`);
-      if (status.approval.approved_by) {
-        lines.push(`  approved_by: "${status.approval.approved_by}"`);
+      lines.push(`  plan_created: ${approval.plan_created}`);
+      lines.push(`  plan_approved: ${approval.plan_approved}`);
+      if (approval.approved_by) {
+        lines.push(`  approved_by: "${approval.approved_by}"`);
       }
-      if (status.approval.approved_at) {
-        lines.push(`  approved_at: "${status.approval.approved_at}"`);
+      if (approval.approved_at) {
+        lines.push(`  approved_at: "${approval.approved_at}"`);
       }
-      if (status.approval.approval_notes) {
-        lines.push(`  approval_notes: "${status.approval.approval_notes}"`);
+      if (approval.approval_notes) {
+        lines.push(`  approval_notes: "${approval.approval_notes}"`);
       }
       lines.push('');
     }

@@ -42,6 +42,9 @@ export async function handleWorkflowInit(
   options: WorkflowInitOptions
 ): Promise<MCPToolResponse> {
   const repoPath = path.resolve(params.repoPath || options.repoPath);
+  const contextPath = path.basename(repoPath) === '.context'
+    ? repoPath
+    : path.join(repoPath, '.context');
 
   try {
     const service = new WorkflowService(repoPath);
@@ -56,14 +59,33 @@ export async function handleWorkflowInit(
       archivePrevious: params.archive_previous,
     });
 
-    const contextPath = path.join(repoPath, '.context');
     const statusFilePath = path.join(contextPath, 'workflow', 'status.yaml');
     const settings = await service.getSettings();
+    const scale = getScaleName(status.project.scale as ProjectScale);
+    const isAutonomous = settings.autonomous_mode;
+    const requiresPlan = settings.require_plan;
+    const orchestration = await service.getPhaseOrchestration(status.project.current_phase);
+
+    // Build actionable enhancement prompt based on workflow state
+    const enhancementPrompt = buildWorkflowEnhancementPrompt({
+      name: params.name,
+      scale,
+      currentPhase: status.project.current_phase,
+      isAutonomous,
+      requiresPlan,
+    });
+
+    // Build next steps based on workflow configuration
+    const nextSteps = buildWorkflowNextSteps({
+      currentPhase: status.project.current_phase,
+      isAutonomous,
+      requiresPlan,
+    });
 
     return createJsonResponse({
       success: true,
       message: `Workflow initialized: ${params.name}`,
-      scale: getScaleName(status.project.scale as ProjectScale),
+      scale,
       currentPhase: status.project.current_phase,
       phases: Object.keys(status.phases).filter(
         (p) => status.phases[p as PrevcPhase].status !== 'skipped'
@@ -75,8 +97,105 @@ export async function handleWorkflowInit(
       },
       statusFilePath,
       contextPath,
+      orchestration,
+
+      // Action signals for AI agents
+      _actionRequired: true,
+      _status: 'workflow_active',
+      enhancementPrompt,
+      nextSteps,
     });
   } catch (error) {
     return createErrorResponse(error);
   }
+}
+
+/**
+ * Build enhancement prompt for workflow initialization.
+ */
+function buildWorkflowEnhancementPrompt(options: {
+  name: string;
+  scale: string;
+  currentPhase: string;
+  isAutonomous: boolean;
+  requiresPlan: boolean;
+}): string {
+  const { name, scale, currentPhase, isAutonomous, requiresPlan } = options;
+
+  if (isAutonomous) {
+    return `✓ WORKFLOW ACTIVE - AUTONOMOUS MODE
+
+Workflow "${name}" initialized (${scale} scale).
+Current phase: ${currentPhase} (Plan)
+
+AUTONOMOUS MODE ENABLED - All gates bypassed.
+
+NEXT ACTIONS:
+1. Begin implementation work directly
+2. Use workflow-advance to move through phases as work progresses
+3. Use workflow-status to check current state at any time
+
+You may proceed without creating formal plans or waiting for approvals.`;
+  }
+
+  if (requiresPlan) {
+    return `WORKFLOW ACTIVE - PLAN REQUIRED
+
+Workflow "${name}" initialized (${scale} scale).
+Current phase: ${currentPhase} (Plan)
+
+GATE: Plan required before advancing to Review phase.
+
+REQUIRED ACTIONS:
+1. Create a plan using context with action "scaffoldPlan" and planName parameter
+2. Fill the plan content using context with action "fillSingle"
+3. Link the plan using plan with action "link" and planSlug parameter
+4. Advance to Review phase using workflow-advance
+
+Do NOT attempt to advance without linking a plan - the gate will block you.`;
+  }
+
+  return `✓ WORKFLOW ACTIVE
+
+Workflow "${name}" initialized (${scale} scale).
+Current phase: ${currentPhase} (Plan)
+
+RECOMMENDED ACTIONS:
+1. Create a plan using context with action "scaffoldPlan" (recommended for ${scale} scale)
+2. Or advance directly using workflow-advance if planning is not needed
+
+Use workflow-status to check current state at any time.`;
+}
+
+/**
+ * Build next steps array for workflow initialization.
+ */
+function buildWorkflowNextSteps(options: {
+  currentPhase: string;
+  isAutonomous: boolean;
+  requiresPlan: boolean;
+}): string[] {
+  const { isAutonomous, requiresPlan } = options;
+
+  if (isAutonomous) {
+    return [
+      'ENABLED: Begin implementation work directly (autonomous mode)',
+      'OPTIONAL: Call workflow-advance to track phase progression',
+      'OPTIONAL: Call workflow-status to check current state',
+    ];
+  }
+
+  if (requiresPlan) {
+    return [
+      'REQUIRED: Call context with action "scaffoldPlan" to create a plan',
+      'REQUIRED: Call plan with action "link" to link plan to workflow',
+      'THEN: Call workflow-advance to move to Review phase',
+    ];
+  }
+
+  return [
+    'RECOMMENDED: Call context with action "scaffoldPlan" to create a plan',
+    'ALTERNATIVE: Call workflow-advance to skip planning phase',
+    'OPTIONAL: Call workflow-status to check current state',
+  ];
 }
