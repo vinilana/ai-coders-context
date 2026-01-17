@@ -7,41 +7,56 @@ export {
   type MCPInstallation,
 } from './mcpInstallService';
 
-// Gateway tool handlers
+// Consolidated gateway tool handlers
 export {
   handleExplore,
   handleContext,
-  handleWorkflow,
-  handleProject,
   handleSync,
   handlePlan,
   handleAgent,
   handleSkill,
 } from './gatewayTools';
 
-// Gateway tool action types
+// Dedicated workflow tool handlers
+export {
+  handleWorkflowInit,
+  handleWorkflowStatus,
+  handleWorkflowAdvance,
+  handleWorkflowManage,
+} from './gatewayTools';
+
+// Note: Project tool handlers (handleProjectSetup, handleProjectReport) removed
+// Use context({ action: "init" }) for scaffolding and workflow-init for workflows
+
+// Consolidated gateway tool action types
 export type {
   ExploreAction,
   ContextAction,
-  WorkflowAction,
-  ProjectAction,
   SyncAction,
   PlanAction,
   AgentAction,
   SkillAction,
 } from './gatewayTools';
 
-// Gateway tool parameter types
+// Consolidated gateway tool parameter types
 export type {
   ExploreParams,
   ContextParams,
-  WorkflowParams,
-  ProjectParams,
   SyncParams,
   PlanParams,
   AgentParams,
   SkillParams,
 } from './gatewayTools';
+
+// Dedicated workflow handler parameter types
+export type {
+  WorkflowInitParams,
+  WorkflowStatusParams,
+  WorkflowAdvanceParams,
+  WorkflowManageParams,
+} from './gatewayTools';
+
+// Note: Project handler parameter types (ProjectSetupParams, ProjectReportParams) removed
 
 // Response types and helpers
 export {

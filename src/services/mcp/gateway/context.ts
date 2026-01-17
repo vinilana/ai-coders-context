@@ -68,14 +68,50 @@ export async function handleContext(
         // Extract pending files from result for scaffold response
         const pendingWrites = (result as Record<string, unknown>).pendingWrites as Array<{ filePath: string }> | undefined;
         if (pendingWrites && pendingWrites.length > 0) {
+          const enhancementPrompt = `⚠️ SCAFFOLDING CREATED - CONTENT REQUIRED
+
+NEXT ACTIONS REQUIRED:
+1. Fill scaffold files with content using fillSingle for each pending file
+2. Initialize a PREVC workflow to enable structured development
+
+WORKFLOW:
+Step 1: Use context with action "fillSingle" for each file in pendingFiles array
+Step 2: Use workflow-init with name parameter to create workflow (creates .context/workflow/)
+
+Skip workflow-init ONLY if making trivial changes (typos, single-line edits).`;
+
           return createScaffoldResponse(result as Record<string, unknown>, {
             filesGenerated: pendingWrites.length,
             pendingFiles: pendingWrites.map(p => p.filePath),
+            enhancementPrompt,
+            nextSteps: [
+              'REQUIRED: Call context with action "fillSingle" for each file in pendingFiles',
+              'RECOMMENDED: Call workflow-init with name parameter after filling files',
+              'OPTIONAL: Skip workflow-init only for trivial changes (typos, single edits)'
+            ],
             repoPath,
           });
         }
 
-        return createJsonResponse(result);
+        // If no pending files, still suggest workflow initialization
+        const responseData = result as Record<string, unknown>;
+        const enhancementPrompt = `✓ SCAFFOLDING READY
+
+RECOMMENDED NEXT ACTION:
+Initialize a PREVC workflow to enable structured development.
+
+Use workflow-init with name parameter to create workflow structure.
+This creates .context/workflow/ and enables phase-gated execution (Plan → Review → Execute → Verify → Complete).
+
+Skip ONLY for trivial changes (typos, single-line edits).`;
+
+        return createScaffoldResponse(responseData, {
+          enhancementPrompt,
+          nextSteps: [
+            'RECOMMENDED: Call workflow-init with name parameter to enable PREVC phases',
+            'OPTIONAL: Skip workflow-init only for trivial changes'
+          ],
+        });
       }
 
       case 'fill': {

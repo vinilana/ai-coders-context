@@ -71,10 +71,13 @@ export function createScaffoldResponse(
     filesGenerated?: number;
     pendingFiles?: string[];
     repoPath?: string;
+    enhancementPrompt?: string;
+    nextSteps?: string[];
   } = {}
 ): MCPToolResponse {
-  const { filesGenerated = 0, pendingFiles = [], repoPath } = options;
+  const { filesGenerated = 0, pendingFiles = [], repoPath, enhancementPrompt: customPrompt, nextSteps: customNextSteps } = options;
   const hasFilesToEnhance = filesGenerated > 0 || pendingFiles.length > 0;
+  const hasCustomPrompt = customPrompt || customNextSteps;
 
   // Build enhanced response with clear action signals
   const enhancedData = {
@@ -82,16 +85,16 @@ export function createScaffoldResponse(
     ...data,
 
     // Action signals (appear first for visibility)
-    ...(hasFilesToEnhance && {
+    ...(hasFilesToEnhance || hasCustomPrompt) && {
       _actionRequired: true,
-      _status: 'incomplete',
-      _warning: 'SCAFFOLDING REQUIRES ENHANCEMENT',
+      _status: hasCustomPrompt && !hasFilesToEnhance ? 'ready' : 'incomplete',
+      _warning: hasCustomPrompt && !hasFilesToEnhance ? 'ACTION SUGGESTED' : 'SCAFFOLDING REQUIRES ENHANCEMENT',
 
       // Enhancement instructions
-      enhancementPrompt: buildEnhancementPrompt(pendingFiles, repoPath),
+      enhancementPrompt: customPrompt || buildEnhancementPrompt(pendingFiles, repoPath),
 
       // Clear next steps
-      nextSteps: [
+      nextSteps: customNextSteps || [
         'Call context({ action: "listToFill" }) to get files needing content',
         'For each file, call context({ action: "fillSingle", filePath: "..." })',
         'Generate content based on the semantic context returned',
@@ -103,7 +106,7 @@ export function createScaffoldResponse(
         pendingEnhancement: pendingFiles,
         pendingCount: pendingFiles.length,
       }),
-    }),
+    },
   };
 
   return {

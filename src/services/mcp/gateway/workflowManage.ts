@@ -1,10 +1,7 @@
 /**
- * Workflow Gateway Handler
+ * Workflow Manage Handler
  *
- * Handles PREVC workflow management operations.
- * Replaces: workflowInit, workflowStatus, workflowAdvance, workflowHandoff,
- *           workflowCollaborate, workflowCreateDoc, workflowGetGates,
- *           workflowApprovePlan, workflowSetAutonomous
+ * Handles workflow management operations: handoffs, collaboration, documents, gates, approvals.
  */
 
 import * as path from 'path';
@@ -12,150 +9,53 @@ import { WorkflowService } from '../../workflow';
 import {
   PHASE_NAMES_EN,
   ROLE_DISPLAY_NAMES,
-  getScaleName,
-  ProjectScale,
-  PrevcPhase,
   createPlanLinker,
-  WorkflowGateError,
 } from '../../../workflow';
 
-import type { WorkflowParams } from './types';
+import type { PrevcRole } from '../../../workflow';
 import type { MCPToolResponse } from './response';
 import { createJsonResponse, createErrorResponse } from './response';
 
-export interface WorkflowOptions {
+export interface WorkflowManageParams {
+  action: 'handoff' | 'collaborate' | 'createDoc' | 'getGates' | 'approvePlan' | 'setAutonomous';
+  from?: string;
+  to?: string;
+  artifacts?: string[];
+  topic?: string;
+  participants?: PrevcRole[];
+  type?: 'prd' | 'tech-spec' | 'architecture' | 'adr' | 'test-plan' | 'changelog';
+  docName?: string;
+  planSlug?: string;
+  approver?: PrevcRole;
+  notes?: string;
+  enabled?: boolean;
+  reason?: string;
+  repoPath?: string;
+}
+
+export interface WorkflowManageOptions {
   repoPath: string;
 }
 
 /**
- * Handles workflow gateway actions for PREVC workflow management.
+ * Manage workflow operations: handoffs, collaboration, documents, gates, approvals.
  */
-export async function handleWorkflow(
-  params: WorkflowParams,
-  options: WorkflowOptions
+export async function handleWorkflowManage(
+  params: WorkflowManageParams,
+  options: WorkflowManageOptions
 ): Promise<MCPToolResponse> {
-  const repoPath = path.resolve(options.repoPath);
+  const repoPath = path.resolve(params.repoPath || options.repoPath);
 
   try {
     const service = new WorkflowService(repoPath);
 
     switch (params.action) {
-      case 'init': {
-        const status = await service.init({
-          name: params.name!,
-          description: params.description,
-          scale: params.scale,
-          autonomous: params.autonomous,
-          requirePlan: params.require_plan,
-          requireApproval: params.require_approval,
-          archivePrevious: params.archive_previous,
-        });
-
-        const contextPath = path.join(repoPath, '.context');
-        const statusFilePath = path.join(contextPath, 'workflow', 'status.yaml');
-        const settings = await service.getSettings();
-
-        return createJsonResponse({
-          success: true,
-          message: `Workflow initialized: ${params.name}`,
-          scale: getScaleName(status.project.scale as ProjectScale),
-          currentPhase: status.project.current_phase,
-          phases: Object.keys(status.phases).filter(
-            (p) => status.phases[p as PrevcPhase].status !== 'skipped'
-          ),
-          settings: {
-            autonomous_mode: settings.autonomous_mode,
-            require_plan: settings.require_plan,
-            require_approval: settings.require_approval,
-          },
-          statusFilePath,
-          contextPath,
-        });
-      }
-
-      case 'status': {
-        if (!(await service.hasWorkflow())) {
-          return createJsonResponse({
-            success: false,
-            error: 'No workflow found. Run workflow({ action: "init" }) first.',
-            statusFilePath: path.join(repoPath, '.context', 'workflow', 'status.yaml')
-          });
-        }
-
-        const summary = await service.getSummary();
-        const status = await service.getStatus();
-        const statusFilePath = path.join(repoPath, '.context', 'workflow', 'status.yaml');
-
-        return createJsonResponse({
-          success: true,
-          name: summary.name,
-          scale: getScaleName(summary.scale as ProjectScale),
-          currentPhase: {
-            code: summary.currentPhase,
-            name: PHASE_NAMES_EN[summary.currentPhase],
-          },
-          progress: summary.progress,
-          isComplete: summary.isComplete,
-          phases: status.phases,
-          agents: status.agents,
-          roles: status.roles,
-          statusFilePath,
-        });
-      }
-
-      case 'advance': {
-        if (!(await service.hasWorkflow())) {
-          return createJsonResponse({
-            success: false,
-            error: 'No workflow found. Run workflow({ action: "init" }) first.'
-          });
-        }
-
-        try {
-          const nextPhase = await service.advance(params.outputs, { force: params.force });
-
-          if (nextPhase) {
-            const response: Record<string, unknown> = {
-              success: true,
-              message: `Advanced to ${PHASE_NAMES_EN[nextPhase]} phase`,
-              nextPhase: {
-                code: nextPhase,
-                name: PHASE_NAMES_EN[nextPhase],
-              }
-            };
-
-            // Add orchestration guidance when advancing to Execution phase
-            if (nextPhase === 'E') {
-              response.orchestration = service.getPhaseOrchestration(nextPhase);
-            }
-
-            return createJsonResponse(response);
-          } else {
-            return createJsonResponse({
-              success: true,
-              message: 'Workflow completed!',
-              isComplete: true
-            });
-          }
-        } catch (error) {
-          if (error instanceof WorkflowGateError) {
-            return createJsonResponse({
-              success: false,
-              error: error.message,
-              gate: error.gate,
-              transition: error.transition,
-              hint: error.hint,
-            });
-          }
-          throw error;
-        }
-      }
-
       case 'handoff': {
         if (!(await service.hasWorkflow())) {
           return createJsonResponse({
             success: false,
-            error: 'No workflow found. Run workflow({ action: "init" }) first.'
+            error: 'No workflow found. Initialize a workflow first.',
+            suggestion: 'Use workflow-init({ name: "feature-name" }) to start.',
           });
         }
 
@@ -207,7 +107,8 @@ export async function handleWorkflow(
         if (!(await service.hasWorkflow())) {
           return createJsonResponse({
             success: false,
-            error: 'No workflow found. Run workflow({ action: "init" }) first.'
+            error: 'No workflow found. Initialize a workflow first.',
+            suggestion: 'Use workflow-init({ name: "feature-name" }) to start.',
           });
         }
 
@@ -226,7 +127,8 @@ export async function handleWorkflow(
         if (!(await service.hasWorkflow())) {
           return createJsonResponse({
             success: false,
-            error: 'No workflow found. Run workflow({ action: "init" }) first.'
+            error: 'No workflow found. Initialize a workflow first.',
+            suggestion: 'Use workflow-init({ name: "feature-name" }) to start.',
           });
         }
 
@@ -263,7 +165,8 @@ export async function handleWorkflow(
         if (!(await service.hasWorkflow())) {
           return createJsonResponse({
             success: false,
-            error: 'No workflow found. Run workflow({ action: "init" }) first.'
+            error: 'No workflow found. Initialize a workflow first.',
+            suggestion: 'Use workflow-init({ name: "feature-name" }) to start.',
           });
         }
 
@@ -311,7 +214,8 @@ export async function handleWorkflow(
         if (!(await service.hasWorkflow())) {
           return createJsonResponse({
             success: false,
-            error: 'No workflow found. Run workflow({ action: "init" }) first.'
+            error: 'No workflow found. Initialize a workflow first.',
+            suggestion: 'Use workflow-init({ name: "feature-name" }) to start.',
           });
         }
 
@@ -326,13 +230,13 @@ export async function handleWorkflow(
             require_approval: settings.require_approval,
           },
           effect: params.enabled
-            ? 'All workflow gates are now bypassed. Use workflow({ action: "advance" }) freely.'
+            ? 'All workflow gates are now bypassed. Use workflow-advance() freely.'
             : 'Workflow gates are now enforced based on settings.',
         });
       }
 
       default:
-        return createErrorResponse(`Unknown workflow action: ${params.action}`);
+        return createErrorResponse(`Unknown workflow manage action: ${params.action}`);
     }
   } catch (error) {
     return createErrorResponse(error);

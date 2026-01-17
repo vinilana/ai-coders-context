@@ -1,8 +1,10 @@
 /**
  * MCP Server - Model Context Protocol server for Claude Code integration
  *
- * Exposes 8 gateway tools that consolidate 58 original tools for reduced context
- * and simpler tool selection for AI agents.
+ * Exposes 9 tools (5 consolidated gateways + 4 dedicated workflow tools) for
+ * reduced context and simpler tool selection for AI agents.
+ *
+ * Simplified workflow: context init → fillSingle → workflow-init
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -26,20 +28,24 @@ import {
 import {
   handleExplore,
   handleContext,
-  handleWorkflow,
-  handleProject,
   handleSync,
   handlePlan,
   handleAgent,
   handleSkill,
+  handleWorkflowInit,
+  handleWorkflowStatus,
+  handleWorkflowAdvance,
+  handleWorkflowManage,
   type ExploreParams,
   type ContextParams,
-  type WorkflowParams,
-  type ProjectParams,
   type SyncParams,
   type PlanParams,
   type AgentParams,
   type SkillParams,
+  type WorkflowInitParams,
+  type WorkflowStatusParams,
+  type WorkflowAdvanceParams,
+  type WorkflowManageParams,
   type MCPToolResponse,
 } from './gatewayTools';
 
@@ -80,7 +86,10 @@ export class AIContextMCPServer {
   }
 
   /**
-   * Register 8 gateway tools that consolidate all functionality
+   * Register tools: 5 consolidated gateways + 4 dedicated workflow tools
+   * Total: 9 tools for clear entry points and reduced AI cognitive load
+   *
+   * Project tools removed - use context({ action: "init" }) + workflow-init instead
    */
   private registerGatewayTools(): void {
     const repoPath = this.options.repoPath || process.cwd();
@@ -133,7 +142,11 @@ export class AIContextMCPServer {
 - listToFill: List files that need filling (params: repoPath?, outputDir?, target?)
 - getMap: Get codebase map section (params: repoPath?, section?)
 - buildSemantic: Build semantic context (params: repoPath?, contextType?, targetFile?, options?)
-- scaffoldPlan: Create a plan template (params: planName, repoPath?, title?, summary?, autoFill?)`,
+- scaffoldPlan: Create a plan template (params: planName, repoPath?, title?, summary?, autoFill?)
+
+**Important:** After context init, AI agents should:
+1. Call fillSingle for each pending file
+2. Call workflow-init to enable PREVC workflow (unless trivial change)`,
       inputSchema: {
         action: z.enum(['check', 'init', 'fill', 'fillSingle', 'listToFill', 'getMap', 'buildSemantic', 'scaffoldPlan'])
           .describe('Action to perform'),
@@ -189,39 +202,95 @@ export class AIContextMCPServer {
       return handleContext(params as ContextParams, { repoPath, contextBuilder: this.contextBuilder });
     });
 
-    // Gateway 3: workflow - PREVC workflow management
-    this.server.registerTool('workflow', {
-      description: `PREVC workflow management. Actions:
-- init: Initialize workflow (params: name, description?, scale?, autonomous?, require_plan?, require_approval?, archive_previous?)
-- status: Get current workflow status
-- advance: Advance to next phase (params: outputs?, force?)
-- handoff: Handoff between roles (params: from, to, artifacts)
+    // Dedicated Workflow Tools (split from consolidated workflow gateway)
+
+    // Tool 3a: workflow-init - Initialize PREVC workflow
+    this.server.registerTool('workflow-init', {
+      description: `Initialize a PREVC workflow for structured development.
+
+**What it does:**
+- Creates .context/workflow/ folder (automatically, if it doesn't exist)
+- Initializes workflow status file with phase tracking
+- Detects project scale and configures gates
+- Sets up PREVC phases (Plan → Review → Execute → Verify → Complete)
+
+**Prerequisites:**
+- .context/ folder must exist (use context with action "init" first)
+- Scaffolding files should be filled (use context with action "fillSingle")
+
+**When to use:**
+- Starting a new feature or bug fix after scaffolding is set up
+- Need structured, phase-gated development
+- Working on non-trivial changes
+
+**Don't use if:**
+- Making trivial changes (typo fixes, single-line edits)
+- Just exploring/researching code
+- User explicitly wants to skip workflow`,
+      inputSchema: {
+        name: z.string().describe('Workflow/feature name (required)'),
+        description: z.string().optional()
+          .describe('Task description for scale detection'),
+        scale: z.enum(['QUICK', 'SMALL', 'MEDIUM', 'LARGE', 'ENTERPRISE']).optional()
+          .describe('Project scale (auto-detected if omitted)'),
+        autonomous: z.boolean().optional()
+          .describe('Skip all workflow gates (default: scale-dependent)'),
+        require_plan: z.boolean().optional()
+          .describe('Require plan before P→R'),
+        require_approval: z.boolean().optional()
+          .describe('Require approval before R→E'),
+        archive_previous: z.boolean().optional()
+          .describe('Archive existing workflow'),
+      }
+    }, async (params): Promise<MCPToolResponse> => {
+      return handleWorkflowInit(params as WorkflowInitParams, { repoPath });
+    });
+
+    // Tool 3b: workflow-status - Get current workflow status
+    this.server.registerTool('workflow-status', {
+      description: `Get current PREVC workflow status including phase, gates, and linked plans.
+
+Returns: Current phase, all phase statuses, gate settings, linked plans, agent activity.`,
+      inputSchema: {
+        // No required parameters
+      }
+    }, async (params): Promise<MCPToolResponse> => {
+      return handleWorkflowStatus(params as WorkflowStatusParams, { repoPath });
+    });
+
+    // Tool 3c: workflow-advance - Advance to next phase
+    this.server.registerTool('workflow-advance', {
+      description: `Advance workflow to the next PREVC phase (P→R→E→V→C).
+
+Enforces gates:
+- P→R: Requires plan if require_plan=true
+- R→E: Requires approval if require_approval=true
+
+Use force=true to bypass gates, or use workflow-manage({ action: 'setAutonomous' }).`,
+      inputSchema: {
+        outputs: z.array(z.string()).optional()
+          .describe('Artifact paths produced in current phase'),
+        force: z.boolean().optional()
+          .describe('Force advancement even if gates block'),
+      }
+    }, async (params): Promise<MCPToolResponse> => {
+      return handleWorkflowAdvance(params as WorkflowAdvanceParams, { repoPath });
+    });
+
+    // Tool 3d: workflow-manage - Manage workflow operations
+    this.server.registerTool('workflow-manage', {
+      description: `Manage workflow operations: handoffs, collaboration, documents, gates, approvals.
+
+Actions:
+- handoff: Transfer work between agents (params: from, to, artifacts)
 - collaborate: Start collaboration session (params: topic, participants?)
 - createDoc: Create workflow document (params: type, docName)
 - getGates: Check gate status
 - approvePlan: Approve linked plan (params: planSlug?, approver?, notes?)
 - setAutonomous: Toggle autonomous mode (params: enabled, reason?)`,
       inputSchema: {
-        action: z.enum(['init', 'status', 'advance', 'handoff', 'collaborate', 'createDoc', 'getGates', 'approvePlan', 'setAutonomous'])
+        action: z.enum(['handoff', 'collaborate', 'createDoc', 'getGates', 'approvePlan', 'setAutonomous'])
           .describe('Action to perform'),
-        name: z.string().optional()
-          .describe('(init) Workflow/project name'),
-        description: z.string().optional()
-          .describe('(init) Description for scale detection'),
-        scale: z.enum(['QUICK', 'SMALL', 'MEDIUM', 'LARGE', 'ENTERPRISE']).optional()
-          .describe('(init) Project scale'),
-        autonomous: z.boolean().optional()
-          .describe('(init) Enable autonomous mode'),
-        require_plan: z.boolean().optional()
-          .describe('(init) Require plan before P → R'),
-        require_approval: z.boolean().optional()
-          .describe('(init) Require approval before R → E'),
-        archive_previous: z.boolean().optional()
-          .describe('(init) Archive existing workflow'),
-        outputs: z.array(z.string()).optional()
-          .describe('(advance) Artifact paths'),
-        force: z.boolean().optional()
-          .describe('(advance) Force advancement'),
         from: z.string().optional()
           .describe('(handoff) Agent handing off (e.g., feature-developer)'),
         to: z.string().optional()
@@ -248,36 +317,7 @@ export class AIContextMCPServer {
           .describe('(setAutonomous) Reason for change'),
       }
     }, async (params): Promise<MCPToolResponse> => {
-      return handleWorkflow(params as WorkflowParams, { repoPath });
-    });
-
-    // Gateway 4: project - Project initialization and reporting
-    this.server.registerTool('project', {
-      description: `Project initialization and reporting. Actions:
-- start: Start new project with scaffolding + workflow (params: featureName, template?, skipFill?, skipWorkflow?)
-- report: Generate progress report (params: format?, includeStack?)
-- detectStack: Detect technology stack
-- detectAITools: Detect AI tool configurations (params: repoPath?)`,
-      inputSchema: {
-        action: z.enum(['start', 'report', 'detectStack', 'detectAITools'])
-          .describe('Action to perform'),
-        featureName: z.string().optional()
-          .describe('(start) Feature/project name'),
-        template: z.enum(['hotfix', 'feature', 'mvp', 'auto']).optional()
-          .describe('(start) Workflow template'),
-        skipFill: z.boolean().optional()
-          .describe('(start) Skip AI context filling'),
-        skipWorkflow: z.boolean().optional()
-          .describe('(start) Skip workflow init'),
-        format: z.enum(['json', 'markdown', 'dashboard']).optional()
-          .describe('(report) Output format'),
-        includeStack: z.boolean().optional()
-          .describe('(report) Include stack info'),
-        repoPath: z.string().optional()
-          .describe('(detectAITools) Repository path'),
-      }
-    }, async (params): Promise<MCPToolResponse> => {
-      return handleProject(params as ProjectParams, { repoPath });
+      return handleWorkflowManage(params as WorkflowManageParams, { repoPath });
     });
 
     // Gateway 5: sync - Import/export synchronization
@@ -444,7 +484,7 @@ export class AIContextMCPServer {
       return handleSkill(params as SkillParams, { repoPath });
     });
 
-    this.log('Registered 8 gateway tools');
+    this.log('Registered 9 tools (5 consolidated gateways + 4 dedicated workflow tools)');
   }
 
   /**

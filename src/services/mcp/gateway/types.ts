@@ -2,15 +2,19 @@
  * Gateway Tool Types
  *
  * Type definitions for MCP gateway tool parameters and responses.
+ *
+ * Note: Some gateways use dedicated tools instead of action-based routing:
+ * - Workflow: Split into workflow-init, workflow-status, workflow-advance, workflow-manage
+ * - Project: Removed - use context init + workflow-init instead
  */
 
 import type { PrevcPhase, PrevcRole, AgentType } from '../../../workflow';
 
 // Action types for each gateway
+// Note: Workflow uses dedicated tools (workflow-init, workflow-status, workflow-advance, workflow-manage)
+// Note: Project tools removed - use context init + workflow-init instead
 export type ExploreAction = 'read' | 'list' | 'analyze' | 'search' | 'getStructure';
 export type ContextAction = 'check' | 'init' | 'fill' | 'fillSingle' | 'listToFill' | 'getMap' | 'buildSemantic' | 'scaffoldPlan' | 'searchQA' | 'generateQA' | 'getFlow' | 'detectPatterns';
-export type WorkflowAction = 'init' | 'status' | 'advance' | 'handoff' | 'collaborate' | 'createDoc' | 'getGates' | 'approvePlan' | 'setAutonomous';
-export type ProjectAction = 'start' | 'report' | 'detectStack' | 'detectAITools';
 export type SyncAction = 'exportRules' | 'exportDocs' | 'exportAgents' | 'exportContext' | 'exportSkills' | 'reverseSync' | 'importDocs' | 'importAgents' | 'importSkills';
 export type PlanAction = 'link' | 'getLinked' | 'getDetails' | 'getForPhase' | 'updatePhase' | 'recordDecision' | 'updateStep' | 'getStatus' | 'syncMarkdown' | 'commitPhase';
 export type AgentAction = 'discover' | 'getInfo' | 'orchestrate' | 'getSequence' | 'getDocs' | 'getPhaseDocs' | 'listTypes';
@@ -64,43 +68,8 @@ export interface ContextParams {
   entryFunction?: string;
 }
 
-export interface WorkflowParams {
-  action: WorkflowAction;
-  name?: string;
-  description?: string;
-  scale?: 'QUICK' | 'SMALL' | 'MEDIUM' | 'LARGE' | 'ENTERPRISE';
-  autonomous?: boolean;
-  require_plan?: boolean;
-  require_approval?: boolean;
-  archive_previous?: boolean;
-  outputs?: string[];
-  force?: boolean;
-  /** Agent handing off (e.g., 'feature-developer') */
-  from?: string;
-  /** Agent receiving (e.g., 'test-writer') */
-  to?: string;
-  artifacts?: string[];
-  topic?: string;
-  participants?: PrevcRole[];
-  type?: 'prd' | 'tech-spec' | 'architecture' | 'adr' | 'test-plan' | 'changelog';
-  docName?: string;
-  planSlug?: string;
-  approver?: PrevcRole;
-  notes?: string;
-  enabled?: boolean;
-  reason?: string;
-}
-
-export interface ProjectParams {
-  action: ProjectAction;
-  featureName?: string;
-  template?: 'hotfix' | 'feature' | 'mvp' | 'auto';
-  skipFill?: boolean;
-  skipWorkflow?: boolean;
-  format?: 'json' | 'markdown' | 'dashboard';
-  includeStack?: boolean;
-  repoPath?: string;
-}
+// Note: WorkflowParams removed - workflow uses dedicated tools with their own param types
+// Note: ProjectParams removed - project tools have been removed from MCP
 
 export interface SyncParams {
   action: SyncAction;

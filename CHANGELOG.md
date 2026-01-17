@@ -9,15 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Gateway Tools Consolidation**: Unified 58 MCP tools into 8 focused gateway handlers
+- **Gateway Tools Consolidation**: Unified MCP tools into 9 focused tools (5 gateways + 4 dedicated workflow tools)
   - `explore` - File and code exploration (read, list, analyze, search, getStructure)
   - `context` - Context scaffolding and semantic context (check, init, fill, fillSingle, listToFill, getMap, buildSemantic, scaffoldPlan)
-  - `project` - Project initialization and reporting (start, report, detectStack, detectAITools)
   - `plan` - Plan management and execution tracking (link, getLinked, getDetails, getForPhase, updatePhase, recordDecision, updateStep, getStatus, syncMarkdown, commitPhase)
   - `agent` - Agent orchestration and discovery (discover, getInfo, orchestrate, getSequence, getDocs, getPhaseDocs, listTypes)
   - `skill` - Skill management (list, getContent, getForPhase, scaffold, export, fill)
   - `sync` - Import/export synchronization (exportRules, exportDocs, exportAgents, exportContext, exportSkills, reverseSync, importDocs, importAgents, importSkills)
-  - `workflow` - PREVC workflow management (init, status, advance, handoff, collaborate, createDoc, getGates, approvePlan, setAutonomous)
+  - `workflow-init` - Initialize PREVC workflow (creates .context/workflow/)
+  - `workflow-status` - Get current workflow status
+  - `workflow-advance` - Advance to next phase
+  - `workflow-manage` - Manage handoffs, collaboration, documents, gates
   - Standardized response utilities and shared context across all handlers
   - Improved organization, discoverability, and reduced cognitive load
 
@@ -107,6 +109,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **MCP Tool Simplification**: Removed project-setup and project-report tools
+  - Simplified from 11 tools to 9 tools (5 gateways + 4 dedicated workflow tools)
+  - New explicit workflow: `context init` → `fillSingle` → `workflow-init`
+  - Project setup functionality now achieved through composable steps
+  - Removed `ProjectAction`, `ProjectParams`, `WorkflowAction`, `WorkflowParams` types
+  - Enhancement prompts no longer use function call syntax
+  - Tool descriptions clarify that workflow-init creates `.context/workflow/` folder
+  - Added MCP README.md documentation for simplified tool structure
+
 - **MCP Server Architecture**: Gateway pattern replaces individual tools
   - Single entry point per domain (explore, context, workflow, etc.)
   - Action-based dispatching within each gateway
@@ -125,15 +136,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### New Files
 - `src/services/mcp/gateway/` - Gateway handler modules
-  - `exploreGateway.ts` - File/code exploration handler
-  - `contextGateway.ts` - Context management handler
-  - `projectGateway.ts` - Project operations handler
-  - `planGateway.ts` - Plan management handler
-  - `agentGateway.ts` - Agent orchestration handler
-  - `skillGateway.ts` - Skill management handler
-  - `syncGateway.ts` - Sync operations handler
-  - `workflowGateway.ts` - Workflow management handler
+  - `explore.ts` - File/code exploration handler
+  - `context.ts` - Context management handler
+  - `plan.ts` - Plan management handler
+  - `agent.ts` - Agent orchestration handler
+  - `skill.ts` - Skill management handler
+  - `sync.ts` - Sync operations handler
+  - `workflowInit.ts` - Workflow initialization handler
+  - `workflowStatus.ts` - Workflow status handler
+  - `workflowAdvance.ts` - Workflow advance handler
+  - `workflowManage.ts` - Workflow management handler
   - `shared.ts` - Shared utilities and response helpers
+- `src/services/mcp/README.md` - MCP tools documentation and usage guide
 - `src/workflow/gates/gateChecker.ts` - Gate checking logic
 - `src/workflow/gates/gateChecker.test.ts` - Gate checker unit tests
 - `src/workflow/errors.ts` - Custom workflow error types
