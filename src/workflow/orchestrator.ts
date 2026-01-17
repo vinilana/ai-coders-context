@@ -14,13 +14,16 @@ import {
   ProjectScale,
   WorkflowSettings,
   PlanApproval,
+  PhaseOrchestration,
+  AgentSequenceStep,
 } from './types';
 import { PrevcStatusManager } from './status/statusManager';
 import { detectProjectScale, getScaleRoute } from './scaling';
-import { PREVC_PHASE_ORDER, getPhaseDefinition } from './phases';
+import { PREVC_PHASE_ORDER, getPhaseDefinition, PHASE_NAMES_EN } from './phases';
 import { getRoleConfig } from './prevcConfig';
 import { WorkflowGateChecker, GateCheckResult, getDefaultSettings } from './gates';
 import { PlanLinker } from './plans/planLinker';
+import { AgentOrchestrator, PHASE_TO_AGENTS } from './orchestration/agentOrchestrator';
 
 /**
  * Options for completing a phase
@@ -203,23 +206,105 @@ export class PrevcOrchestrator {
   }
 
   /**
-   * Perform a handoff from one role to another
+   * Perform a handoff from one agent to another
+   * @param from - Agent name handing off (e.g., 'feature-developer')
+   * @param to - Agent name receiving (e.g., 'test-writer')
+   * @param artifacts - Array of output file paths
    */
   async handoff(
-    from: PrevcRole,
-    to: PrevcRole,
+    from: string,
+    to: string,
     artifacts: string[]
   ): Promise<void> {
-    // Update the outgoing role
-    await this.statusManager.updateRole(from, {
+    // Update the outgoing agent
+    await this.statusManager.updateAgent(from, {
       status: 'completed',
       outputs: artifacts,
     });
 
-    // Update the incoming role
-    await this.statusManager.updateRole(to, {
+    // Update the incoming agent
+    await this.statusManager.updateAgent(to, {
       status: 'in_progress',
     });
+  }
+
+  /**
+   * Get the next agent suggestion after a handoff
+   */
+  getNextAgentSuggestion(currentAgent: string): { agent: string; reason: string } | null {
+    const orchestrator = new AgentOrchestrator();
+
+    // Common handoff sequences
+    const handoffSequences: Record<string, { agent: string; reason: string }> = {
+      'feature-developer': { agent: 'test-writer', reason: 'Write tests for the new code' },
+      'bug-fixer': { agent: 'test-writer', reason: 'Write regression tests' },
+      'test-writer': { agent: 'code-reviewer', reason: 'Review implementation and tests' },
+      'code-reviewer': { agent: 'documentation-writer', reason: 'Document the changes' },
+      'backend-specialist': { agent: 'test-writer', reason: 'Write API tests' },
+      'frontend-specialist': { agent: 'test-writer', reason: 'Write UI tests' },
+      'refactoring-specialist': { agent: 'test-writer', reason: 'Verify refactored code' },
+    };
+
+    return handoffSequences[currentAgent] || null;
+  }
+
+  /**
+   * Get orchestration guidance for a phase
+   */
+  getPhaseOrchestration(phase: PrevcPhase): PhaseOrchestration {
+    const orchestrator = new AgentOrchestrator();
+    const agents = PHASE_TO_AGENTS[phase] || [];
+    const sequence = orchestrator.getAgentHandoffSequence([phase]);
+
+    const suggestedSequence: AgentSequenceStep[] = sequence.map((agent) => ({
+      agent,
+      task: this.getAgentDefaultTask(agent),
+    }));
+
+    const startWith = agents.length > 0 ? agents[0] : 'feature-developer';
+    const instruction = this.buildOrchestrationInstruction(phase, startWith);
+
+    return {
+      recommendedAgents: agents,
+      suggestedSequence,
+      startWith,
+      instruction,
+    };
+  }
+
+  /**
+   * Get default task description for an agent
+   */
+  private getAgentDefaultTask(agent: string): string {
+    const taskMap: Record<string, string> = {
+      'feature-developer': 'Implement core functionality',
+      'bug-fixer': 'Fix identified issues',
+      'test-writer': 'Write tests for new code',
+      'code-reviewer': 'Review implementation',
+      'documentation-writer': 'Document the changes',
+      'backend-specialist': 'Implement server-side logic',
+      'frontend-specialist': 'Build user interface',
+      'database-specialist': 'Design and optimize database',
+      'architect-specialist': 'Design system architecture',
+      'security-auditor': 'Audit for security vulnerabilities',
+      'performance-optimizer': 'Optimize performance',
+      'refactoring-specialist': 'Improve code structure',
+      'devops-specialist': 'Configure deployment pipeline',
+      'mobile-specialist': 'Develop mobile features',
+    };
+
+    return taskMap[agent] || 'Execute assigned tasks';
+  }
+
+  /**
+   * Build orchestration instruction for a phase
+   */
+  private buildOrchestrationInstruction(phase: PrevcPhase, startAgent: string): string {
+    const phaseName = PHASE_NAMES_EN[phase];
+
+    return `Start ${phaseName} phase by activating ${startAgent}. ` +
+      `Use handoff({ from: '${startAgent}', to: '<next-agent>', artifacts: [...] }) ` +
+      `when ready to transition to the next agent.`;
   }
 
   /**

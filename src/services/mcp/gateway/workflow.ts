@@ -97,6 +97,7 @@ export async function handleWorkflow(
           progress: summary.progress,
           isComplete: summary.isComplete,
           phases: status.phases,
+          agents: status.agents,
           roles: status.roles,
           statusFilePath,
         });
@@ -114,14 +115,21 @@ export async function handleWorkflow(
           const nextPhase = await service.advance(params.outputs, { force: params.force });
 
           if (nextPhase) {
-            return createJsonResponse({
+            const response: Record<string, unknown> = {
               success: true,
               message: `Advanced to ${PHASE_NAMES_EN[nextPhase]} phase`,
               nextPhase: {
                 code: nextPhase,
                 name: PHASE_NAMES_EN[nextPhase],
               }
-            });
+            };
+
+            // Add orchestration guidance when advancing to Execution phase
+            if (nextPhase === 'E') {
+              response.orchestration = service.getPhaseOrchestration(nextPhase);
+            }
+
+            return createJsonResponse(response);
           } else {
             return createJsonResponse({
               success: true,
@@ -151,14 +159,28 @@ export async function handleWorkflow(
           });
         }
 
-        await service.handoff(params.from!, params.to!, params.artifacts!);
+        // Validate required parameters for agent handoff
+        if (!params.from || !params.to) {
+          return createJsonResponse({
+            success: false,
+            error: 'handoff requires from and to agent names',
+          });
+        }
+
+        await service.handoff(params.from, params.to, params.artifacts || []);
+
+        // Get next agent suggestion
+        const nextSuggestion = service.getNextAgentSuggestion(params.to);
 
         return createJsonResponse({
           success: true,
-          message: `Handoff complete: ${ROLE_DISPLAY_NAMES[params.from!]} → ${ROLE_DISPLAY_NAMES[params.to!]}`,
-          from: { role: params.from, displayName: ROLE_DISPLAY_NAMES[params.from!] },
-          to: { role: params.to, displayName: ROLE_DISPLAY_NAMES[params.to!] },
-          artifacts: params.artifacts
+          message: `Handoff complete: ${params.from} → ${params.to}`,
+          handoff: {
+            from: params.from,
+            to: params.to,
+            artifacts: params.artifacts || [],
+          },
+          nextSuggestion,
         });
       }
 

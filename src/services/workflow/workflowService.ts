@@ -20,6 +20,7 @@ import {
   WorkflowSettings,
   PlanApproval,
   GateCheckResult,
+  PhaseOrchestration,
   getScaleName,
   getScaleFromName,
   PHASE_NAMES_PT,
@@ -249,18 +250,32 @@ export class WorkflowService {
   }
 
   /**
-   * Perform a handoff between roles
+   * Perform a handoff between agents
    */
   async handoff(
-    from: PrevcRole,
-    to: PrevcRole,
+    from: string,
+    to: string,
     artifacts: string[]
   ): Promise<void> {
     await this.orchestrator.handoff(from, to, artifacts);
 
     this.deps.ui?.displaySuccess(
-      `Handoff: ${ROLE_DISPLAY_NAMES[from]} → ${ROLE_DISPLAY_NAMES[to]}`
+      `Handoff: ${from} → ${to}`
     );
+  }
+
+  /**
+   * Get orchestration guidance for a phase
+   */
+  getPhaseOrchestration(phase: PrevcPhase): PhaseOrchestration {
+    return this.orchestrator.getPhaseOrchestration(phase);
+  }
+
+  /**
+   * Get next agent suggestion after a handoff
+   */
+  getNextAgentSuggestion(currentAgent: string): { agent: string; reason: string } | null {
+    return this.orchestrator.getNextAgentSuggestion(currentAgent);
   }
 
   /**

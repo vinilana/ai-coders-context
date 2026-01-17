@@ -21,6 +21,7 @@ function createMockStatus(overrides: Partial<PrevcStatus> = {}): PrevcStatus {
       V: { status: 'pending' },
       C: { status: 'pending' },
     },
+    agents: {},
     roles: {},
   };
 
@@ -29,6 +30,7 @@ function createMockStatus(overrides: Partial<PrevcStatus> = {}): PrevcStatus {
     ...overrides,
     project: { ...defaultStatus.project, ...overrides.project },
     phases: { ...defaultStatus.phases, ...overrides.phases },
+    agents: { ...defaultStatus.agents, ...overrides.agents },
     roles: { ...defaultStatus.roles, ...overrides.roles },
   } as PrevcStatus;
 }

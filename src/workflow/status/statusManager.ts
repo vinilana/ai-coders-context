@@ -12,9 +12,11 @@ import {
   PrevcRole,
   PhaseUpdate,
   RoleUpdate,
+  AgentUpdate,
   ProjectScale,
   PhaseStatus,
   RoleStatus,
+  AgentStatus,
   WorkflowSettings,
   PlanApproval,
   ExecutionHistory,
@@ -142,6 +144,7 @@ export class PrevcStatusManager {
 
   /**
    * Update a role's status
+   * @deprecated Use updateAgent instead
    */
   async updateRole(role: PrevcRole, update: RoleUpdate): Promise<void> {
     const status = await this.load();
@@ -154,6 +157,41 @@ export class PrevcStatusManager {
       ...status.roles[role],
       ...update,
     };
+
+    await this.save(status);
+  }
+
+  /**
+   * Update an agent's status (replaces updateRole)
+   */
+  async updateAgent(agentName: string, update: AgentUpdate): Promise<void> {
+    const status = await this.load();
+    const now = new Date().toISOString();
+
+    // Initialize agents if not present
+    if (!status.agents) {
+      status.agents = {};
+    }
+
+    const existingAgent = status.agents[agentName];
+
+    // Build agent status
+    const agentStatus: AgentStatus = {
+      status: update.status ?? existingAgent?.status ?? 'pending',
+      started_at: existingAgent?.started_at,
+      completed_at: existingAgent?.completed_at,
+      outputs: update.outputs ?? existingAgent?.outputs,
+    };
+
+    // Track timestamps based on status changes
+    if (update.status === 'in_progress' && !existingAgent?.started_at) {
+      agentStatus.started_at = now;
+    }
+    if (update.status === 'completed' && !existingAgent?.completed_at) {
+      agentStatus.completed_at = now;
+    }
+
+    status.agents[agentName] = agentStatus;
 
     await this.save(status);
   }
@@ -499,11 +537,17 @@ export class PrevcStatusManager {
    * - Add default settings based on scale
    * - Initialize approval tracking based on current state
    * - Initialize execution history for old workflows
+   * - Initialize agents object for old workflows
    */
   private migrateStatus(status: PrevcStatus): PrevcStatus {
     // Add default settings if missing
     if (!status.project.settings) {
       status.project.settings = getDefaultSettings(status.project.scale);
+    }
+
+    // Initialize agents if missing (migration from old workflows)
+    if (!status.agents) {
+      status.agents = {};
     }
 
     // Initialize approval tracking if missing
@@ -600,12 +644,14 @@ export class PrevcStatusManager {
         V: { status: 'pending' },
         C: { status: 'pending' },
       },
+      agents: {},
       roles: {},
     };
 
     let currentSection = '';
     let currentPhase = '';
     let currentRole = '';
+    let currentAgent = '';
 
     for (const line of lines) {
       const trimmed = line.trim();
@@ -615,6 +661,8 @@ export class PrevcStatusManager {
         currentSection = 'project';
       } else if (line.startsWith('phases:')) {
         currentSection = 'phases';
+      } else if (line.startsWith('agents:')) {
+        currentSection = 'agents';
       } else if (line.startsWith('roles:')) {
         currentSection = 'roles';
       } else if (line.startsWith('settings:')) {
@@ -662,6 +710,39 @@ export class PrevcStatusManager {
           if (key === 'reason') {
             result.phases[currentPhase as PrevcPhase].reason = value;
           }
+        }
+      } else if (currentSection === 'agents') {
+        if (line.match(/^  [a-z-]+:/)) {
+          currentAgent = trimmed.replace(':', '');
+          result.agents[currentAgent] = { status: 'pending' };
+        } else if (currentAgent && line.startsWith('    ')) {
+          const [key, ...valueParts] = trimmed.split(':');
+          const value = valueParts.join(':').trim().replace(/^["']|["']$/g, '');
+          const agentStatus = result.agents[currentAgent] || { status: 'pending' };
+          if (key === 'status') {
+            agentStatus.status = value as
+              | 'pending'
+              | 'in_progress'
+              | 'completed'
+              | 'skipped';
+          }
+          if (key === 'started_at') {
+            agentStatus.started_at = value;
+          }
+          if (key === 'completed_at') {
+            agentStatus.completed_at = value;
+          }
+          // Parse outputs array (simplified - single line format: [a, b, c])
+          if (key === 'outputs') {
+            const outputsMatch = value.match(/^\[(.*)\]$/);
+            if (outputsMatch) {
+              agentStatus.outputs = outputsMatch[1]
+                .split(',')
+                .map(s => s.trim().replace(/^["']|["']$/g, ''))
+                .filter(s => s);
+            }
+          }
+          result.agents[currentAgent] = agentStatus;
         }
       } else if (currentSection === 'roles') {
         if (line.match(/^  [a-z-]+:/)) {
@@ -805,7 +886,28 @@ export class PrevcStatusManager {
     }
     lines.push('');
 
-    // Roles section
+    // Agents section (replaces roles as primary tracking)
+    lines.push('agents:');
+    if (status.agents && Object.keys(status.agents).length > 0) {
+      for (const [agentName, agentStatus] of Object.entries(status.agents)) {
+        if (agentStatus) {
+          lines.push(`  ${agentName}:`);
+          lines.push(`    status: ${agentStatus.status}`);
+          if (agentStatus.started_at) {
+            lines.push(`    started_at: "${agentStatus.started_at}"`);
+          }
+          if (agentStatus.completed_at) {
+            lines.push(`    completed_at: "${agentStatus.completed_at}"`);
+          }
+          if (agentStatus.outputs && agentStatus.outputs.length > 0) {
+            lines.push(`    outputs: [${agentStatus.outputs.map((o) => `"${o}"`).join(', ')}]`);
+          }
+        }
+      }
+    }
+    lines.push('');
+
+    // Roles section (legacy - kept for backward compatibility)
     lines.push('roles:');
     for (const [role, roleStatus] of Object.entries(status.roles)) {
       if (roleStatus) {

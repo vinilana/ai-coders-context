@@ -99,12 +99,23 @@ export interface OutputStatus {
 
 /**
  * Role status in the workflow
+ * @deprecated Use AgentStatus instead
  */
 export interface RoleStatus {
   status?: StatusType;
   last_active?: string;
   phase?: PrevcPhase;
   current_task?: string;
+  outputs?: string[];
+}
+
+/**
+ * Agent status in the workflow (replaces RoleStatus)
+ */
+export interface AgentStatus {
+  status: StatusType;
+  started_at?: string;
+  completed_at?: string;
   outputs?: string[];
 }
 
@@ -221,6 +232,8 @@ export interface PrevcStatus {
   phases: Record<PrevcPhase, PhaseStatus>;
   /** Execution history (replaces roles) */
   execution?: ExecutionHistory;
+  /** Agent status tracking (replaces roles) */
+  agents: Record<string, AgentStatus>;
   /** Legacy roles - kept for backward compatibility */
   roles: Partial<Record<PrevcRole, RoleStatus>>;
   /** Plan approval tracking */
@@ -250,6 +263,7 @@ export interface PhaseUpdate {
 
 /**
  * Update payload for role status
+ * @deprecated Use AgentUpdate instead
  */
 export interface RoleUpdate {
   status?: StatusType;
@@ -257,6 +271,14 @@ export interface RoleUpdate {
   current_task?: string;
   outputs?: string[];
   last_active?: string;
+}
+
+/**
+ * Update payload for agent status (replaces RoleUpdate)
+ */
+export interface AgentUpdate {
+  status?: StatusType;
+  outputs?: string[];
 }
 
 /**
@@ -288,4 +310,26 @@ export interface CollaborationSynthesis {
   contributions: Contribution[];
   decisions: string[];
   recommendations: string[];
+}
+
+/**
+ * Suggested agent step in orchestration sequence
+ */
+export interface AgentSequenceStep {
+  agent: string;
+  task: string;
+}
+
+/**
+ * Phase orchestration guidance for agent-based workflows
+ */
+export interface PhaseOrchestration {
+  /** Recommended agents for this phase */
+  recommendedAgents: string[];
+  /** Suggested sequence of agents with tasks */
+  suggestedSequence: AgentSequenceStep[];
+  /** Agent to start with */
+  startWith: string;
+  /** Instruction for starting the phase */
+  instruction: string;
 }

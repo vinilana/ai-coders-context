@@ -75,8 +75,10 @@ export interface WorkflowParams {
   archive_previous?: boolean;
   outputs?: string[];
   force?: boolean;
-  from?: PrevcRole;
-  to?: PrevcRole;
+  /** Agent handing off (e.g., 'feature-developer') */
+  from?: string;
+  /** Agent receiving (e.g., 'test-writer') */
+  to?: string;
   artifacts?: string[];
   topic?: string;
   participants?: PrevcRole[];

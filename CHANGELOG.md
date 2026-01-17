@@ -5,6 +5,147 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-01-17
+
+### Added
+
+- **Gateway Tools Consolidation**: Unified 58 MCP tools into 8 focused gateway handlers
+  - `explore` - File and code exploration (read, list, analyze, search, getStructure)
+  - `context` - Context scaffolding and semantic context (check, init, fill, fillSingle, listToFill, getMap, buildSemantic, scaffoldPlan)
+  - `project` - Project initialization and reporting (start, report, detectStack, detectAITools)
+  - `plan` - Plan management and execution tracking (link, getLinked, getDetails, getForPhase, updatePhase, recordDecision, updateStep, getStatus, syncMarkdown, commitPhase)
+  - `agent` - Agent orchestration and discovery (discover, getInfo, orchestrate, getSequence, getDocs, getPhaseDocs, listTypes)
+  - `skill` - Skill management (list, getContent, getForPhase, scaffold, export, fill)
+  - `sync` - Import/export synchronization (exportRules, exportDocs, exportAgents, exportContext, exportSkills, reverseSync, importDocs, importAgents, importSkills)
+  - `workflow` - PREVC workflow management (init, status, advance, handoff, collaborate, createDoc, getGates, approvePlan, setAutonomous)
+  - Standardized response utilities and shared context across all handlers
+  - Improved organization, discoverability, and reduced cognitive load
+
+- **Workflow Gates System**: Comprehensive gate checking for phase transitions
+  - `require_plan` gate - Enforces plan creation before P → R transition
+  - `require_approval` gate - Requires plan approval before R → E transition
+  - Automatic gate settings based on project scale (QUICK, SMALL, MEDIUM, LARGE, ENTERPRISE)
+  - Custom error types for gate violations (`WorkflowGateError`)
+  - New `getGates` action to check current gate status
+  - Unit tests for gate checking logic
+
+- **Workflow Autonomous Mode**: Toggle autonomous execution for AI agents
+  - `setAutonomous` action to enable/disable autonomous mode
+  - Autonomous mode bypasses certain gates for faster iteration
+  - Tracks reason for mode changes in workflow status
+
+- **Execution History Tracking**: Detailed action logging throughout workflow lifecycle
+  - `ExecutionHistory` structure tracks all workflow actions
+  - Records phase starts, completions, plan linking, step execution
+  - `archive_previous` option for workflow initialization (archive vs delete existing)
+  - Methods to archive or clear plans and workflows
+
+- **Plan Execution Management**: Step-level tracking and synchronization
+  - `updateStep` action for updating individual step status
+  - `getStatus` action for retrieving plan execution status
+  - `syncMarkdown` action to sync tracking data back to plan markdown files
+  - Detailed interfaces for step execution (`StepExecution`) and phase tracking (`PhaseExecution`)
+
+- **Git Integration for Plans**: Commit completed phases directly from MCP
+  - `commitPhase` action creates git commits for completed workflow phases
+  - Optional co-authoring support with `coAuthor` parameter
+  - Configurable staging patterns with `stagePatterns` (default: `.context/**`)
+  - Dry-run mode for previewing commits
+  - Commit tracking records hash and timestamp for each phase
+
+- **Breadcrumb Logging**: Step-level execution trails for debugging
+  - Enhanced `PlanLinker` with breadcrumb trail generation
+  - `generateResumeContext` provides step-level context for session resumption
+  - Actions tracked: step_started, step_completed, step_skipped
+  - Improves AI agent ability to resume interrupted workflows
+
+- **V2 Scaffold System**: New scaffold generation architecture
+  - Frontmatter-only files that define structure without content
+  - `scaffoldStructure` context passed to AI agents for content generation
+  - Centralized scaffold structure definitions in `scaffoldStructures.ts`
+  - Supports documentation, agents, and skills scaffolding
+  - Improved validation and serialization of scaffold structures
+  - Deprecated legacy templates in favor of new system
+
+- **Fill Tool Enhancements**: Better context for content generation
+  - `fillSingleFile` and `fillScaffolding` now include scaffold structure context
+  - Semantic context integrated into fill instructions
+  - Removed deprecated content generation functions
+  - Enhanced error handling and user guidance
+
+- **Q&A Service**: Question and answer generation from codebase
+  - `QAService` for generating and searching Q&A entries
+  - `generateQA` action creates Q&A files from codebase analysis
+  - `searchQA` action for semantic search over generated Q&A
+  - Utilizes pre-computed codebase maps when available
+
+- **Topic Detection**: Automatic detection of functional patterns
+  - `TopicDetector` identifies capabilities in codebase
+  - Detects: authentication, database access, API endpoints, caching, messaging, etc.
+  - Used to generate contextually relevant Q&A content
+
+- **Context Metrics Service**: Usage tracking for context tools
+  - Tracks context tool usage and file reads
+  - Provides insights into pre-computed context effectiveness
+  - Guides optimization of codebase map generation
+
+- **Enhanced Tool Status**: Improved response structures
+  - New `incomplete` status for tracking pending actions
+  - `instruction` field with clear next-step guidance
+  - `pendingWrites` replaces `requiredActions` for clarity
+  - `checklist` field for actionable task lists
+
+### Changed
+
+- **MCP Server Architecture**: Gateway pattern replaces individual tools
+  - Single entry point per domain (explore, context, workflow, etc.)
+  - Action-based dispatching within each gateway
+  - Consistent parameter validation and error handling
+
+- **Scaffold Generation**: Templates now generate structure, not content
+  - AI agents receive scaffold structure and fill based on context
+  - Better separation of structure definition and content generation
+
+- **Workflow Initialization**: New settings and options
+  - `autonomous`, `require_plan`, `require_approval` settings
+  - Scale-based default settings for different project sizes
+  - `archive_previous` controls handling of existing workflows
+
+### Technical Details
+
+#### New Files
+- `src/services/mcp/gateway/` - Gateway handler modules
+  - `exploreGateway.ts` - File/code exploration handler
+  - `contextGateway.ts` - Context management handler
+  - `projectGateway.ts` - Project operations handler
+  - `planGateway.ts` - Plan management handler
+  - `agentGateway.ts` - Agent orchestration handler
+  - `skillGateway.ts` - Skill management handler
+  - `syncGateway.ts` - Sync operations handler
+  - `workflowGateway.ts` - Workflow management handler
+  - `shared.ts` - Shared utilities and response helpers
+- `src/workflow/gates/gateChecker.ts` - Gate checking logic
+- `src/workflow/gates/gateChecker.test.ts` - Gate checker unit tests
+- `src/workflow/errors.ts` - Custom workflow error types
+- `src/generators/shared/scaffoldStructures.ts` - Centralized scaffold definitions
+- `src/services/qa/qaService.ts` - Q&A generation service
+- `src/services/qa/topicDetector.ts` - Functional pattern detection
+- `src/services/metrics/contextMetricsService.ts` - Usage metrics tracking
+- `src/utils/gitService.ts` - Git operations utility
+- `src/types/scaffoldFrontmatter.ts` - Scaffold frontmatter types
+
+#### Modified Files
+- `src/services/mcp/mcpServer.ts` - Gateway integration and new actions
+- `src/workflow/orchestrator.ts` - Gate checking and execution history
+- `src/workflow/status/statusManager.ts` - Execution tracking and settings
+- `src/workflow/plans/planLinker.ts` - Step tracking and commit support
+- `src/services/ai/tools/fillScaffoldingTool.ts` - Scaffold structure integration
+- `src/services/ai/tools/fillSingleFileTool.ts` - Enhanced fill context
+- `src/services/ai/schemas.ts` - New action schemas and parameters
+- `src/generators/documentation/documentationGenerator.ts` - V2 scaffold support
+- `src/generators/agents/agentGenerator.ts` - V2 scaffold support
+- `src/generators/skills/skillGenerator.ts` - V2 scaffold support
+
 ## [0.6.3] - 2026-01-16
 
 ### Added

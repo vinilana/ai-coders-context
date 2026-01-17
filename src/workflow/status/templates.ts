@@ -10,6 +10,7 @@ import {
   PrevcRole,
   ProjectScale,
   PhaseStatus,
+  AgentStatus,
   ExecutionHistory,
   ExecutionAction,
 } from '../types';
@@ -183,6 +184,7 @@ export function createInitialStatus(options: CreateStatusOptions): PrevcStatus {
     },
     phases: phaseStatuses,
     execution,
+    agents: {},
     roles: roleStatuses,
   };
 }

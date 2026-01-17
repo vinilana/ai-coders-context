@@ -222,10 +222,10 @@ export class AIContextMCPServer {
           .describe('(advance) Artifact paths'),
         force: z.boolean().optional()
           .describe('(advance) Force advancement'),
-        from: z.enum(PREVC_ROLES as unknown as [string, ...string[]]).optional()
-          .describe('(handoff) Role handing off'),
-        to: z.enum(PREVC_ROLES as unknown as [string, ...string[]]).optional()
-          .describe('(handoff) Role receiving'),
+        from: z.string().optional()
+          .describe('(handoff) Agent handing off (e.g., feature-developer)'),
+        to: z.string().optional()
+          .describe('(handoff) Agent receiving (e.g., code-reviewer)'),
         artifacts: z.array(z.string()).optional()
           .describe('(handoff) Artifacts to hand off'),
         topic: z.string().optional()
