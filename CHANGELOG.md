@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Robust Context Root Detection**: New `contextRootResolver.ts` module for reliable `.context` folder discovery
+  - Upward directory traversal (max 10 levels) to find `.context` in parent directories
+  - Git root detection as fallback for determining project boundaries
+  - Package.json configuration support via `ai-context.path` field
+  - Comprehensive validation of `.context` structure with detailed diagnostics
+  - Monorepo support (both shared and per-package `.context` directories)
+  - Symlink resolution and error handling for special cases
+  - New `resolveContextRoot()` function with extensive options for customization
+  - New `resolveContextPathsAsync()` for async path resolution with validation
+  - Factory methods (`create()`) on `WorkflowService` and `PlanLinker` for robust initialization
+  - Addresses limitations where `.context` wasn't found from subdirectories or in monorepo setups
+
 - **MCP Action Logging**: Logs every MCP tool invocation to `.context/workflow/actions.jsonl` with sanitized metadata for auditability.
 - **Phase Orchestration Skills**: Workflow responses now include recommended skills alongside agent orchestration for each PREVC phase.
 

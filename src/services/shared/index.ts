@@ -43,7 +43,9 @@ export {
 // Path Helpers
 export {
   ContextPaths,
+  ContextPathsWithResolution,
   resolveContextPaths,
+  resolveContextPathsAsync,
   resolveAbsolutePath,
   ensureDirectory,
   ensureParentDirectory,
@@ -57,6 +59,21 @@ export {
   getBasename,
   joinPaths,
 } from './pathHelpers';
+
+// Context Root Resolver
+export {
+  ContextValidation,
+  ContextResolutionResult,
+  ContextResolutionOptions,
+  ContextAwareFactoryOptions,
+  findGitRoot,
+  readContextPathFromPackageJson,
+  validateContextStructure,
+  resolveContextRoot,
+  getContextPath as getContextPathResolved,
+  getProjectRoot,
+  handleContextResolutionError,
+} from './contextRootResolver';
 
 // Tool Registry
 export {

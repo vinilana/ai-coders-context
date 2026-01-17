@@ -6,6 +6,7 @@
 
 import * as path from 'path';
 import * as fs from 'fs-extra';
+import { resolveContextRoot } from '../shared/contextRootResolver';
 import {
   PrevcOrchestrator,
   WorkflowSummary,
@@ -78,6 +79,22 @@ export class WorkflowService {
     this.orchestrator = new PrevcOrchestrator(this.contextPath);
     this.collaborationManager = new CollaborationManager();
     this.deps = deps;
+  }
+
+  /**
+   * Create a WorkflowService with robust context root detection
+   * Uses upward traversal, package.json config, and git root detection
+   * for finding the .context directory.
+   */
+  static async create(
+    repoPath: string = process.cwd(),
+    deps: WorkflowServiceDependencies = {}
+  ): Promise<WorkflowService> {
+    const resolution = await resolveContextRoot({
+      startPath: repoPath,
+      validate: false,
+    });
+    return new WorkflowService(resolution.projectRoot, deps);
   }
 
   /**

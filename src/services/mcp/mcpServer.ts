@@ -17,6 +17,7 @@ import { SemanticContextBuilder, type ContextFormat } from '../semantic/contextB
 import { VERSION } from '../../version';
 import { WorkflowService } from '../workflow';
 import { logMcpAction } from './actionLogger';
+import { resolveContextRoot } from '../shared/contextRootResolver';
 import {
   PREVC_ROLES,
   PHASE_NAMES_EN,
@@ -66,6 +67,7 @@ export class AIContextMCPServer {
   private contextBuilder: SemanticContextBuilder;
   private options: MCPServerOptions;
   private transport: StdioServerTransport | null = null;
+  private resolvedRepoPath: string | null = null;
 
   constructor(options: MCPServerOptions = {}) {
     this.options = {
@@ -87,10 +89,36 @@ export class AIContextMCPServer {
   }
 
   /**
+   * Resolve the repository path using robust detection when not explicitly provided
+   */
+  private async getResolvedRepoPath(): Promise<string> {
+    // If explicitly provided, use it
+    if (this.options.repoPath) {
+      return this.options.repoPath;
+    }
+
+    // If already resolved, return cached value
+    if (this.resolvedRepoPath) {
+      return this.resolvedRepoPath;
+    }
+
+    // Use robust resolver to find the project root
+    const resolution = await resolveContextRoot({
+      validate: false,
+    });
+
+    this.resolvedRepoPath = resolution.projectRoot;
+    return this.resolvedRepoPath;
+  }
+
+  /**
    * Register tools: 5 consolidated gateways + 4 dedicated workflow tools
    * Total: 9 tools for clear entry points and reduced AI cognitive load
    *
    * Project tools removed - use context({ action: "init" }) + workflow-init instead
+   *
+   * NOTE: repoPath defaults to process.cwd() here. Individual handlers should use
+   * resolveContextRoot() for robust .context detection with upward traversal.
    */
   private registerGatewayTools(): void {
     const repoPath = this.options.repoPath || process.cwd();
@@ -669,7 +697,7 @@ Actions:
     const success = typeof payload?.success === 'boolean'
       ? payload.success
       : !response.isError;
-    const errorMessage = payload?.error;
+    const errorMessage = typeof payload?.error === 'string' ? payload.error : undefined;
     const resultSummary = payload ? this.buildResultSummary(payload) : undefined;
 
     await logMcpAction(repoPath, {

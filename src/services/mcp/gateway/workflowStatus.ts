@@ -6,6 +6,7 @@
 
 import * as path from 'path';
 import { WorkflowService } from '../../workflow';
+import { resolveContextRoot } from '../../shared/contextRootResolver';
 import {
   PHASE_NAMES_EN,
   getScaleName,
@@ -30,13 +31,24 @@ export async function handleWorkflowStatus(
   params: WorkflowStatusParams,
   options: WorkflowStatusOptions
 ): Promise<MCPToolResponse> {
-  const repoPath = path.resolve(params.repoPath || options.repoPath);
-  const contextPath = path.basename(repoPath) === '.context'
-    ? repoPath
-    : path.join(repoPath, '.context');
-
   try {
-    const service = new WorkflowService(repoPath);
+    // Resolve repo path with robust context detection
+    let repoPath = params.repoPath || options.repoPath;
+    if (!repoPath) {
+      const resolution = await resolveContextRoot({ validate: false });
+      repoPath = resolution.projectRoot;
+    }
+    repoPath = path.resolve(repoPath);
+
+    // Get context path using robust resolver
+    const resolution = await resolveContextRoot({
+      startPath: repoPath,
+      validate: false,
+    });
+    const contextPath = resolution.contextPath;
+
+    // Create service with robust detection
+    const service = await WorkflowService.create(repoPath);
 
     if (!(await service.hasWorkflow())) {
       return createJsonResponse({

@@ -20,6 +20,7 @@ import {
 import { SemanticContextBuilder, type ContextFormat } from '../../semantic/contextBuilder';
 import { CodebaseAnalyzer } from '../../semantic/codebaseAnalyzer';
 import { QAService } from '../../qa';
+import { resolveContextRoot } from '../../shared/contextRootResolver';
 
 import type { ContextParams } from './types';
 import type { MCPToolResponse } from './response';
@@ -38,7 +39,12 @@ export async function handleContext(
   params: ContextParams,
   options: ContextOptions
 ): Promise<MCPToolResponse> {
-  const repoPath = params.repoPath || options.repoPath || process.cwd();
+  // Resolve repoPath: use explicit param, then options, then robust detection
+  let repoPath = params.repoPath || options.repoPath;
+  if (!repoPath) {
+    const resolution = await resolveContextRoot({ validate: false });
+    repoPath = resolution.projectRoot;
+  }
 
   try {
     switch (params.action) {

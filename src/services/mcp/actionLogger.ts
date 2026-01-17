@@ -6,6 +6,7 @@
 
 import * as path from 'path';
 import * as fs from 'fs-extra';
+import { resolveContextRoot } from '../shared/contextRootResolver';
 
 type ActionStatus = 'success' | 'error';
 
@@ -34,11 +35,12 @@ const MAX_DEPTH = 4;
 const MAX_ARRAY = 20;
 const MAX_STRING = 200;
 
-function resolveContextPath(repoPath: string): string {
-  const resolvedPath = path.resolve(repoPath);
-  return path.basename(resolvedPath) === '.context'
-    ? resolvedPath
-    : path.join(resolvedPath, '.context');
+async function resolveContextPath(repoPath: string): Promise<string> {
+  const resolution = await resolveContextRoot({
+    startPath: repoPath,
+    validate: false,
+  });
+  return resolution.contextPath;
 }
 
 function sanitizeValue(value: unknown, depth: number = 0): unknown {
@@ -87,7 +89,7 @@ export async function logMcpAction(
   entry: Omit<MCPActionLogEntry, 'timestamp'> & { timestamp?: string }
 ): Promise<void> {
   try {
-    const contextPath = resolveContextPath(repoPath);
+    const contextPath = await resolveContextPath(repoPath);
     const contextExists = await fs.pathExists(contextPath);
     if (!contextExists) {
       return;

@@ -7,6 +7,7 @@
 
 import * as path from 'path';
 import * as fs from 'fs-extra';
+import { resolveContextRoot } from '../../services/shared/contextRootResolver';
 import {
   PlanReference,
   LinkedPlan,
@@ -48,6 +49,22 @@ export class PlanLinker {
     this.workflowPath = path.join(this.contextPath, 'workflow');
     this.agentRegistry = createAgentRegistry(repoPath);
     this.statusManager = statusManager;
+  }
+
+  /**
+   * Create a PlanLinker with robust context root detection
+   * Uses upward traversal, package.json config, and git root detection
+   * for finding the .context directory.
+   */
+  static async create(
+    repoPath: string = process.cwd(),
+    statusManager?: PrevcStatusManager
+  ): Promise<PlanLinker> {
+    const resolution = await resolveContextRoot({
+      startPath: repoPath,
+      validate: false,
+    });
+    return new PlanLinker(resolution.projectRoot, statusManager);
   }
 
   /**

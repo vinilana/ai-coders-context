@@ -6,6 +6,7 @@
 
 import * as path from 'path';
 import { WorkflowService } from '../../workflow';
+import { resolveContextRoot } from '../../shared/contextRootResolver';
 import {
   PHASE_NAMES_EN,
   ROLE_DISPLAY_NAMES,
@@ -44,10 +45,17 @@ export async function handleWorkflowManage(
   params: WorkflowManageParams,
   options: WorkflowManageOptions
 ): Promise<MCPToolResponse> {
-  const repoPath = path.resolve(params.repoPath || options.repoPath);
-
   try {
-    const service = new WorkflowService(repoPath);
+    // Resolve repo path with robust context detection
+    let repoPath = params.repoPath || options.repoPath;
+    if (!repoPath) {
+      const resolution = await resolveContextRoot({ validate: false });
+      repoPath = resolution.projectRoot;
+    }
+    repoPath = path.resolve(repoPath);
+
+    // Create service with robust detection
+    const service = await WorkflowService.create(repoPath);
 
     switch (params.action) {
       case 'handoff': {
