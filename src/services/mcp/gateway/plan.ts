@@ -7,10 +7,12 @@
  *           syncPlanMarkdown
  */
 
+import * as path from 'path';
 import { WorkflowService } from '../../workflow';
 import {
   PHASE_NAMES_EN,
   createPlanLinker,
+  PrevcStatusManager,
 } from '../../../workflow';
 
 import type { PlanParams } from './types';
@@ -29,7 +31,10 @@ export async function handlePlan(
   options: PlanOptions
 ): Promise<MCPToolResponse> {
   const repoPath = options.repoPath || process.cwd();
-  const linker = createPlanLinker(repoPath);
+  // Create statusManager for breadcrumb trail logging in step updates
+  const contextPath = path.join(repoPath, '.context');
+  const statusManager = new PrevcStatusManager(contextPath);
+  const linker = createPlanLinker(repoPath, statusManager);
 
   try {
     switch (params.action) {

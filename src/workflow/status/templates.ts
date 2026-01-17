@@ -42,9 +42,22 @@ const PHASE_NAMES: Record<PrevcPhase, string> = {
 };
 
 /**
+ * Step context for resume context generation
+ */
+interface StepContext {
+  planPhase?: string;
+  stepIndex?: number;
+  stepDescription?: string;
+}
+
+/**
  * Generate resume context based on current phase and action
  */
-export function generateResumeContext(phase: PrevcPhase, action: ExecutionAction): string {
+export function generateResumeContext(
+  phase: PrevcPhase,
+  action: ExecutionAction,
+  stepContext?: StepContext
+): string {
   const phaseName = PHASE_NAMES[phase];
 
   switch (action) {
@@ -60,6 +73,19 @@ export function generateResumeContext(phase: PrevcPhase, action: ExecutionAction
       return `Fase ${phase} ignorada - avançando`;
     case 'settings_changed':
       return `Configurações atualizadas`;
+    // Step-level breadcrumb actions
+    case 'step_started':
+      if (stepContext?.stepDescription) {
+        return `Trabalhando em: ${stepContext.stepDescription}`;
+      }
+      return `Trabalhando no passo ${stepContext?.stepIndex || '?'} de ${stepContext?.planPhase || 'fase'}`;
+    case 'step_completed':
+      if (stepContext?.stepDescription) {
+        return `Concluído: ${stepContext.stepDescription}`;
+      }
+      return `Passo ${stepContext?.stepIndex || '?'} de ${stepContext?.planPhase || 'fase'} concluído`;
+    case 'step_skipped':
+      return `Passo ${stepContext?.stepIndex || '?'} de ${stepContext?.planPhase || 'fase'} ignorado`;
     default:
       return `Fase ${phase} (${phaseName})`;
   }

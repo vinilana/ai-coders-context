@@ -55,7 +55,8 @@ export class PrevcOrchestrator {
     this.contextPath = contextPath;
     this.statusManager = new PrevcStatusManager(contextPath);
     this.gateChecker = new WorkflowGateChecker();
-    this.planLinker = new PlanLinker(path.dirname(contextPath));
+    // Pass statusManager to PlanLinker for breadcrumb trail logging
+    this.planLinker = new PlanLinker(path.dirname(contextPath), this.statusManager);
   }
 
   /**

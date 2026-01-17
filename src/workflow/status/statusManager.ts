@@ -440,6 +440,53 @@ export class PrevcStatusManager {
   }
 
   /**
+   * Add a step-level entry to the execution history (breadcrumb trail)
+   */
+  async addStepHistoryEntry(entry: {
+    action: 'step_started' | 'step_completed' | 'step_skipped';
+    plan: string;
+    planPhase: string;
+    stepIndex: number;
+    stepDescription?: string;
+    output?: string;
+    notes?: string;
+  }): Promise<void> {
+    const status = await this.load();
+    const now = new Date().toISOString();
+
+    // Ensure execution exists
+    if (!status.execution) {
+      status.execution = {
+        history: [],
+        last_activity: now,
+        resume_context: '',
+      };
+    }
+
+    // Add new step entry
+    const fullEntry: ExecutionHistoryEntry = {
+      timestamp: now,
+      phase: status.project.current_phase,
+      action: entry.action,
+      plan: entry.plan,
+      planPhase: entry.planPhase,
+      stepIndex: entry.stepIndex,
+      stepDescription: entry.stepDescription,
+      output: entry.output,
+      notes: entry.notes,
+    };
+    status.execution.history.push(fullEntry);
+    status.execution.last_activity = now;
+    status.execution.resume_context = generateResumeContext(
+      status.project.current_phase,
+      entry.action,
+      { planPhase: entry.planPhase, stepIndex: entry.stepIndex, stepDescription: entry.stepDescription }
+    );
+
+    await this.save(status);
+  }
+
+  /**
    * Get execution history
    */
   async getExecutionHistory(): Promise<ExecutionHistory | undefined> {
@@ -798,6 +845,22 @@ export class PrevcStatusManager {
         }
         if (entry.description) {
           lines.push(`      description: "${entry.description}"`);
+        }
+        // Step-level breadcrumb fields
+        if (entry.planPhase) {
+          lines.push(`      planPhase: "${entry.planPhase}"`);
+        }
+        if (entry.stepIndex !== undefined) {
+          lines.push(`      stepIndex: ${entry.stepIndex}`);
+        }
+        if (entry.stepDescription) {
+          lines.push(`      stepDescription: "${entry.stepDescription}"`);
+        }
+        if (entry.output) {
+          lines.push(`      output: "${entry.output}"`);
+        }
+        if (entry.notes) {
+          lines.push(`      notes: "${entry.notes}"`);
         }
       }
       lines.push(`  last_activity: "${status.execution.last_activity}"`);

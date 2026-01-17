@@ -159,7 +159,11 @@ export type ExecutionAction =
   | 'plan_linked'
   | 'plan_approved'
   | 'phase_skipped'
-  | 'settings_changed';
+  | 'settings_changed'
+  // Step-level actions for breadcrumb tracking
+  | 'step_started'
+  | 'step_completed'
+  | 'step_skipped';
 
 /**
  * Entry in the execution history
@@ -171,6 +175,17 @@ export interface ExecutionHistoryEntry {
   plan?: string;
   approved_by?: string;
   description?: string;
+  // Step-level fields for breadcrumb tracking
+  /** Plan phase ID (e.g., "phase-1") */
+  planPhase?: string;
+  /** 1-based step index within the plan phase */
+  stepIndex?: number;
+  /** Human-readable description of the step */
+  stepDescription?: string;
+  /** Output artifact from step completion */
+  output?: string;
+  /** Execution notes */
+  notes?: string;
 }
 
 /**

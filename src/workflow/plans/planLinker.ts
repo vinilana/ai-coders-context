@@ -20,6 +20,7 @@ import {
 } from './types';
 import { PrevcPhase, StatusType } from '../types';
 import { AgentRegistry, AgentMetadata, createAgentRegistry } from '../agents';
+import { PrevcStatusManager } from '../status/statusManager';
 
 /**
  * Plan Linker class
@@ -38,13 +39,15 @@ export class PlanLinker {
   private readonly plansPath: string;
   private readonly workflowPath: string;
   private readonly agentRegistry: AgentRegistry;
+  private readonly statusManager?: PrevcStatusManager;
 
-  constructor(repoPath: string) {
+  constructor(repoPath: string, statusManager?: PrevcStatusManager) {
     this.repoPath = repoPath;
     this.contextPath = path.join(repoPath, '.context');
     this.plansPath = path.join(this.contextPath, 'plans');
     this.workflowPath = path.join(this.contextPath, 'workflow');
     this.agentRegistry = createAgentRegistry(repoPath);
+    this.statusManager = statusManager;
   }
 
   /**
@@ -379,6 +382,24 @@ export class PlanLinker {
     // Save tracking
     await fs.ensureDir(path.dirname(trackingFile));
     await fs.writeFile(trackingFile, JSON.stringify(tracking, null, 2), 'utf-8');
+
+    // Log step to workflow execution history (breadcrumb trail)
+    if (this.statusManager) {
+      const action = status === 'completed' ? 'step_completed' :
+                     status === 'in_progress' ? 'step_started' :
+                     status === 'skipped' ? 'step_skipped' : null;
+      if (action) {
+        await this.statusManager.addStepHistoryEntry({
+          action,
+          plan: planSlug,
+          planPhase: phaseId,
+          stepIndex,
+          stepDescription: step.description,
+          output: options?.output,
+          notes: options?.notes,
+        });
+      }
+    }
 
     // Auto-sync to markdown
     await this.syncPlanMarkdown(planSlug);
@@ -1012,6 +1033,6 @@ export class PlanLinker {
 }
 
 // Export singleton factory
-export function createPlanLinker(repoPath: string): PlanLinker {
-  return new PlanLinker(repoPath);
+export function createPlanLinker(repoPath: string, statusManager?: PrevcStatusManager): PlanLinker {
+  return new PlanLinker(repoPath, statusManager);
 }
