@@ -60,3 +60,80 @@ export function createTextResponse(text: string): MCPToolResponse {
     }]
   };
 }
+
+/**
+ * Creates a scaffold response that includes the enhancement prompt.
+ * This ensures AI agents always receive instructions to enhance generated scaffolding.
+ */
+export function createScaffoldResponse(
+  data: Record<string, unknown>,
+  options: {
+    filesGenerated?: number;
+    pendingFiles?: string[];
+    repoPath?: string;
+  } = {}
+): MCPToolResponse {
+  const { filesGenerated = 0, pendingFiles = [], repoPath } = options;
+  const hasFilesToEnhance = filesGenerated > 0 || pendingFiles.length > 0;
+
+  // Build enhanced response with clear action signals
+  const enhancedData = {
+    // Original data
+    ...data,
+
+    // Action signals (appear first for visibility)
+    ...(hasFilesToEnhance && {
+      _actionRequired: true,
+      _status: 'incomplete',
+      _warning: 'SCAFFOLDING REQUIRES ENHANCEMENT',
+
+      // Enhancement instructions
+      enhancementPrompt: buildEnhancementPrompt(pendingFiles, repoPath),
+
+      // Clear next steps
+      nextSteps: [
+        'Call context({ action: "listToFill" }) to get files needing content',
+        'For each file, call context({ action: "fillSingle", filePath: "..." })',
+        'Generate content based on the semantic context returned',
+        'Write enhanced content using the Write tool',
+      ],
+
+      // Files needing enhancement
+      ...(pendingFiles.length > 0 && {
+        pendingEnhancement: pendingFiles,
+        pendingCount: pendingFiles.length,
+      }),
+    }),
+  };
+
+  return {
+    content: [{
+      type: 'text' as const,
+      text: JSON.stringify(enhancedData, null, 2)
+    }]
+  };
+}
+
+/**
+ * Build enhancement prompt for scaffold files.
+ */
+function buildEnhancementPrompt(pendingFiles: string[], repoPath?: string): string {
+  const filesList = pendingFiles.slice(0, 5).map((f, i) => `${i + 1}. ${f}`).join('\n');
+  const moreFiles = pendingFiles.length > 5 ? `\n... and ${pendingFiles.length - 5} more files` : '';
+
+  return `⚠️ ENHANCEMENT REQUIRED
+
+Scaffolding has been created but files need codebase-specific content.
+
+Files to enhance:
+${filesList}${moreFiles}
+
+REQUIRED WORKFLOW:
+1. Call context({ action: "fillSingle", filePath: "<file>" }) for each file
+2. Use the returned semantic context to generate rich content
+3. Write the enhanced content to the file
+
+${repoPath ? `Repository: ${repoPath}` : ''}
+
+DO NOT report completion until ALL files have been enhanced.`;
+}

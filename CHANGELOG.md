@@ -95,6 +95,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `pendingWrites` replaces `requiredActions` for clarity
   - `checklist` field for actionable task lists
 
+- **Scaffold Enhancement Prompt**: Consistent MCP enhancement instructions across all scaffolding operations
+  - New `MCP_SCAFFOLD_ENHANCEMENT_PROMPT` constant for standardized AI guidance
+  - New `createScaffoldResponse()` helper ensures all scaffold responses include enhancement instructions
+  - `_actionRequired`, `_status: "incomplete"`, and `_warning` signals for AI agent awareness
+  - `enhancementPrompt` field with clear workflow steps
+  - `nextSteps` array with actionable instructions
+  - `pendingEnhancement` list of files requiring content
+  - Applied to: `context init`, `project start`, `scaffoldPlan`
+  - Ensures AI agents always receive instructions to enhance scaffolding via MCP tools
+
 ### Changed
 
 - **MCP Server Architecture**: Gateway pattern replaces individual tools
@@ -136,6 +146,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Modified Files
 - `src/services/mcp/mcpServer.ts` - Gateway integration and new actions
+- `src/services/mcp/gateway/response.ts` - Added `createScaffoldResponse()` helper for consistent enhancement prompts
+- `src/services/mcp/gateway/context.ts` - Updated `init` and `scaffoldPlan` to use scaffold response
+- `src/services/mcp/gateway/project.ts` - Updated `start` to include enhancement prompt when files need content
+- `src/services/ai/tools/scaffoldPlanTool.ts` - Added consistent `status: "incomplete"` pattern and `nextStep` guidance
+- `src/prompts/defaults.ts` - Added `MCP_SCAFFOLD_ENHANCEMENT_PROMPT` constant
 - `src/workflow/orchestrator.ts` - Gate checking and execution history
 - `src/workflow/status/statusManager.ts` - Execution tracking and settings
 - `src/workflow/plans/planLinker.ts` - Step tracking and commit support

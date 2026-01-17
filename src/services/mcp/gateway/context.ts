@@ -23,7 +23,7 @@ import { QAService } from '../../qa';
 
 import type { ContextParams } from './types';
 import type { MCPToolResponse } from './response';
-import { createJsonResponse, createErrorResponse, createTextResponse } from './response';
+import { createJsonResponse, createErrorResponse, createTextResponse, createScaffoldResponse } from './response';
 import { toolContext } from './shared';
 
 export interface ContextOptions {
@@ -64,6 +64,17 @@ export async function handleContext(
           },
           toolContext
         );
+
+        // Extract pending files from result for scaffold response
+        const pendingWrites = (result as Record<string, unknown>).pendingWrites as Array<{ filePath: string }> | undefined;
+        if (pendingWrites && pendingWrites.length > 0) {
+          return createScaffoldResponse(result as Record<string, unknown>, {
+            filesGenerated: pendingWrites.length,
+            pendingFiles: pendingWrites.map(p => p.filePath),
+            repoPath,
+          });
+        }
+
         return createJsonResponse(result);
       }
 
@@ -152,6 +163,18 @@ export async function handleContext(
           },
           toolContext
         );
+
+        // Plan scaffold always needs enhancement
+        const typedResult = result as Record<string, unknown>;
+        const planPath = typedResult.planPath as string | undefined;
+        if (typedResult.success && planPath) {
+          return createScaffoldResponse(typedResult, {
+            filesGenerated: 1,
+            pendingFiles: [planPath],
+            repoPath,
+          });
+        }
+
         return createJsonResponse(result);
       }
 
