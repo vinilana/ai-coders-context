@@ -332,6 +332,10 @@ export const InitializeContextInputSchema = z.object({
     .describe('Automatically fill scaffolding with codebase-aware content (default: true)'),
   skipContentGeneration: z.boolean().default(true).optional()
     .describe('Skip pre-generating content for MCP to reduce response size. Use fillSingleFile or fillScaffolding tools to generate content on demand. (default: true)'),
+  generateQA: z.boolean().default(true).optional()
+    .describe('Generate Q&A files based on detected patterns and stack (default: true)'),
+  generateSkills: z.boolean().default(true).optional()
+    .describe('Generate skills scaffolding (default: true)'),
 });
 
 export const InitializeContextOutputSchema = z.object({

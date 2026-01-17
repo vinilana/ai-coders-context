@@ -8,7 +8,7 @@ import type { PrevcPhase, PrevcRole, AgentType } from '../../../workflow';
 
 // Action types for each gateway
 export type ExploreAction = 'read' | 'list' | 'analyze' | 'search' | 'getStructure';
-export type ContextAction = 'check' | 'init' | 'fill' | 'fillSingle' | 'listToFill' | 'getMap' | 'buildSemantic' | 'scaffoldPlan';
+export type ContextAction = 'check' | 'init' | 'fill' | 'fillSingle' | 'listToFill' | 'getMap' | 'buildSemantic' | 'scaffoldPlan' | 'searchQA' | 'generateQA' | 'getFlow' | 'detectPatterns';
 export type WorkflowAction = 'init' | 'status' | 'advance' | 'handoff' | 'collaborate' | 'createDoc' | 'getGates' | 'approvePlan' | 'setAutonomous';
 export type ProjectAction = 'start' | 'report' | 'detectStack' | 'detectAITools';
 export type SyncAction = 'exportRules' | 'exportDocs' | 'exportAgents' | 'exportContext' | 'exportSkills' | 'reverseSync' | 'importDocs' | 'importAgents' | 'importSkills';
@@ -58,6 +58,10 @@ export interface ContextParams {
   planName?: string;
   title?: string;
   summary?: string;
+  // Q&A and flow parameters
+  query?: string;
+  entryFile?: string;
+  entryFunction?: string;
 }
 
 export interface WorkflowParams {

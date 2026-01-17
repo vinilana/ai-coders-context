@@ -5,6 +5,7 @@ import { InitializeContextInputSchema, type InitializeContextInput, type Require
 import { FileMapper } from '../../../utils/fileMapper';
 import { DocumentationGenerator } from '../../../generators/documentation/documentationGenerator';
 import { AgentGenerator } from '../../../generators/agents/agentGenerator';
+import { SkillGenerator } from '../../../generators/skills/skillGenerator';
 import {
   StackDetector,
   classifyProject,
@@ -15,6 +16,7 @@ import {
 } from '../../stack';
 import { getOrBuildContext, generateDocContent, generateAgentContent } from './fillScaffoldingTool';
 import { UPDATE_SCAFFOLD_PROMPT_FALLBACK } from '../../../prompts/defaults';
+import { QAService } from '../../qa';
 
 export const initializeContextTool = tool({
   description: `Initialize .context scaffolding and create template files.
@@ -33,6 +35,8 @@ The AI agent MUST then fill each generated file using the provided context and i
       disableFiltering = false,
       autoFill = true,
       skipContentGeneration = true, // Default true to reduce response size
+      generateQA = true,
+      generateSkills = true,
     } = input;
 
     const resolvedRepoPath = path.resolve(repoPath);
@@ -110,6 +114,34 @@ The AI agent MUST then fill each generated file using the provided context and i
           { semantic, filteredAgents },
           false // verbose
         );
+      }
+
+      // Generate skills scaffolding
+      let skillsGenerated = 0;
+      if (generateSkills) {
+        try {
+          const skillGenerator = new SkillGenerator({
+            repoPath: resolvedRepoPath,
+            outputDir: path.relative(resolvedRepoPath, outputDir),
+          });
+          const skillResult = await skillGenerator.generate({ force: false });
+          skillsGenerated = skillResult.generatedSkills.length;
+        } catch {
+          // Skills generation is optional, continue if it fails
+        }
+      }
+
+      // Generate Q&A files
+      let qaGenerated = 0;
+      if (generateQA) {
+        try {
+          const qaService = new QAService();
+          const qaResult = await qaService.generateFromCodebase(resolvedRepoPath);
+          qaGenerated = qaResult.generated.length;
+          await qaService.shutdown();
+        } catch {
+          // Q&A generation is optional, continue if it fails
+        }
       }
 
       // Build list of generated files with their types
@@ -257,6 +289,8 @@ DO NOT say "initialization complete" until ALL files are filled.`
           _metadata: {
             docsGenerated,
             agentsGenerated,
+            skillsGenerated,
+            qaGenerated,
             outputDir,
             classification: classification ? {
               projectType: classification.primaryType,
@@ -268,6 +302,8 @@ DO NOT say "initialization complete" until ALL files are filled.`
           // Legacy fields for backwards compatibility
           docsGenerated,
           agentsGenerated,
+          skillsGenerated,
+          qaGenerated,
           outputDir,
           classification: classification ? {
             projectType: classification.primaryType,
@@ -333,6 +369,8 @@ DO NOT say "initialization complete" until ALL writes succeed.`
         _metadata: {
           docsGenerated,
           agentsGenerated,
+          skillsGenerated,
+          qaGenerated,
           outputDir,
           classification: classification ? {
             projectType: classification.primaryType,
@@ -344,6 +382,8 @@ DO NOT say "initialization complete" until ALL writes succeed.`
         // Legacy fields for backwards compatibility
         docsGenerated,
         agentsGenerated,
+        skillsGenerated,
+        qaGenerated,
         outputDir,
         classification: classification ? {
           projectType: classification.primaryType,

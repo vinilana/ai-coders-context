@@ -45,3 +45,15 @@ export { handleSync, type SyncOptions } from './sync';
 export { handlePlan, type PlanOptions } from './plan';
 export { handleAgent, type AgentOptions } from './agent';
 export { handleSkill, type SkillOptions } from './skill';
+
+// Metrics
+export {
+  handleMetricsAction,
+  recordContextQuery,
+  recordFileRead,
+  getMetrics,
+  getMetricsSummary,
+  resetMetrics,
+  type SessionMetrics,
+  type MetricsSummary,
+} from './metrics';

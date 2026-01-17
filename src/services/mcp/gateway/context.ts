@@ -4,6 +4,8 @@
  * Handles context scaffolding and semantic context operations.
  * Replaces: checkScaffolding, initializeContext, fillScaffolding, listFilesToFill,
  *           fillSingleFile, getCodebaseMap, buildSemanticContext, scaffoldPlan
+ *
+ * New actions: searchQA, generateQA, getFlow, detectPatterns
  */
 
 import {
@@ -16,6 +18,8 @@ import {
   getCodebaseMapTool,
 } from '../../ai/tools';
 import { SemanticContextBuilder, type ContextFormat } from '../../semantic/contextBuilder';
+import { CodebaseAnalyzer } from '../../semantic/codebaseAnalyzer';
+import { QAService } from '../../qa';
 
 import type { ContextParams } from './types';
 import type { MCPToolResponse } from './response';
@@ -149,6 +153,90 @@ export async function handleContext(
           toolContext
         );
         return createJsonResponse(result);
+      }
+
+      case 'searchQA': {
+        if (!params.query) {
+          return createErrorResponse('Query is required for searchQA action');
+        }
+        const qaService = new QAService(params.options);
+        try {
+          const results = await qaService.search(repoPath, params.query);
+          return createJsonResponse({
+            query: params.query,
+            results,
+            count: results.length,
+          });
+        } finally {
+          await qaService.shutdown();
+        }
+      }
+
+      case 'generateQA': {
+        const qaService = new QAService(params.options);
+        try {
+          const result = await qaService.generateFromCodebase(repoPath);
+          return createJsonResponse({
+            generated: result.generated.length,
+            skipped: result.skipped,
+            projectType: result.topicDetection.projectType,
+            topics: result.topicDetection.topics.map((t) => t.slug),
+            files: result.generated.map((e) => `${e.slug}.md`),
+          });
+        } finally {
+          await qaService.shutdown();
+        }
+      }
+
+      case 'getFlow': {
+        if (!params.entryFile) {
+          return createErrorResponse('entryFile is required for getFlow action');
+        }
+        const analyzer = new CodebaseAnalyzer(params.options);
+        try {
+          const flow = await analyzer.traceFlow(
+            repoPath,
+            params.entryFile,
+            params.entryFunction
+          );
+          return createJsonResponse({
+            entryPoint: flow.entryPoint,
+            nodeCount: flow.nodes.length,
+            edgeCount: flow.edges.length,
+            mermaid: flow.mermaidDiagram,
+            nodes: flow.nodes.slice(0, 20),
+            edges: flow.edges.slice(0, 30),
+          });
+        } finally {
+          await analyzer.shutdown();
+        }
+      }
+
+      case 'detectPatterns': {
+        const analyzer = new CodebaseAnalyzer(params.options);
+        try {
+          const patterns = await analyzer.detectFunctionalPatterns(repoPath);
+          return createJsonResponse({
+            hasAuthPattern: patterns.hasAuthPattern,
+            hasDatabasePattern: patterns.hasDatabasePattern,
+            hasApiPattern: patterns.hasApiPattern,
+            hasCachePattern: patterns.hasCachePattern,
+            hasQueuePattern: patterns.hasQueuePattern,
+            hasWebSocketPattern: patterns.hasWebSocketPattern,
+            hasLoggingPattern: patterns.hasLoggingPattern,
+            hasValidationPattern: patterns.hasValidationPattern,
+            hasErrorHandlingPattern: patterns.hasErrorHandlingPattern,
+            hasTestingPattern: patterns.hasTestingPattern,
+            patterns: patterns.patterns.map((p) => ({
+              type: p.type,
+              confidence: p.confidence,
+              description: p.description,
+              indicatorCount: p.indicators.length,
+            })),
+          });
+        } finally {
+          await analyzer.shutdown();
+        }
       }
 
       default:
