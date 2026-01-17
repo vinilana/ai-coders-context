@@ -442,6 +442,52 @@ export class PlanLinker {
   }
 
   /**
+   * Record commit information for a completed phase
+   */
+  async recordPhaseCommit(
+    planSlug: string,
+    phaseId: string,
+    commitInfo: {
+      hash: string;
+      shortHash: string;
+      committedBy?: string;
+    }
+  ): Promise<boolean> {
+    const trackingFile = path.join(this.workflowPath, 'plan-tracking', `${planSlug}.json`);
+    const now = new Date().toISOString();
+
+    // Load existing tracking
+    let tracking = await this.loadPlanTracking(planSlug);
+    if (!tracking) {
+      return false;
+    }
+
+    // Ensure phase exists in tracking
+    if (!tracking.phases[phaseId]) {
+      return false;
+    }
+
+    // Record commit info
+    tracking.phases[phaseId].commitHash = commitInfo.hash;
+    tracking.phases[phaseId].commitShortHash = commitInfo.shortHash;
+    tracking.phases[phaseId].committedAt = now;
+    if (commitInfo.committedBy) {
+      tracking.phases[phaseId].committedBy = commitInfo.committedBy;
+    }
+
+    tracking.lastUpdated = now;
+
+    // Save tracking
+    await fs.ensureDir(path.dirname(trackingFile));
+    await fs.writeFile(trackingFile, JSON.stringify(tracking, null, 2), 'utf-8');
+
+    // Sync to markdown
+    await this.syncPlanMarkdown(planSlug);
+
+    return true;
+  }
+
+  /**
    * Load plan tracking from JSON file
    */
   private async loadPlanTracking(planSlug: string): Promise<PlanExecutionTracking | null> {

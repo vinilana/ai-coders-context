@@ -14,6 +14,7 @@ import {
   createPlanLinker,
   PrevcStatusManager,
 } from '../../../workflow';
+import { GitService } from '../../../utils/gitService';
 
 import type { PlanParams } from './types';
 import type { MCPToolResponse } from './response';
@@ -183,6 +184,102 @@ export async function handlePlan(
           planSlug: params.planSlug,
           message: success ? 'Plan markdown synced successfully' : 'Failed to sync - plan or tracking not found',
         });
+      }
+
+      case 'commitPhase': {
+        // Validate required params
+        if (!params.planSlug || !params.phaseId) {
+          return createJsonResponse({
+            success: false,
+            error: 'planSlug and phaseId are required for commitPhase action',
+          });
+        }
+
+        // Get the plan and phase
+        const plan = await linker.getLinkedPlan(params.planSlug);
+        if (!plan) {
+          return createJsonResponse({
+            success: false,
+            error: `Plan not found: ${params.planSlug}`,
+          });
+        }
+
+        const phase = plan.phases.find(p => p.id === params.phaseId);
+        if (!phase) {
+          return createJsonResponse({
+            success: false,
+            error: `Phase not found: ${params.phaseId}`,
+          });
+        }
+
+        // Default commit message from phase's commitCheckpoint or generate one
+        const commitMessage = phase.commitCheckpoint ||
+          `chore(plan): complete ${phase.name} for ${params.planSlug}`;
+
+        // Default stage patterns to .context/**
+        const stagePatterns = params.stagePatterns || ['.context/**'];
+
+        // Initialize git service
+        const gitService = new GitService(repoPath);
+
+        // Check if repo is a git repository
+        if (!gitService.isGitRepository()) {
+          return createJsonResponse({
+            success: false,
+            error: 'Not a git repository',
+          });
+        }
+
+        // If dry run, just preview what would be committed
+        if (params.dryRun) {
+          const stagedFiles = gitService.stageFiles(stagePatterns);
+          return createJsonResponse({
+            success: true,
+            dryRun: true,
+            planSlug: params.planSlug,
+            phaseId: params.phaseId,
+            commitMessage,
+            coAuthor: params.coAuthor,
+            filesWouldBeCommitted: stagedFiles,
+          });
+        }
+
+        try {
+          // Stage files matching patterns
+          const stagedFiles = gitService.stageFiles(stagePatterns);
+
+          if (stagedFiles.length === 0) {
+            return createJsonResponse({
+              success: false,
+              error: 'Nothing to commit: no files match the stage patterns or all files are already committed',
+            });
+          }
+
+          // Create the commit
+          const commitResult = gitService.commit(commitMessage, params.coAuthor);
+
+          // Record the commit in plan tracking
+          await linker.recordPhaseCommit(params.planSlug, params.phaseId, {
+            hash: commitResult.hash,
+            shortHash: commitResult.shortHash,
+            committedBy: params.coAuthor,
+          });
+
+          return createJsonResponse({
+            success: true,
+            planSlug: params.planSlug,
+            phaseId: params.phaseId,
+            commit: {
+              hash: commitResult.hash,
+              shortHash: commitResult.shortHash,
+              message: commitMessage,
+              filesCommitted: commitResult.filesCommitted,
+              coAuthor: params.coAuthor,
+            },
+          });
+        } catch (error) {
+          return createErrorResponse(error);
+        }
       }
 
       default:

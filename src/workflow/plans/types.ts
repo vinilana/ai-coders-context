@@ -227,6 +227,14 @@ export interface PlanPhaseTracking {
   completedAt?: string;
   /** Individual step execution records */
   steps: StepExecution[];
+  /** Full commit hash when phase was committed */
+  commitHash?: string;
+  /** Short commit hash for display */
+  commitShortHash?: string;
+  /** When the commit was made */
+  committedAt?: string;
+  /** Agent or role that triggered the commit */
+  committedBy?: string;
 }
 
 /**

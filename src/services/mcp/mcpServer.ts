@@ -345,14 +345,15 @@ export class AIContextMCPServer {
 - recordDecision: Record a decision (params: planSlug, title, description, phase?, alternatives?)
 - updateStep: Update step status (params: planSlug, phaseId, stepIndex, status, output?, notes?)
 - getStatus: Get plan execution status (params: planSlug)
-- syncMarkdown: Sync tracking to markdown (params: planSlug)`,
+- syncMarkdown: Sync tracking to markdown (params: planSlug)
+- commitPhase: Create git commit for completed phase (params: planSlug, phaseId, coAuthor?, stagePatterns?, dryRun?)`,
       inputSchema: {
-        action: z.enum(['link', 'getLinked', 'getDetails', 'getForPhase', 'updatePhase', 'recordDecision', 'updateStep', 'getStatus', 'syncMarkdown'])
+        action: z.enum(['link', 'getLinked', 'getDetails', 'getForPhase', 'updatePhase', 'recordDecision', 'updateStep', 'getStatus', 'syncMarkdown', 'commitPhase'])
           .describe('Action to perform'),
         planSlug: z.string().optional()
           .describe('Plan slug/identifier'),
         phaseId: z.string().optional()
-          .describe('(updatePhase, updateStep) Phase ID'),
+          .describe('(updatePhase, updateStep, commitPhase) Phase ID'),
         status: z.enum(['pending', 'in_progress', 'completed', 'skipped']).optional()
           .describe('(updatePhase, updateStep) New status'),
         phase: z.enum(['P', 'R', 'E', 'V', 'C']).optional()
@@ -369,6 +370,12 @@ export class AIContextMCPServer {
           .describe('(updateStep) Step output artifact'),
         notes: z.string().optional()
           .describe('(updateStep) Execution notes'),
+        coAuthor: z.string().optional()
+          .describe('(commitPhase) Agent name for Co-Authored-By footer'),
+        stagePatterns: z.array(z.string()).optional()
+          .describe('(commitPhase) Patterns for files to stage (default: [".context/**"])'),
+        dryRun: z.boolean().optional()
+          .describe('(commitPhase) Preview without committing'),
       }
     }, async (params): Promise<MCPToolResponse> => {
       return handlePlan(params as PlanParams, { repoPath });

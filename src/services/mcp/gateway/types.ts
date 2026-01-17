@@ -12,7 +12,7 @@ export type ContextAction = 'check' | 'init' | 'fill' | 'fillSingle' | 'listToFi
 export type WorkflowAction = 'init' | 'status' | 'advance' | 'handoff' | 'collaborate' | 'createDoc' | 'getGates' | 'approvePlan' | 'setAutonomous';
 export type ProjectAction = 'start' | 'report' | 'detectStack' | 'detectAITools';
 export type SyncAction = 'exportRules' | 'exportDocs' | 'exportAgents' | 'exportContext' | 'exportSkills' | 'reverseSync' | 'importDocs' | 'importAgents' | 'importSkills';
-export type PlanAction = 'link' | 'getLinked' | 'getDetails' | 'getForPhase' | 'updatePhase' | 'recordDecision' | 'updateStep' | 'getStatus' | 'syncMarkdown';
+export type PlanAction = 'link' | 'getLinked' | 'getDetails' | 'getForPhase' | 'updatePhase' | 'recordDecision' | 'updateStep' | 'getStatus' | 'syncMarkdown' | 'commitPhase';
 export type AgentAction = 'discover' | 'getInfo' | 'orchestrate' | 'getSequence' | 'getDocs' | 'getPhaseDocs' | 'listTypes';
 export type SkillAction = 'list' | 'getContent' | 'getForPhase' | 'scaffold' | 'export' | 'fill';
 
@@ -133,6 +133,10 @@ export interface PlanParams {
   stepIndex?: number;
   output?: string;
   notes?: string;
+  // commitPhase action parameters
+  coAuthor?: string;
+  stagePatterns?: string[];
+  dryRun?: boolean;
 }
 
 export interface AgentParams {
