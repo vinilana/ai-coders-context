@@ -14,7 +14,6 @@ import {
   ProjectType,
   ProjectClassification,
 } from '../../stack';
-import { getOrBuildContext, generateDocContent, generateAgentContent } from './fillScaffoldingTool';
 import { UPDATE_SCAFFOLD_PROMPT_FALLBACK } from '../../../prompts/defaults';
 import { QAService } from '../../qa';
 
@@ -179,42 +178,12 @@ The AI agent MUST then fill each generated file using the provided context and i
         }
       }
 
-      // Build semantic context only if autoFill is enabled AND skipContentGeneration is false
-      let semanticContext: string | undefined;
-      const shouldGenerateContent = autoFill && !skipContentGeneration;
-
-      if (shouldGenerateContent && generatedFiles.length > 0) {
-        try {
-          semanticContext = await getOrBuildContext(resolvedRepoPath);
-        } catch (contextError) {
-          // Continue without semantic context if it fails
-          semanticContext = undefined;
-        }
-      }
-
-      // Build requiredActions - with or without pre-generated content
+      // Build requiredActions - always return lightweight info, LLM will use fillSingleFile for context
       const requiredActions: RequiredAction[] = [];
 
       if (autoFill && generatedFiles.length > 0) {
         for (let i = 0; i < generatedFiles.length; i++) {
           const file = generatedFiles[i];
-          let suggestedContent: string | undefined;
-
-          // Only pre-generate content if skipContentGeneration is false
-          if (!skipContentGeneration && semanticContext) {
-            try {
-              const templateContent = await fs.readFile(file.path, 'utf-8');
-              if (file.type === 'doc') {
-                suggestedContent = generateDocContent(path.basename(file.path), templateContent, semanticContext);
-              } else if (file.type === 'agent') {
-                const agentType = path.basename(file.path, '.md');
-                suggestedContent = generateAgentContent(agentType, templateContent, semanticContext);
-              }
-            } catch {
-              // If content generation fails, leave undefined
-              suggestedContent = undefined;
-            }
-          }
 
           requiredActions.push({
             order: i + 1,
@@ -222,7 +191,6 @@ The AI agent MUST then fill each generated file using the provided context and i
             filePath: file.path,
             fileType: file.type,
             instructions: file.fillInstructions,
-            suggestedContent,
             status: 'pending',
           });
         }
@@ -313,22 +281,25 @@ DO NOT say "initialization complete" until ALL files are filled.`
         };
       }
 
-      // Full response with pre-generated content (when skipContentGeneration is false)
+      // Full response (when skipContentGeneration is false - still directs to fillSingleFile)
       const hasActionsRequired = requiredActions.length > 0;
 
       // Build human-readable checklist
-      const checklist = requiredActions.map(a => `[ ] Write to ${a.filePath}`);
+      const checklist = requiredActions.map(a => `[ ] Fill ${a.filePath}`);
 
       // Build instruction message
       const instruction = hasActionsRequired
-        ? `⚠️ ACTION REQUIRED: Scaffolding created with ${requiredActions.length} files containing pre-generated content.
+        ? `⚠️ ACTION REQUIRED: Scaffolding created with ${requiredActions.length} files that need content.
 
-You MUST write each suggestedContent to its file path.
+You MUST fill each file with appropriate content based on the codebase.
 
 DO THIS NOW:
-${requiredActions.slice(0, 5).map((a, i) => `${i + 1}. Write({ file_path: "${a.filePath}", content: pendingWrites[${i}].suggestedContent })`).join('\n')}${requiredActions.length > 5 ? `\n... and ${requiredActions.length - 5} more files` : ''}
+${requiredActions.slice(0, 5).map((a, i) => `${i + 1}. Call fillSingleFile for: ${a.filePath}`).join('\n')}${requiredActions.length > 5 ? `\n... and ${requiredActions.length - 5} more files` : ''}
 
-DO NOT say "initialization complete" until ALL writes succeed.`
+fillSingleFile returns semantic context and scaffold structure for intelligent content generation.
+After generating content, write it using the Write tool.
+
+DO NOT say "initialization complete" until ALL files are filled.`
         : undefined;
 
       return {
@@ -341,13 +312,13 @@ DO NOT say "initialization complete" until ALL writes succeed.`
         complete: !hasActionsRequired,
         operationType: 'initialize_and_fill',
         completionCriteria: hasActionsRequired
-          ? 'Write the suggestedContent to each file in pendingWrites using the Write tool'
+          ? 'Call fillSingleFile for each file, generate content using the returned context, then write to file'
           : undefined,
 
         // Fill instructions (the standard prompt for HOW to fill)
         fillInstructions: hasActionsRequired ? UPDATE_SCAFFOLD_PROMPT_FALLBACK : undefined,
 
-        // Pending writes with pre-generated content
+        // Pending writes (files that need content)
         pendingWrites: hasActionsRequired ? requiredActions : undefined,
 
         // Legacy: requiredActions (kept for backwards compatibility)
@@ -356,13 +327,10 @@ DO NOT say "initialization complete" until ALL writes succeed.`
         // Human-readable checklist
         checklist: hasActionsRequired ? checklist : undefined,
 
-        // Context for reference
-        codebaseContext: semanticContext,
-
         // Explicit next step with example
         nextStep: hasActionsRequired ? {
-          action: 'For each item in pendingWrites, call Write tool with filePath and suggestedContent',
-          example: `Write({ file_path: "${requiredActions[0]?.filePath || ''}", content: pendingWrites[0].suggestedContent })`,
+          action: 'Call fillSingleFile for each file to get context, generate content, then Write to save',
+          example: `fillSingleFile({ repoPath: "${resolvedRepoPath}", filePath: "${requiredActions[0]?.filePath || ''}" })`,
         } : undefined,
 
         // Metadata

@@ -23,8 +23,6 @@ export {
   listFilesToFillTool,
   fillSingleFileTool,
   getOrBuildContext,
-  generateDocContent,
-  generateAgentContent,
   cleanupSharedContext
 } from './fillScaffoldingTool';
 export { getCodebaseMapTool } from './getCodebaseMapTool';
