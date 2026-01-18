@@ -3,7 +3,8 @@
 This directory contains plans for coordinating work across documentation and playbooks.
 
 ## Plan Queue
-1. [Mcp Install Command](./mcp-install-command.md)
+1. [CLI Refactor: Remove AI Providers](./cli-refactor-remove-ai-providers.md)
+2. [Mcp Install Command](./mcp-install-command.md)
 
 ## How To Create Or Update Plans
 - Run "ai-context plan <name>" to scaffold a new plan template.
