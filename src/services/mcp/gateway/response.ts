@@ -124,7 +124,7 @@ function buildEnhancementPrompt(pendingFiles: string[], repoPath?: string): stri
   const filesList = pendingFiles.slice(0, 5).map((f, i) => `${i + 1}. ${f}`).join('\n');
   const moreFiles = pendingFiles.length > 5 ? `\n... and ${pendingFiles.length - 5} more files` : '';
 
-  return `⚠️ ENHANCEMENT REQUIRED
+  return `IMPORTANT ENHANCEMENT REQUIRED
 
 Scaffolding has been created but files need codebase-specific content.
 

@@ -70,7 +70,7 @@ The AI agent MUST then fill the plan with specific implementation details.`,
 
       // Build response with consistent status signals (matching initializeContextTool pattern)
       const instruction = autoFill
-        ? `⚠️ ACTION REQUIRED: Plan template created but needs specific implementation details.
+        ? `IMPORTANT ACTION REQUIRED: Plan template created but needs specific implementation details.
 
 You MUST fill in the plan with:
 1. Specific goals and scope for "${planName}"

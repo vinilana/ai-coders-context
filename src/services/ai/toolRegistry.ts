@@ -72,7 +72,7 @@ The codebase map is generated during initialization with --semantic flag.`
     description: 'Initialize .context scaffolding and create template files.',
     extendedDescription: `Initialize .context scaffolding and create template files.
 
-⚠️ CRITICAL: This tool returns status: "incomplete" with pending writes.
+IMPORTANT CRITICAL: This tool returns status: "incomplete" with pending writes.
 You MUST complete ALL file writes BEFORE responding to the user.
 
 RESPONSE HANDLING:

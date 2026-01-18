@@ -215,7 +215,7 @@ The AI agent MUST then fill each generated file using the provided context and i
 
         // Build instruction message
         const instruction = hasFilesToFill
-          ? `⚠️ ACTION REQUIRED: Scaffolding created but ${generatedFiles.length} files need content.
+          ? `IMPORTANT ACTION REQUIRED: Scaffolding created but ${generatedFiles.length} files need content.
 
 You MUST fill each file with appropriate content based on the codebase.
 
@@ -289,7 +289,7 @@ DO NOT say "initialization complete" until ALL files are filled.`
 
       // Build instruction message
       const instruction = hasActionsRequired
-        ? `⚠️ ACTION REQUIRED: Scaffolding created with ${requiredActions.length} files that need content.
+        ? `IMPORTANT ACTION REQUIRED: Scaffolding created with ${requiredActions.length} files that need content.
 
 You MUST fill each file with appropriate content based on the codebase.
 
