@@ -88,7 +88,6 @@ export {
   createSmallProjectStatus,
   createMediumProjectStatus,
   createLargeProjectStatus,
-  createEnterpriseProjectStatus,
   generateResumeContext,
 } from './status/templates';
 

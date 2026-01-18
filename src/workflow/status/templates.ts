@@ -193,14 +193,3 @@ export function createLargeProjectStatus(name: string): PrevcStatus {
   });
 }
 
-/**
- * Create a status for enterprise projects
- */
-export function createEnterpriseProjectStatus(name: string): PrevcStatus {
-  return createInitialStatus({
-    name,
-    scale: ProjectScale.ENTERPRISE,
-    phases: ['P', 'R', 'E', 'V', 'C'],
-    roles: 'all',
-  });
-}

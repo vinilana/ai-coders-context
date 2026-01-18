@@ -19,7 +19,7 @@ import { createJsonResponse, createErrorResponse } from './response';
 export interface WorkflowInitParams {
   name: string;
   description?: string;
-  scale?: 'QUICK' | 'SMALL' | 'MEDIUM' | 'LARGE' | 'ENTERPRISE';
+  scale?: 'QUICK' | 'SMALL' | 'MEDIUM' | 'LARGE';
   autonomous?: boolean;
   require_plan?: boolean;
   require_approval?: boolean;

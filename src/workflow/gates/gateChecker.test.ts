@@ -71,8 +71,15 @@ describe('WorkflowGateChecker', () => {
       expect(settings.require_approval).toBe(true);
     });
 
-    it('should require both plan and approval for ENTERPRISE scale', () => {
-      const settings = getDefaultSettings(ProjectScale.ENTERPRISE);
+    it('should require both plan and approval for LARGE scale', () => {
+      const settings = getDefaultSettings(ProjectScale.LARGE);
+      expect(settings.autonomous_mode).toBe(false);
+      expect(settings.require_plan).toBe(true);
+      expect(settings.require_approval).toBe(true);
+    });
+
+    it('should map legacy ENTERPRISE string to LARGE scale', () => {
+      const settings = getDefaultSettings('ENTERPRISE');
       expect(settings.autonomous_mode).toBe(false);
       expect(settings.require_plan).toBe(true);
       expect(settings.require_approval).toBe(true);

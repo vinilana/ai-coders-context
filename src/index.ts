@@ -843,7 +843,7 @@ workflowCommand
   .command('init <name>')
   .description('Initialize a new PREVC workflow')
   .option('-d, --description <text>', 'Project description for scale detection')
-  .option('-s, --scale <scale>', 'Project scale: QUICK, SMALL, MEDIUM, LARGE, ENTERPRISE')
+  .option('-s, --scale <scale>', 'Project scale: QUICK, SMALL, MEDIUM, LARGE')
   .option('-r, --repo-path <path>', 'Repository path', process.cwd())
   .action(async (name: string, options: any) => {
     try {
@@ -1931,8 +1931,7 @@ async function createNewWorkflow(workflowService: WorkflowService): Promise<bool
         { name: t('prompts.workflow.scale.quick'), value: 'QUICK' },
         { name: t('prompts.workflow.scale.small'), value: 'SMALL' },
         { name: t('prompts.workflow.scale.medium'), value: 'MEDIUM' },
-        { name: t('prompts.workflow.scale.large'), value: 'LARGE' },
-        { name: t('prompts.workflow.scale.enterprise'), value: 'ENTERPRISE' }
+        { name: t('prompts.workflow.scale.large'), value: 'LARGE' }
       ],
       default: ''
     }

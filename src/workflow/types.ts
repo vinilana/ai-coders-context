@@ -34,8 +34,7 @@ export enum ProjectScale {
   QUICK = 0, // Bug fixes, tweaks (~5 min)
   SMALL = 1, // Simple features (~15 min)
   MEDIUM = 2, // Medium features (~30 min)
-  LARGE = 3, // Products (~1 hour)
-  ENTERPRISE = 4, // Systems with compliance
+  LARGE = 3, // Products, complex systems, compliance (~1+ hour)
 }
 
 /**

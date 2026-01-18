@@ -22,6 +22,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking Changes
 
+- **ENTERPRISE Scale Removed**
+  - `ProjectScale.ENTERPRISE` enum value removed (breaking change for TypeScript code)
+  - Consolidated into `ProjectScale.LARGE` for simpler mental model
+  - Security/compliance keywords now map to LARGE scale instead of ENTERPRISE
+  - **Backward compatibility**: Existing `status.yaml` files with `scale: ENTERPRISE` automatically migrate to LARGE
+  - **API compatibility**: `getScaleFromName('enterprise')` maps to LARGE for smooth transitions
+  - **MCP interface**: `workflow-init` scale parameter no longer accepts 'ENTERPRISE'
+
 - **Context Initialization**
   - `.context` is now created only in the specified path or current working directory
   - Removed upward directory traversal (no longer searches parent directories)

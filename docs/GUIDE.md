@@ -55,7 +55,7 @@ Need AI to understand my code?
 Starting new feature/project?
 ├── Simple task → Use QUICK scale
 ├── Regular feature → Use MEDIUM scale
-└── Large project → Use LARGE/ENTERPRISE scale
+└── Large project → Use LARGE scale
 
 Using Claude/Cursor/Windsurf/Antigravity/Trae?
 ├── Yes → Configure MCP server
@@ -680,7 +680,7 @@ npx @ai-coders/context init . && npx @ai-coders/context fill .
 | Small feature | SMALL | "Add password reset" |
 | Regular feature | MEDIUM | "Implement user dashboard" |
 | Major feature | LARGE | "Build payment system" |
-| New product | ENTERPRISE | "Create microservices platform" |
+| Compliance work | LARGE | "Add GDPR compliance" |
 
 ### 3. Keep Documentation Updated
 

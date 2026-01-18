@@ -146,8 +146,7 @@ The system automatically detects project scale and adjusts the workflow:
 | QUICK | E → V | Bug fixes, small tweaks |
 | SMALL | P → E → V | Simple features |
 | MEDIUM | P → R → E → V | Regular features |
-| LARGE | P → R → E → V → C | Full products |
-| ENTERPRISE | All + extras | Systems with compliance |
+| LARGE | P → R → E → V → C | Complex systems, compliance |
 
 ## Requirements for the CLI
 

@@ -245,8 +245,31 @@ export class AIContextMCPServer {
         name: z.string().describe('Workflow/feature name (required)'),
         description: z.string().optional()
           .describe('Task description for scale detection'),
-        scale: z.enum(['QUICK', 'SMALL', 'MEDIUM', 'LARGE', 'ENTERPRISE']).optional()
-          .describe('Project scale (auto-detected if omitted)'),
+        scale: z.enum(['QUICK', 'SMALL', 'MEDIUM', 'LARGE']).optional()
+          .describe(`Project scale - AI should evaluate based on task characteristics:
+
+SCALE EVALUATION CRITERIA:
+• QUICK: Single file changes, bug fixes, typos (~5 min)
+  - Phases: E → V only
+  - Example: "Fix typo in button text"
+
+• SMALL: Simple features, no architecture changes (~15 min)
+  - Phases: P → E → V
+  - Example: "Add email validation to form"
+
+• MEDIUM: Regular features with design decisions (~30 min)
+  - Phases: P → R → E → V
+  - Example: "Implement user profile page"
+
+• LARGE: Complex features, systems, compliance (~1+ hour)
+  - Phases: P → R → E → V → C (full workflow)
+  - Examples: "Build OAuth system", "Add GDPR compliance"
+
+GUIDANCE:
+- Analyze task complexity, architectural impact, and review needs
+- Use LARGE for security/compliance requirements
+- When uncertain, prefer MEDIUM
+- Omit scale only if unable to evaluate (auto-detect fallback)`),
         autonomous: z.boolean().optional()
           .describe('Skip all workflow gates (default: scale-dependent)'),
         require_plan: z.boolean().optional()

@@ -60,7 +60,6 @@ export function getDefaultSettings(scale: ProjectScale | string): WorkflowSettin
       };
     case ProjectScale.MEDIUM:
     case ProjectScale.LARGE:
-    case ProjectScale.ENTERPRISE:
     default:
       return {
         autonomous_mode: false,

@@ -681,7 +681,7 @@ export class PrevcStatusManager {
             SMALL: ProjectScale.SMALL,
             MEDIUM: ProjectScale.MEDIUM,
             LARGE: ProjectScale.LARGE,
-            ENTERPRISE: ProjectScale.ENTERPRISE,
+            ENTERPRISE: ProjectScale.LARGE, // Legacy migration - map to LARGE
           };
           result.project.scale = scaleMap[value] ?? ProjectScale.MEDIUM;
         }
