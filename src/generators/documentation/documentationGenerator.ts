@@ -16,7 +16,7 @@ import {
   serializeFrontmatter,
   DocScaffoldFrontmatter,
 } from '../../types/scaffoldFrontmatter';
-import { getScaffoldStructure, ScaffoldStructure } from '../shared/scaffoldStructures';
+import { getScaffoldStructure, ScaffoldStructure, serializeStructureAsMarkdown } from '../shared/scaffoldStructures';
 
 /**
  * Category mapping from document name to frontmatter category.
@@ -53,6 +53,8 @@ interface DocumentationGenerationConfig {
   semantic?: boolean;
   /** Filtered list of docs based on project type classification */
   filteredDocs?: string[];
+  /** Include section headings and guidance in scaffolds (CLI mode) */
+  includeContentStubs?: boolean;
 }
 
 export class DocumentationGenerator {
@@ -134,7 +136,15 @@ export class DocumentationGenerator {
         docInfo.description,
         docInfo.category
       );
-      const content = serializeFrontmatter(frontmatter) + '\n';
+      let content = serializeFrontmatter(frontmatter) + '\n';
+
+      // Add content stubs when requested (CLI mode)
+      if (config.includeContentStubs) {
+        const structure = getScaffoldStructure(guide.key);
+        if (structure) {
+          content += serializeStructureAsMarkdown(structure);
+        }
+      }
 
       await GeneratorUtils.writeFileWithLogging(targetPath, content, verbose, `Created ${filename}`);
       created += 1;

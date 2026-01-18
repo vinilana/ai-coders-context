@@ -142,6 +142,7 @@ program
   .option('--include <patterns...>', t('commands.init.options.include'))
   .option('-v, --verbose', t('commands.init.options.verbose'))
   .option('--no-semantic', t('commands.init.options.noSemantic'))
+  .option('--no-content-stubs', t('commands.init.options.noContentStubs'))
   .action(async (repoPath: string, type: string, options: any) => {
     try {
       await initService.run(repoPath, type, options);

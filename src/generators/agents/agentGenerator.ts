@@ -12,6 +12,7 @@ import {
   serializeFrontmatter,
 } from '../../types/scaffoldFrontmatter';
 import { PrevcPhase } from '../../workflow/types';
+import { getScaffoldStructure, serializeStructureAsMarkdown } from '../shared/scaffoldStructures';
 
 interface AgentContext {
   topLevelDirectories: string[];
@@ -23,6 +24,8 @@ interface AgentGenerationConfig {
   semantic?: boolean;
   /** Filtered list of agents based on project type classification */
   filteredAgents?: AgentType[];
+  /** Include section headings and guidance in scaffolds (CLI mode) */
+  includeContentStubs?: boolean;
 }
 
 /**
@@ -122,7 +125,15 @@ export class AgentGenerator {
         agentType,
         phases
       );
-      const content = serializeFrontmatter(frontmatter) + '\n';
+      let content = serializeFrontmatter(frontmatter) + '\n';
+
+      // Add content stubs when requested (CLI mode)
+      if (normalizedConfig.includeContentStubs) {
+        const structure = getScaffoldStructure(agentType);
+        if (structure) {
+          content += serializeStructureAsMarkdown(structure);
+        }
+      }
 
       const filePath = path.join(agentsDir, `${agentType}.md`);
       await GeneratorUtils.writeFileWithLogging(filePath, content, verbose, `Created ${agentType}.md`);
