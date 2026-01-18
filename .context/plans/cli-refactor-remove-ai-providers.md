@@ -19,14 +19,18 @@ phases:
     prevc: "P"
     status: "completed"
   - id: "phase-2"
-    name: "MCP Enhancement"
+    name: "Refactor MCP Tools"
     prevc: "E"
     status: "pending"
   - id: "phase-3"
-    name: "CLI Simplification"
+    name: "MCP Enhancements"
     prevc: "E"
     status: "pending"
   - id: "phase-4"
+    name: "CLI Simplification"
+    prevc: "E"
+    status: "pending"
+  - id: "phase-5"
     name: "Validation & Migration"
     prevc: "V"
     status: "pending"
@@ -124,10 +128,10 @@ MCP Server (via ai-context mcp)
 │   ├── skill.fill - AI-powered skill descriptions
 │   └── skill.create - AI-powered skill creation
 │
-└── AI Infrastructure (lives here)
-    ├── Provider configuration (from host AI tool)
-    ├── AI Agents (reused from current implementation)
-    └── Tool implementations
+└── NO AI SDK - Host AI tool provides LLM
+    ├── Tools return context/structure (no LLM calls)
+    ├── Host AI tool generates content
+    └── MCP protocol handles communication
 ```
 
 ## Scope
@@ -166,9 +170,9 @@ src/services/
 │   │   ├── playbookAgent.ts         # Playbook generation agent
 │   │   ├── planAgent.ts             # Plan generation agent
 │   │   └── skillAgent.ts            # Skill generation agent
-│   └── tools/                       # Move to MCP if needed
-│       ├── codeAnalysisTools.ts
-│       └── scaffoldingTools.ts
+│   └── tools/                       # REFACTOR: Remove 'ai' imports, keep logic
+│       ├── *.ts                     # Convert from tool() to plain functions + Zod
+│       └── index.ts                 # Update exports (remove ToolSet type)
 ├── baseLLMClient.ts                 # Base AI client class
 ├── llmClientFactory.ts              # Factory for AI clients
 ├── fill/                            # ENTIRE DIRECTORY
@@ -208,6 +212,53 @@ src/services/mcp/
     ├── mcpAiClient.ts               # AI client using host tool's LLM
     └── mcpAgents.ts                 # Agents adapted for MCP context
 ```
+
+### Important: `ai` Package Usage in MCP Tools
+
+The MCP tools in `src/services/ai/tools/` currently use the `ai` package for two purposes:
+
+1. **Tool definition syntax**: `import { tool } from 'ai'` - Uses `tool()` helper for schema definition
+2. **Type exports**: `import type { ToolSet } from 'ai'` - TypeScript types
+
+**Key insight:** These tools do NOT make LLM calls directly. They return context/structure for the **host AI tool** (Claude Code, Cursor, etc.) to generate content. The actual AI generation happens on the host side via MCP protocol.
+
+**Decision required:**
+
+| Option | Pros | Cons |
+|--------|------|------|
+| **A: Keep `ai` for tool definitions** | Minimal changes, proven tool schema format | Still has `ai` dependency |
+| **B: Replace with native Zod schemas** | Zero `ai` dependency | Requires refactoring all tools |
+| **C: Move tools to MCP-native format** | Cleaner MCP integration | Larger refactor |
+
+**Recommended: Option B** - Refactor tools to use Zod schemas directly without `ai` package wrapper. The `tool()` helper is just convenience syntax around Zod.
+
+### Refactoring MCP Tools (Option B)
+
+Current pattern:
+```typescript
+import { tool } from 'ai';
+import { z } from 'zod';
+
+export const myTool = tool({
+  description: '...',
+  inputSchema: z.object({ ... }),
+  execute: async (input) => { ... }
+});
+```
+
+New pattern (no `ai` dependency):
+```typescript
+import { z } from 'zod';
+
+export const myToolSchema = z.object({ ... });
+export type MyToolInput = z.infer<typeof myToolSchema>;
+
+export async function executeMyTool(input: MyToolInput) {
+  // ... implementation
+}
+```
+
+The MCP server already wraps these in MCP-native tool format, so removing the `ai` wrapper is straightforward.
 
 ### Dependency Changes
 
@@ -253,39 +304,79 @@ src/services/mcp/
 - No AI SDK dependencies in CLI
 - MCP tools use host AI tool's LLM capabilities
 
-### Phase 2 — MCP Enhancement
+### Phase 2 — Refactor MCP Tools (Remove `ai` Package)
+
+**Goal:** Remove `ai` package dependency from MCP tools while preserving functionality.
 
 **Steps:**
 
-1. **Enhance MCP context tool with fill actions**
-   - Add `fill` action to generate documentation
-   - Add `fillSingle` action for individual files
-   - Implement using MCP's conversation context
+1. **Refactor tool definitions in `src/services/ai/tools/`**
+   - Replace `import { tool } from 'ai'` with plain Zod schemas
+   - Convert `tool({ inputSchema, execute })` to separate schema + function
+   - Files to update:
+     - `fillScaffoldingTool.ts`
+     - `checkScaffoldingTool.ts`
+     - `initializeContextTool.ts`
+     - `scaffoldPlanTool.ts`
+     - `readFileTool.ts`
+     - `listFilesTool.ts`
+     - `analyzeSymbolsTool.ts`
+     - `getFileStructureTool.ts`
+     - `searchCodeTool.ts`
+     - `getCodebaseMapTool.ts`
    - Owner: Feature Developer
 
-2. **Enhance MCP plan tool with AI fill**
-   - Add `fill` action to generate plan content
-   - Reuse planning logic from current PlanAgent
+2. **Update `src/services/ai/tools/index.ts`**
+   - Remove `import type { ToolSet } from 'ai'`
+   - Remove `getCodeAnalysisTools()` function (no longer needed)
+   - Export schemas and execute functions directly
    - Owner: Feature Developer
 
-3. **Enhance MCP skill tool with AI features**
-   - Add `fill` action for skill descriptions
-   - Add `create` action for custom skills
+3. **Update MCP gateway imports**
+   - Update `src/services/mcp/gateway/context.ts` to use new exports
+   - Update other gateways that import from tools
    - Owner: Feature Developer
 
-4. **Update MCP tool documentation**
-   - Document new actions in tool schemas
-   - Update tool descriptions
+4. **Relocate tools directory**
+   - Move `src/services/ai/tools/` to `src/services/mcp/tools/`
+   - Update all imports
    - Owner: Feature Developer
 
-**Note:** MCP tools leverage the host AI tool's LLM capabilities through the MCP protocol, so no direct AI SDK integration is needed in the MCP server itself. The AI tool (Claude Code, Cursor, etc.) provides the LLM, and MCP tools provide structured operations.
+**Note:** MCP tools return context/structure for the **host AI tool** to generate content. The actual LLM calls happen in Claude Code, Cursor, etc. - not in the MCP server. This is why we can remove the `ai` package entirely.
+
+**Commit Checkpoint:**
+```bash
+git commit -m "refactor(mcp): remove ai package dependency from tools"
+```
+
+### Phase 3 — MCP Enhancements (Optional)
+
+**Steps:**
+
+1. **Verify existing fill actions work without AI SDK**
+   - `context.fill` already returns context for host AI to fill
+   - `context.fillSingle` already returns structure guidance
+   - No changes needed - tools are already "host-AI-powered"
+   - Owner: Feature Developer
+
+2. **Update tool descriptions for clarity**
+   - Make it clear tools return context, not AI-generated content
+   - Update schema descriptions
+   - Owner: Feature Developer
+
+**Commit Checkpoint:**
+```bash
+git commit -m "docs(mcp): clarify tools return context for host AI"
+```
+
+### Phase 4 — CLI Simplification
 
 **Commit Checkpoint:**
 ```bash
 git commit -m "feat(mcp): enhance tools with AI-powered actions"
 ```
 
-### Phase 3 — CLI Simplification
+### Phase 4 — CLI Simplification
 
 **Steps:**
 
@@ -305,17 +396,21 @@ git commit -m "feat(mcp): enhance tools with AI-powered actions"
    - Owner: Feature Developer
 
 3. **Remove AI services and infrastructure**
-   - Delete `src/services/ai/` directory
+   - Delete `src/services/ai/agents/` directory (agents no longer used)
+   - Delete `src/services/ai/aiSdkClient.ts`
+   - Delete `src/services/ai/providerFactory.ts`
+   - Delete `src/services/ai/agentEvents.ts`
    - Delete `src/services/fill/` directory
    - Delete `src/services/update/` directory
    - Delete `src/services/start/` directory
    - Delete `src/services/baseLLMClient.ts`
    - Delete `src/services/llmClientFactory.ts`
    - Delete `src/services/shared/llmConfig.ts`
+   - **Keep:** `src/services/mcp/tools/` (refactored in Phase 2)
    - Owner: Feature Developer
 
 4. **Update package.json**
-   - Remove AI SDK dependencies
+   - Remove AI SDK dependencies: `@ai-sdk/anthropic`, `@ai-sdk/google`, `@ai-sdk/openai`, `ai`
    - Update version (major bump for breaking change)
    - Owner: Feature Developer
 
@@ -340,7 +435,7 @@ Use MCP tools for AI features: fill, update, plan --fill, skill fill.
 Install MCP: ai-context mcp:install <tool>"
 ```
 
-### Phase 4 — Validation & Migration
+### Phase 5 — Validation & Migration
 
 **Steps:**
 
