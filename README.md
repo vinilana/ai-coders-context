@@ -189,7 +189,45 @@ This interactive command:
 
 ### Manual Configuration
 
-Alternatively, manually configure for your preferred tool:
+Alternatively, manually configure for your preferred tool.
+
+### Antigravity
+
+#### 1. Access Raw Config
+
+The visual interface only shows official partners, but the manual editing mode allows any local or remote executable.
+
+1. Open the **Agent** panel (usually in the sidebar or `Ctrl+L`).
+2. Click the options menu (three dots `...`) or the settings icon.
+3. Select **Manage MCP Servers**.
+4. At the top of this screen, look for a discreet button or link named **"View raw config"** or **"Edit JSON"**.
+
+> **Note:** If you cannot find the button in the UI, you can navigate directly through the file explorer and look for `.idx/mcp.json` or `mcp_config.json` in your workspace root.
+
+#### 2. Add Custom Server
+
+You will see a JSON file. You must add a new entry inside the `"mcpServers"` object.
+
+Here is the template to add a server (example using `npx` for a Node.js server or a local executable):
+
+```json
+{
+  "mcpServers": {
+    "ai-context": {
+      "command": "npx",
+      "args": ["@ai-coders/context", "mcp"]
+    }
+  }
+}
+```
+
+#### 3. Restart the Connection
+
+After saving the `mcp.json` file:
+
+1. Return to the **"Manage MCP Servers"** panel.
+2. Click the **Refresh** button or restart the Antigravity environment (*Reload Window*).
+3. The new server should appear in the list with a status indicator (usually a green light if connected successfully).
 
 ### Claude Code (CLI)
 
