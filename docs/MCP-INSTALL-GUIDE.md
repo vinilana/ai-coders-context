@@ -27,6 +27,30 @@
 | Codex CLI | `~/.codex/config.toml` |
 | Roo Code | MCP configuration file |
 | Zed | `settings.json` |
+| Kiro | MCP Servers settings |
+| Kilo Code | `.kilocode/mcp.json` |
+| Augment Code | `settings.json` |
+| Gemini CLI | `~/.gemini/settings.json` |
+| JetBrains | AI Assistant settings |
+| Amazon Q | CLI configuration file |
+| Warp | AI settings |
+| LM Studio | `mcp.json` |
+| Visual Studio 2022 | MCP config |
+| BoltAI | Plugins settings |
+| Qodo Gen | MCP settings |
+| Perplexity | Connectors settings |
+| Opencode | Configuration file |
+| Trae | MCP settings |
+| Copilot Coding Agent | Repository settings |
+| Copilot CLI | `~/.copilot/mcp-config.json` |
+| Amp | `amp mcp add` command |
+| Zencoder | Agent tools |
+| Crush | Configuration file |
+| Factory | `droid mcp add` command |
+| Qwen Coder | `~/.qwen/settings.json` |
+| Google Antigravity | MCP config file |
+| Smithery | `npx @smithery/cli` |
+| Rovo Dev CLI | `acli rovodev mcp` |
 
 ---
 
@@ -640,6 +664,86 @@ Open the Qwen Coder settings file at `~/.qwen/settings.json` and add:
       "args": ["@ai-coders/context", "mcp"]
     }
   }
+}
+```
+
+---
+
+### Google Antigravity
+
+Add this to your Antigravity MCP config file. See [Antigravity MCP docs](https://antigravity.google/docs/mcp) for more info.
+
+```json
+{
+  "mcpServers": {
+    "ai-context": {
+      "command": "npx",
+      "args": ["@ai-coders/context", "mcp"]
+    }
+  }
+}
+```
+
+---
+
+### Smithery
+
+To install via [Smithery](https://smithery.ai/server/@ai-coders/context):
+
+```bash
+npx -y @smithery/cli@latest install @ai-coders/context --client <CLIENT_NAME> --key <YOUR_SMITHERY_KEY>
+```
+
+You can find your Smithery key on the [Smithery.ai webpage](https://smithery.ai/).
+
+---
+
+### Rovo Dev CLI
+
+Edit your Rovo Dev CLI MCP config:
+
+```bash
+acli rovodev mcp
+```
+
+Add the configuration:
+
+```json
+{
+  "mcpServers": {
+    "ai-context": {
+      "command": "npx",
+      "args": ["@ai-coders/context", "mcp"]
+    }
+  }
+}
+```
+
+---
+
+### Emdash
+
+[Emdash](https://github.com/generalaction/emdash) is an orchestration layer for running multiple coding agents in parallel.
+
+**What you need to do:**
+Configure your coding agent (Codex, Claude Code, Cursor, etc.) to connect to the MCP server. Emdash does not modify your agent's config directly.
+
+See the [Emdash repository](https://github.com/generalaction/emdash) for more information.
+
+---
+
+### Desktop Extension
+
+Install the MCP bundle file and add it to your client. See [MCP bundles docs](https://github.com/anthropics/mcpb#mcp-bundles-mcpb) for more info.
+
+Create an `ai-context.mcpb` file:
+
+```json
+{
+  "name": "ai-context",
+  "description": "AI Coders Context - Context engineering for AI coding assistants",
+  "command": "npx",
+  "args": ["@ai-coders/context", "mcp"]
 }
 ```
 
