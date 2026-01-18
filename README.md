@@ -75,14 +75,16 @@ That's it. The wizard detects what needs to be done.
 PT-BR Tutorial
 https://www.youtube.com/watch?v=5BPrfZAModk
 
+
 ## What it does
 
 1. **Creates documentation** — Structured docs from your codebase (architecture, data flow, decisions)
 2. **Generates agent playbooks** — 14 specialized AI agents (code-reviewer, bug-fixer, architect, etc.)
-3. **Manages workflows** — PREVC process with scale detection and visual dashboards
+3. **Manages workflows** — PREVC process with scale detection, gates, and execution history
 4. **Provides skills** — On-demand expertise (commit messages, PR reviews, security audits)
 5. **Syncs everywhere** — Export to Cursor, Claude, Copilot, Windsurf, Cline, Codex, Antigravity, Trae, and more
-6. **Keeps it updated** — Detects code changes and suggests documentation updates
+6. **Tracks execution** — Step-level tracking with git integration for workflow phases
+7. **Keeps it updated** — Detects code changes and suggests documentation updates
 
 ## Quick Start
 
@@ -168,6 +170,26 @@ The system automatically detects project scale and adjusts the workflow:
 ## MCP Server Setup
 
 This package includes an MCP (Model Context Protocol) server that provides AI coding assistants with powerful tools to analyze and document your codebase.
+
+### Quick Installation (v0.7.0+)
+
+Use the new MCP Install command to automatically configure the MCP server:
+
+```bash
+npx @ai-coders/context mcp:install
+```
+
+This interactive command:
+- Detects installed AI tools on your system
+- Configures ai-context MCP server in each tool
+- Supports global (home directory) and local (project directory) installation
+- Merges with existing MCP configurations without overwriting
+- Includes dry-run mode to preview changes
+- Works with Claude Code, Cursor, Windsurf, Cline, Continue.dev, and more
+
+### Manual Configuration
+
+Alternatively, manually configure for your preferred tool:
 
 ### Claude Code (CLI)
 
@@ -324,74 +346,37 @@ For local development, point directly to the built distribution:
 
 ### Available MCP Tools
 
-Once configured, your AI assistant will have access to:
+Once configured, your AI assistant will have access to 9 gateway tools with action-based dispatching:
 
-#### Context Tools
+#### Gateway Tools (Primary Interface)
 
-| Tool | Description |
-|------|-------------|
-| `buildSemanticContext` | Build optimized context for LLM prompts |
-| `initializeContext` | Create `.context` scaffolding |
-| `fillScaffolding` | Generate documentation content |
-| `getCodebaseMap` | Get structured codebase data (stack, symbols, architecture) |
-| `analyzeSymbols` | Analyze code symbols (classes, functions, etc.) |
-| `searchCode` | Search for patterns across files |
-| `getFileStructure` | Get repository directory structure |
-| `scaffoldPlan` | Create work plans |
+| Gateway | Description | Actions |
+|---------|-------------|---------|
+| **explore** | File and code exploration | `read`, `list`, `analyze`, `search`, `getStructure` |
+| **context** | Context scaffolding and semantic context | `check`, `init`, `fill`, `fillSingle`, `listToFill`, `getMap`, `buildSemantic`, `scaffoldPlan` |
+| **plan** | Plan management and execution tracking | `link`, `getLinked`, `getDetails`, `getForPhase`, `updatePhase`, `recordDecision`, `updateStep`, `getStatus`, `syncMarkdown`, `commitPhase` |
+| **agent** | Agent orchestration and discovery | `discover`, `getInfo`, `orchestrate`, `getSequence`, `getDocs`, `getPhaseDocs`, `listTypes` |
+| **skill** | Skill management for on-demand expertise | `list`, `getContent`, `getForPhase`, `scaffold`, `export`, `fill` |
+| **sync** | Import/export synchronization with AI tools | `exportRules`, `exportDocs`, `exportAgents`, `exportContext`, `exportSkills`, `reverseSync`, `importDocs`, `importAgents`, `importSkills` |
 
-#### Workflow Tools
+#### Dedicated Workflow Tools
 
 | Tool | Description |
 |------|-------------|
-| `workflowInit` | Initialize a PREVC workflow with scale detection |
-| `workflowStatus` | Get current workflow status |
-| `workflowAdvance` | Advance to the next phase |
-| `workflowHandoff` | Handoff between roles with artifacts |
-| `workflowCollaborate` | Start multi-agent collaboration session |
-| `workflowCreateDoc` | Generate phase-specific documents |
+| **workflow-init** | Initialize a PREVC workflow with scale detection, gates, and autonomous mode |
+| **workflow-status** | Get current workflow status, phases, and execution history |
+| **workflow-advance** | Advance to the next PREVC phase with gate checking |
+| **workflow-manage** | Manage handoffs, collaboration, documents, gates, and approvals |
 
-#### Orchestration Tools
+#### Key Features in v0.7.0
 
-| Tool | Description |
-|------|-------------|
-| `orchestrateAgents` | Select agents by task, phase, or role |
-| `getAgentSequence` | Get recommended agent handoff sequence |
-| `getAgentDocs` | Get documentation relevant to an agent |
-| `getPhaseDocs` | Get documentation for a PREVC phase |
-| `listAgentTypes` | List all 14 available agent types |
-
-#### Plan-Workflow Tools
-
-| Tool | Description |
-|------|-------------|
-| `linkPlan` | Link a plan file to current workflow |
-| `getLinkedPlans` | Get all linked plans for workflow |
-| `getPlanDetails` | Get plan details with agent lineup |
-| `getPlansForPhase` | Get plans for a PREVC phase |
-| `updatePlanPhase` | Update plan phase status |
-| `recordDecision` | Record a plan decision |
-| `discoverAgents` | Discover all agents (built-in + custom) |
-| `getAgentInfo` | Get metadata for a specific agent |
-
-#### Skill Tools
-
-| Tool | Description |
-|------|-------------|
-| `listSkills` | List all available skills (built-in + custom) |
-| `getSkillContent` | Get full SKILL.md content by slug |
-| `getSkillsForPhase` | Get skills relevant to a PREVC phase |
-| `scaffoldSkills` | Generate skill files in .context/skills/ |
-| `fillSkills` | Fill skills with AI-generated project-specific content |
-| `exportSkills` | Export skills to Claude/Gemini/Codex directories |
-
-#### Utility Tools
-
-| Tool | Description |
-|------|-------------|
-| `projectStart` | Unified setup: scaffolding + fill + workflow init |
-| `projectReport` | Visual progress report for PREVC workflow |
-| `exportRules` | Export context rules to AI tool directories |
-| `detectStack` | Detect project technology stack |
+- **Gateway Pattern**: Simplified, action-based tools reduce cognitive load
+- **Plan Execution Tracking**: Step-level tracking with `updateStep`, `getStatus`, `syncMarkdown` actions
+- **Git Integration**: `commitPhase` action for creating commits on phase completion
+- **Q&A & Pattern Detection**: Automatic Q&A generation and functional pattern analysis
+- **Execution History**: Comprehensive logging of all workflow actions to `.context/workflow/actions.jsonl`
+- **Workflow Gates**: Phase transition gates based on project scale with approval requirements
+- **Export/Import Tools**: Granular control over docs, agents, and skills sync with merge strategies
 
 ### Skills (On-Demand Expertise)
 
