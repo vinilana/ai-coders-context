@@ -16,6 +16,7 @@ import {
   PlanApproval,
   PhaseOrchestration,
   AgentSequenceStep,
+  ToolGuidance,
 } from './types';
 import { PrevcStatusManager } from './status/statusManager';
 import { detectProjectScale, getScaleRoute } from './scaling';
@@ -282,12 +283,20 @@ export class PrevcOrchestrator {
       isBuiltIn: skill.isBuiltIn,
     }));
 
+    // Build tool guidance for explicit orchestration
+    const toolGuidance = this.buildToolGuidance(phase, startWith);
+
+    // Build step-by-step orchestration instructions
+    const orchestrationSteps = this.buildOrchestrationSteps(phase, sequence);
+
     return {
       recommendedAgents: agents,
       suggestedSequence,
       startWith,
       instruction,
       recommendedSkills,
+      toolGuidance,
+      orchestrationSteps,
     };
   }
 
@@ -316,14 +325,56 @@ export class PrevcOrchestrator {
   }
 
   /**
+   * Build tool guidance with concrete MCP tool call examples
+   */
+  private buildToolGuidance(phase: PrevcPhase, startAgent: string): ToolGuidance {
+    return {
+      discoverExample: `agent({ action: "orchestrate", phase: "${phase}" })`,
+      sequenceExample: `agent({ action: "getSequence", phases: ["${phase}"] })`,
+      handoffExample: `workflow-manage({ action: "handoff", from: "${startAgent}", to: "<next-agent>", artifacts: ["output.md"] })`,
+    };
+  }
+
+  /**
+   * Build step-by-step orchestration instructions with tool calls
+   */
+  private buildOrchestrationSteps(phase: PrevcPhase, agents: string[]): string[] {
+    const phaseName = PHASE_NAMES_EN[phase];
+    const startAgent = agents[0] || 'feature-developer';
+    const nextAgent = agents[1] || '<next-agent>';
+
+    return [
+      `1. Discover agents for ${phaseName} phase: agent({ action: "orchestrate", phase: "${phase}" })`,
+      `2. Review recommended sequence: agent({ action: "getSequence", phases: ["${phase}"] })`,
+      `3. Begin with ${startAgent} agent - follow playbook at .context/agents/${startAgent}.md`,
+      `4. Execute handoffs: workflow-manage({ action: "handoff", from: "${startAgent}", to: "${nextAgent}", artifacts: ["output.md"] })`,
+      `5. Leverage skills: skill({ action: "getForPhase", phase: "${phase}" })`,
+    ];
+  }
+
+  /**
    * Build orchestration instruction for a phase
    */
   private buildOrchestrationInstruction(phase: PrevcPhase, startAgent: string): string {
     const phaseName = PHASE_NAMES_EN[phase];
 
-    return `Start ${phaseName} phase by activating ${startAgent}. ` +
-      `Use handoff({ from: '${startAgent}', to: '<next-agent>', artifacts: [...] }) ` +
-      `when ready to transition to the next agent.`;
+    return `ORCHESTRATION GUIDE for ${phaseName} phase:\n\n` +
+      `1. START: Activate ${startAgent} agent\n` +
+      `   - Review agent playbook: .context/agents/${startAgent}.md\n` +
+      `   - Understand responsibilities and outputs\n\n` +
+      `2. DISCOVER: Find all agents for this phase\n` +
+      `   - Call: agent({ action: "orchestrate", phase: "${phase}" })\n` +
+      `   - Review: Recommended agents and their roles\n\n` +
+      `3. SEQUENCE: Plan agent handoff order\n` +
+      `   - Call: agent({ action: "getSequence", phases: ["${phase}"] })\n` +
+      `   - Follow: Suggested sequence for optimal workflow\n\n` +
+      `4. EXECUTE: Perform work and handoffs\n` +
+      `   - Work: Complete tasks as ${startAgent}\n` +
+      `   - Handoff: workflow-manage({ action: "handoff", from: "${startAgent}", to: "<next-agent>", artifacts: [...] })\n` +
+      `   - Repeat: Continue through sequence until phase complete\n\n` +
+      `5. ADVANCE: Move to next phase\n` +
+      `   - Call: workflow-advance({ outputs: [...] })\n` +
+      `   - Review: Next phase orchestration guidance`;
   }
 
   /**

@@ -131,6 +131,11 @@ Current phase: ${currentPhase} (Plan)
 
 AUTONOMOUS MODE ENABLED - All gates bypassed.
 
+AGENT ORCHESTRATION:
+1. Use agent tool to discover agents: agent({ action: "orchestrate", phase: "P" })
+2. Use workflow-manage for handoffs: workflow-manage({ action: "handoff", from: "agent-1", to: "agent-2", artifacts: [...] })
+3. Collaborate when needed: workflow-manage({ action: "collaborate", topic: "architecture", participants: [...] })
+
 NEXT ACTIONS:
 1. Begin implementation work directly
 2. Use workflow-advance to move through phases as work progresses
@@ -147,6 +152,13 @@ Current phase: ${currentPhase} (Plan)
 
 GATE: Plan required before advancing to Review phase.
 
+AGENT ORCHESTRATION:
+The Plan phase involves multiple agents working together:
+1. Discover planning agents: agent({ action: "orchestrate", phase: "P" })
+2. Get recommended sequence: agent({ action: "getSequence", phases: ["P"] })
+3. Start with first agent and execute handoffs between agents
+4. Example handoff: workflow-manage({ action: "handoff", from: "architect-specialist", to: "documentation-writer", artifacts: ["design.md"] })
+
 REQUIRED ACTIONS:
 1. Create a plan using context with action "scaffoldPlan" and planName parameter
 2. Fill the plan content using context with action "fillSingle"
@@ -160,6 +172,13 @@ Do NOT attempt to advance without linking a plan - the gate will block you.`;
 
 Workflow "${name}" initialized (${scale} scale).
 Current phase: ${currentPhase} (Plan)
+
+AGENT ORCHESTRATION AVAILABLE:
+This workflow supports multi-agent orchestration. Use these tools:
+- agent({ action: "orchestrate", phase: "P" }) - Discover agents for current phase
+- agent({ action: "getSequence", task: "your task description" }) - Get recommended agent sequence
+- workflow-manage({ action: "handoff", from: "agent-1", to: "agent-2", artifacts: [...] }) - Execute handoffs
+- workflow-manage({ action: "collaborate", topic: "topic", participants: [...] }) - Start collaboration
 
 RECOMMENDED ACTIONS:
 1. Create a plan using context with action "scaffoldPlan" (recommended for ${scale} scale)
@@ -181,6 +200,8 @@ function buildWorkflowNextSteps(options: {
   if (isAutonomous) {
     return [
       'ENABLED: Begin implementation work directly (autonomous mode)',
+      'ACTION: Call agent({ action: "orchestrate", phase: "P" }) to discover agents',
+      'ACTION: Use workflow-manage({ action: "handoff", ... }) to execute agent transitions',
       'OPTIONAL: Call workflow-advance to track phase progression',
       'OPTIONAL: Call workflow-status to check current state',
     ];
@@ -189,13 +210,18 @@ function buildWorkflowNextSteps(options: {
   if (requiresPlan) {
     return [
       'REQUIRED: Call context with action "scaffoldPlan" to create a plan',
+      'RECOMMENDED: Call agent({ action: "orchestrate", phase: "P" }) to discover planning agents',
+      'RECOMMENDED: Use workflow-manage({ action: "handoff", ... }) for agent collaboration',
       'REQUIRED: Call plan with action "link" to link plan to workflow',
       'THEN: Call workflow-advance to move to Review phase',
     ];
   }
 
   return [
+    'RECOMMENDED: Call agent({ action: "orchestrate", phase: "P" }) to discover agents',
     'RECOMMENDED: Call context with action "scaffoldPlan" to create a plan',
+    'ALTERNATIVE: Call agent({ action: "getSequence", task: "your task" }) for task-based sequence',
+    'OPTIONAL: Use workflow-manage({ action: "handoff", ... }) for multi-agent work',
     'ALTERNATIVE: Call workflow-advance to skip planning phase',
     'OPTIONAL: Call workflow-status to check current state',
   ];

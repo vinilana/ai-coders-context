@@ -59,16 +59,32 @@ export async function handleWorkflowAdvance(
       const nextPhase = await service.advance(params.outputs, { force: params.force });
 
       if (nextPhase) {
+        const orchestration = await service.getPhaseOrchestration(nextPhase);
+        const phaseName = PHASE_NAMES_EN[nextPhase];
+        const startAgent = orchestration.startWith;
+
         const response: Record<string, unknown> = {
           success: true,
-          message: `Advanced to ${PHASE_NAMES_EN[nextPhase]} phase`,
+          message: `Advanced to ${phaseName} phase`,
           nextPhase: {
             code: nextPhase,
-            name: PHASE_NAMES_EN[nextPhase],
-          }
+            name: phaseName,
+          },
+          orchestration,
+          // NEW: Quick start guidance for immediate action
+          quickStart: {
+            message: `Ready to start ${phaseName} phase`,
+            firstStep: `Call agent({ action: "orchestrate", phase: "${nextPhase}" }) to discover agents`,
+            agentPlaybook: `.context/agents/${startAgent}.md`,
+            nextActions: [
+              `1. Discover agents: agent({ action: "orchestrate", phase: "${nextPhase}" })`,
+              `2. Review sequence: agent({ action: "getSequence", phases: ["${nextPhase}"] })`,
+              `3. Begin with ${startAgent} - follow playbook at .context/agents/${startAgent}.md`,
+              `4. Use workflow-manage to execute handoffs between agents`,
+              `5. Call workflow-advance when phase is complete`,
+            ],
+          },
         };
-
-        response.orchestration = await service.getPhaseOrchestration(nextPhase);
 
         return createJsonResponse(response);
       } else {

@@ -331,6 +331,18 @@ export interface SkillSuggestion {
 }
 
 /**
+ * Tool usage guidance for explicit agent orchestration
+ */
+export interface ToolGuidance {
+  /** Example agent discovery tool call */
+  discoverExample: string;
+  /** Example agent sequence tool call */
+  sequenceExample: string;
+  /** Example handoff tool call */
+  handoffExample: string;
+}
+
+/**
  * Phase orchestration guidance for agent-based workflows
  */
 export interface PhaseOrchestration {
@@ -344,4 +356,8 @@ export interface PhaseOrchestration {
   instruction: string;
   /** Recommended skills for this phase */
   recommendedSkills?: SkillSuggestion[];
+  /** Explicit tool usage guidance for agent orchestration */
+  toolGuidance?: ToolGuidance;
+  /** Step-by-step orchestration instructions with tool calls */
+  orchestrationSteps?: string[];
 }
