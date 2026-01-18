@@ -6,7 +6,6 @@
 
 import * as path from 'path';
 import { WorkflowService } from '../../workflow';
-import { resolveContextRoot } from '../../shared/contextRootResolver';
 import {
   PHASE_NAMES_EN,
   WorkflowGateError,
@@ -39,22 +38,12 @@ export async function handleWorkflowAdvance(
   options: WorkflowAdvanceOptions
 ): Promise<MCPToolResponse> {
   try {
-    // Resolve repo path with robust context detection
-    let repoPath = params.repoPath || options.repoPath;
-    if (!repoPath) {
-      const resolution = await resolveContextRoot({ validate: false });
-      repoPath = resolution.projectRoot;
-    }
-    repoPath = path.resolve(repoPath);
+    // Resolve repo path: use explicit param, then options
+    // options.repoPath is guaranteed to be valid by MCP server initialization
+    const repoPath = path.resolve(params.repoPath || options.repoPath);
+    const contextPath = path.join(repoPath, '.context');
 
-    // Get context path using robust resolver
-    const resolution = await resolveContextRoot({
-      startPath: repoPath,
-      validate: false,
-    });
-    const contextPath = resolution.contextPath;
-
-    // Create service with robust detection
+    // Create service
     const service = await WorkflowService.create(repoPath);
 
     if (!(await service.hasWorkflow())) {

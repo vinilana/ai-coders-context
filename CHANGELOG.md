@@ -7,26 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
+### Changed
 
-- **Robust Context Root Detection**: New `contextRootResolver.ts` module for reliable `.context` folder discovery
-  - Upward directory traversal (max 10 levels) to find `.context` in parent directories
-  - Git root detection as fallback for determining project boundaries
-  - Package.json configuration support via `ai-context.path` field
-  - Comprehensive validation of `.context` structure with detailed diagnostics
-  - Monorepo support (both shared and per-package `.context` directories)
-  - Symlink resolution and error handling for special cases
-  - New `resolveContextRoot()` function with extensive options for customization
-  - New `resolveContextPathsAsync()` for async path resolution with validation
-  - Factory methods (`create()`) on `WorkflowService` and `PlanLinker` for robust initialization
-  - Addresses limitations where `.context` wasn't found from subdirectories or in monorepo setups
+- **Context Initialization Simplified**: `.context` folder creation now uses simple path logic instead of complex detection
+  - `.context` is created in the specified path or current working directory
+  - Cleaner, more predictable behavior without hidden traversal logic
+  - Internal complexity reduced from 496 lines to ~20 lines
+  - Public APIs remain unchanged - static factory methods (`WorkflowService.create()`, `PlanLinker.create()`) are preserved
+  - Backwards compatibility maintained for existing code
 
 - **MCP Action Logging**: Logs every MCP tool invocation to `.context/workflow/actions.jsonl` with sanitized metadata for auditability.
 - **Phase Orchestration Skills**: Workflow responses now include recommended skills alongside agent orchestration for each PREVC phase.
-
-### Changed
-
 - **Workflow Status Serialization**: Omits empty or default sections to keep `status.yaml` minimal and readable.
+
+### Breaking Changes
+
+- **Context Initialization**
+  - `.context` is now created only in the specified path or current working directory
+  - Removed upward directory traversal (no longer searches parent directories)
+  - Removed git root detection for `.context` location
+  - Removed package.json `ai-context.path` configuration support
+  - Commands running from subdirectories will not find `.context` in parent directories
+
+  **Migration path:**
+  - Always run commands from your project root directory where `.context` should be located
+  - Use explicit `repoPath` or `--output` parameters when needed for non-standard locations
+  - Remove any `ai-context.path` configuration from package.json files (no longer used)
+
+- **Who is affected:**
+  - Users running commands from subdirectories expecting upward traversal
+  - Monorepo users with shared `.context` in root directory
+  - Users with package.json `ai-context.path` configuration
+
+  **Who is NOT affected:**
+  - Users of public APIs (`WorkflowService.create()`, `PlanLinker.create()`) - these are preserved
+  - Users running commands from project root
+  - Users providing explicit paths
 
 ### Fixed
 

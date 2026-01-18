@@ -26,7 +26,10 @@ The AI agent MUST then fill the plan with specific implementation details.`,
       autoFill = true,
     } = input;
 
-    const repoPath = customRepoPath ? path.resolve(customRepoPath) : process.cwd();
+    if (!customRepoPath) {
+      throw new Error('repoPath is required for scaffoldPlan');
+    }
+    const repoPath = path.resolve(customRepoPath);
     const outputDir = customOutputDir
       ? path.resolve(customOutputDir)
       : path.resolve(repoPath, '.context');

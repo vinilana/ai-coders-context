@@ -31,7 +31,8 @@ export async function handlePlan(
   params: PlanParams,
   options: PlanOptions
 ): Promise<MCPToolResponse> {
-  const repoPath = options.repoPath || process.cwd();
+  // repoPath is guaranteed to be valid by MCP server initialization
+  const repoPath = options.repoPath;
   // Create statusManager for breadcrumb trail logging in step updates
   const contextPath = path.join(repoPath, '.context');
   const statusManager = new PrevcStatusManager(contextPath);

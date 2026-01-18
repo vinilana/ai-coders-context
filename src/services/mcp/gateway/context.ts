@@ -20,7 +20,6 @@ import {
 import { SemanticContextBuilder, type ContextFormat } from '../../semantic/contextBuilder';
 import { CodebaseAnalyzer } from '../../semantic/codebaseAnalyzer';
 import { QAService } from '../../qa';
-import { resolveContextRoot } from '../../shared/contextRootResolver';
 
 import type { ContextParams } from './types';
 import type { MCPToolResponse } from './response';
@@ -39,12 +38,7 @@ export async function handleContext(
   params: ContextParams,
   options: ContextOptions
 ): Promise<MCPToolResponse> {
-  // Resolve repoPath: use explicit param, then options, then robust detection
-  let repoPath = params.repoPath || options.repoPath;
-  if (!repoPath) {
-    const resolution = await resolveContextRoot({ validate: false });
-    repoPath = resolution.projectRoot;
-  }
+   const repoPath = params.repoPath || options.repoPath;
 
   try {
     switch (params.action) {
@@ -74,7 +68,7 @@ export async function handleContext(
         // Extract pending files from result for scaffold response
         const pendingWrites = (result as Record<string, unknown>).pendingWrites as Array<{ filePath: string }> | undefined;
         if (pendingWrites && pendingWrites.length > 0) {
-          const enhancementPrompt = `⚠️ SCAFFOLDING CREATED - CONTENT REQUIRED
+          const enhancementPrompt = `SCAFFOLDING CREATED - CONTENT REQUIRED
 
 NEXT ACTIONS REQUIRED:
 1. Fill scaffold files with content using fillSingle for each pending file

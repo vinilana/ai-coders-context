@@ -11,19 +11,17 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import * as path from 'path';
+import * as fs from 'fs-extra';
 
 import { readFileTool } from '../ai/tools';
 import { SemanticContextBuilder, type ContextFormat } from '../semantic/contextBuilder';
 import { VERSION } from '../../version';
 import { WorkflowService } from '../workflow';
 import { logMcpAction } from './actionLogger';
-import { resolveContextRoot } from '../shared/contextRootResolver';
 import {
   PREVC_ROLES,
-  PHASE_NAMES_EN,
   getScaleName,
   ProjectScale,
-  PrevcPhase,
   AGENT_TYPES,
 } from '../../workflow';
 
@@ -67,7 +65,8 @@ export class AIContextMCPServer {
   private contextBuilder: SemanticContextBuilder;
   private options: MCPServerOptions;
   private transport: StdioServerTransport | null = null;
-  private resolvedRepoPath: string | null = null;
+  private initialRepoPath: string | null = null;
+  private cachedRepoPath: string | null = null;
 
   constructor(options: MCPServerOptions = {}) {
     this.options = {
@@ -84,31 +83,11 @@ export class AIContextMCPServer {
     // Support dependency injection for testing, with default fallback
     this.contextBuilder = options.contextBuilder ?? new SemanticContextBuilder();
 
+    // Initialize and cache the correct repo path
+    void this.initializeRepoPath();
+
     this.registerGatewayTools();
     this.registerResources();
-  }
-
-  /**
-   * Resolve the repository path using robust detection when not explicitly provided
-   */
-  private async getResolvedRepoPath(): Promise<string> {
-    // If explicitly provided, use it
-    if (this.options.repoPath) {
-      return this.options.repoPath;
-    }
-
-    // If already resolved, return cached value
-    if (this.resolvedRepoPath) {
-      return this.resolvedRepoPath;
-    }
-
-    // Use robust resolver to find the project root
-    const resolution = await resolveContextRoot({
-      validate: false,
-    });
-
-    this.resolvedRepoPath = resolution.projectRoot;
-    return this.resolvedRepoPath;
   }
 
   /**
@@ -117,15 +96,14 @@ export class AIContextMCPServer {
    *
    * Project tools removed - use context({ action: "init" }) + workflow-init instead
    *
-   * NOTE: repoPath defaults to process.cwd() here. Individual handlers should use
-   * resolveContextRoot() for robust .context detection with upward traversal.
+   * NOTE: repoPath is now determined dynamically via getRepoPath() at runtime,
+   * which uses smart initialization and client path caching.
    */
   private registerGatewayTools(): void {
-    const repoPath = this.options.repoPath || process.cwd();
     const wrap = <TParams>(
       toolName: string,
       handler: (params: TParams) => Promise<MCPToolResponse>
-    ) => this.wrapWithActionLogging(toolName, handler, repoPath);
+    ) => this.wrapWithActionLogging(toolName, handler);
 
     // Gateway 1: explore - File and code exploration
     this.server.registerTool('explore', {
@@ -162,7 +140,8 @@ export class AIContextMCPServer {
           .describe('(getStructure) Include patterns'),
       }
     }, wrap('explore', async (params): Promise<MCPToolResponse> => {
-      return handleExplore(params as ExploreParams, { repoPath });
+      // explore uses cwd for file operations, not repoPath for context resolution
+      return handleExplore(params as ExploreParams, { repoPath: this.getRepoPath() });
     }));
 
     // Gateway 2: context - Context scaffolding and semantic context
@@ -177,9 +156,11 @@ export class AIContextMCPServer {
 - buildSemantic: Build semantic context (params: repoPath?, contextType?, targetFile?, options?)
 - scaffoldPlan: Create a plan template (params: planName, repoPath?, title?, summary?, autoFill?)
 
-**Important:** After context init, AI agents should:
-1. Call fillSingle for each pending file
-2. Call workflow-init to enable PREVC workflow (unless trivial change)`,
+**Important:** Agents should provide repoPath on the FIRST call, then it will be cached:
+1. First call: context({ action: "check", repoPath: "/path/to/project" })
+2. Subsequent calls can omit repoPath - it will use cached value from step 1
+3. After context init, call fillSingle for each pending file
+4. Call workflow-init to enable PREVC workflow (unless trivial change)`,
       inputSchema: {
         action: z.enum(['check', 'init', 'fill', 'fillSingle', 'listToFill', 'getMap', 'buildSemantic', 'scaffoldPlan'])
           .describe('Action to perform'),
@@ -232,7 +213,7 @@ export class AIContextMCPServer {
           .describe('(scaffoldPlan) Plan summary/goal'),
       }
     }, wrap('context', async (params): Promise<MCPToolResponse> => {
-      return handleContext(params as ContextParams, { repoPath, contextBuilder: this.contextBuilder });
+      return handleContext(params as ContextParams, { repoPath: this.getRepoPath((params as ContextParams).repoPath), contextBuilder: this.contextBuilder });
     }));
 
     // Dedicated Workflow Tools (split from consolidated workflow gateway)
@@ -276,7 +257,7 @@ export class AIContextMCPServer {
           .describe('Archive existing workflow'),
       }
     }, wrap('workflow-init', async (params): Promise<MCPToolResponse> => {
-      return handleWorkflowInit(params as WorkflowInitParams, { repoPath });
+      return handleWorkflowInit(params as WorkflowInitParams, { repoPath: this.getRepoPath((params as WorkflowInitParams).repoPath) });
     }));
 
     // Tool 3b: workflow-status - Get current workflow status
@@ -288,7 +269,7 @@ Returns: Current phase, all phase statuses, gate settings, linked plans, agent a
         // No required parameters
       }
     }, wrap('workflow-status', async (params): Promise<MCPToolResponse> => {
-      return handleWorkflowStatus(params as WorkflowStatusParams, { repoPath });
+      return handleWorkflowStatus(params as WorkflowStatusParams, { repoPath: this.getRepoPath((params as WorkflowStatusParams).repoPath) });
     }));
 
     // Tool 3c: workflow-advance - Advance to next phase
@@ -307,7 +288,7 @@ Use force=true to bypass gates, or use workflow-manage({ action: 'setAutonomous'
           .describe('Force advancement even if gates block'),
       }
     }, wrap('workflow-advance', async (params): Promise<MCPToolResponse> => {
-      return handleWorkflowAdvance(params as WorkflowAdvanceParams, { repoPath });
+      return handleWorkflowAdvance(params as WorkflowAdvanceParams, { repoPath: this.getRepoPath((params as WorkflowAdvanceParams).repoPath) });
     }));
 
     // Tool 3d: workflow-manage - Manage workflow operations
@@ -350,7 +331,7 @@ Actions:
           .describe('(setAutonomous) Reason for change'),
       }
     }, wrap('workflow-manage', async (params): Promise<MCPToolResponse> => {
-      return handleWorkflowManage(params as WorkflowManageParams, { repoPath });
+      return handleWorkflowManage(params as WorkflowManageParams, { repoPath: this.getRepoPath((params as WorkflowManageParams).repoPath) });
     }));
 
     // Gateway 5: sync - Import/export synchronization
@@ -404,7 +385,7 @@ Actions:
           .describe('Repository path'),
       }
     }, wrap('sync', async (params): Promise<MCPToolResponse> => {
-      return handleSync(params as SyncParams, { repoPath });
+      return handleSync(params as SyncParams, { repoPath: this.getRepoPath((params as SyncParams).repoPath) });
     }));
 
     // Gateway 6: plan - Plan management and execution tracking
@@ -451,7 +432,7 @@ Actions:
           .describe('(commitPhase) Preview without committing'),
       }
     }, wrap('plan', async (params): Promise<MCPToolResponse> => {
-      return handlePlan(params as PlanParams, { repoPath });
+      return handlePlan(params as PlanParams, { repoPath: this.getRepoPath() });
     }));
 
     // Gateway 7: agent - Agent orchestration and discovery
@@ -483,7 +464,7 @@ Actions:
           .describe('(getDocs) Agent type for docs'),
       }
     }, wrap('agent', async (params): Promise<MCPToolResponse> => {
-      return handleAgent(params as AgentParams, { repoPath });
+      return handleAgent(params as AgentParams, { repoPath: this.getRepoPath() });
     }));
 
     // Gateway 8: skill - Skill management
@@ -514,7 +495,7 @@ Actions:
           .describe('(scaffold, export) Overwrite existing'),
       }
     }, wrap('skill', async (params): Promise<MCPToolResponse> => {
-      return handleSkill(params as SkillParams, { repoPath });
+      return handleSkill(params as SkillParams, { repoPath: this.getRepoPath() });
     }));
 
     this.log('Registered 9 tools (5 consolidated gateways + 4 dedicated workflow tools)');
@@ -522,9 +503,10 @@ Actions:
 
   /**
    * Register semantic context resources
+   * Uses initialRepoPath if found, otherwise process.cwd()
    */
   private registerResources(): void {
-    const repoPath = this.options.repoPath || process.cwd();
+    const repoPath = this.initialRepoPath ?? process.cwd();
 
     // Register context resources as templates with URI patterns
     this.server.registerResource(
@@ -603,9 +585,10 @@ Actions:
 
   /**
    * Register PREVC workflow resources
+   * Uses initialRepoPath if found, otherwise process.cwd()
    */
   private registerWorkflowResources(): void {
-    const repoPath = this.options.repoPath || process.cwd();
+    const repoPath = this.initialRepoPath ?? process.cwd();
 
     // workflow://status - Current workflow status
     this.server.registerResource(
@@ -664,13 +647,103 @@ Actions:
     this.log('Registered 1 workflow resource');
   }
 
+  /**
+   * Initialize repo path with smart detection and caching
+   *
+   * Strategy:
+   * 1. If explicit options.repoPath provided, try to find project root from there
+   * 2. Otherwise search upward from process.cwd() for .context or .git
+   * 3. Set as initialRepoPath if found (for resources)
+   * 4. First valid repoPath from client gets cached for all subsequent tool calls
+   * 5. Fallback to process.cwd() if nothing found (allows flexible MCP usage)
+   */
+  private async initializeRepoPath(): Promise<void> {
+    const startPath = this.options.repoPath || process.cwd();
+    const foundRoot = await this.findProjectRoot(startPath);
+
+    if (foundRoot) {
+      this.initialRepoPath = path.resolve(foundRoot);
+      this.log(`Server initialized with project root: ${this.initialRepoPath}`);
+    } else {
+      // No project found - will use process.cwd() as fallback
+      // This allows flexible MCP server usage without strict project detection
+      this.initialRepoPath = null;
+      this.log(`No project root found. Will use process.cwd() or first valid client-provided path.`);
+    }
+  }
+
+  /**
+   * Find project root by searching upward for .context or .git
+   */
+  private async findProjectRoot(startPath: string): Promise<string | null> {
+    let currentPath = path.resolve(startPath);
+    const root = path.parse(currentPath).root;
+
+    // Search upward for .context or .git
+    while (currentPath !== root) {
+      if (
+        await fs.pathExists(path.join(currentPath, '.context')) ||
+        await fs.pathExists(path.join(currentPath, '.git'))
+      ) {
+        return currentPath;
+      }
+      currentPath = path.dirname(currentPath);
+    }
+
+    // Not found
+    return null;
+  }
+
+  /**
+   * Cache a valid repoPath from client
+   * Only cache if it contains .context and we haven't cached yet
+   */
+  private cacheRepoPathIfValid(repoPath: string): void {
+    if (this.cachedRepoPath) {
+      return; // Already cached
+    }
+
+    const contextPath = path.join(repoPath, '.context');
+    if (fs.existsSync(contextPath)) {
+      this.cachedRepoPath = path.resolve(repoPath);
+      process.stderr.write(`[mcp] ✓ Cached repoPath for this session: ${this.cachedRepoPath}\n`);
+      this.log(`Cached valid repoPath: ${this.cachedRepoPath}`);
+    }
+  }
+
+  /**
+   * Get the effective repo path for a tool call
+   * Priority: 1) explicit param, 2) cached path, 3) initial path, 4) process.cwd()
+   */
+  private getRepoPath(paramsRepoPath?: string): string {
+    if (paramsRepoPath) {
+      const resolved = path.resolve(paramsRepoPath);
+      this.cacheRepoPathIfValid(resolved);
+      return resolved;
+    }
+
+    if (this.cachedRepoPath) {
+      this.log(`Using cached repoPath: ${this.cachedRepoPath}`);
+      return this.cachedRepoPath;
+    }
+
+    if (this.initialRepoPath) {
+      this.log(`Using initial repoPath: ${this.initialRepoPath}`);
+      return this.initialRepoPath;
+    }
+
+    // Fallback to current working directory
+    const cwd = process.cwd();
+    this.log(`Using fallback cwd: ${cwd}`);
+    return cwd;
+  }
+
   private wrapWithActionLogging<TParams>(
     toolName: string,
-    handler: (params: TParams) => Promise<MCPToolResponse>,
-    defaultRepoPath: string
+    handler: (params: TParams) => Promise<MCPToolResponse>
   ): (params: TParams) => Promise<MCPToolResponse> {
     return async (params: TParams) => {
-      const resolvedRepoPath = path.resolve((params as { repoPath?: string })?.repoPath || defaultRepoPath);
+      const resolvedRepoPath = this.getRepoPath((params as { repoPath?: string })?.repoPath);
       const action = typeof (params as { action?: string })?.action === 'string'
         ? (params as { action?: string }).action!
         : toolName;

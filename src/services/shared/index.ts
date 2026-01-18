@@ -62,17 +62,13 @@ export {
 
 // Context Root Resolver
 export {
-  ContextValidation,
+  SimpleContextResult,
   ContextResolutionResult,
-  ContextResolutionOptions,
-  ContextAwareFactoryOptions,
-  findGitRoot,
-  readContextPathFromPackageJson,
-  validateContextStructure,
+  resolveContextPath,
+  resolveSimpleContext,
   resolveContextRoot,
   getContextPath as getContextPathResolved,
   getProjectRoot,
-  handleContextResolutionError,
 } from './contextRootResolver';
 
 // Tool Registry

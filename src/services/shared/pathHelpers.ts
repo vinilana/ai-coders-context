@@ -10,7 +10,6 @@ import * as fs from 'fs-extra';
 import {
   resolveContextRoot,
   type ContextResolutionResult,
-  type ContextResolutionOptions,
 } from './contextRootResolver';
 
 /**
@@ -54,18 +53,15 @@ export function resolveContextPaths(repoPath: string): ContextPaths {
 }
 
 /**
- * Resolve all context paths for a repository (async version with robust resolution)
- * Uses comprehensive detection: direct subdirectory, package.json config, upward traversal,
- * git root detection, and validation of .context structure.
+ * Resolve all context paths for a repository (async version)
+ * Uses simple path resolution: direct subdirectory lookup without upward traversal.
  */
 export async function resolveContextPathsAsync(
-  repoPath?: string,
-  options?: ContextResolutionOptions
+  repoPath?: string
 ): Promise<ContextPathsWithResolution> {
   const startPath = repoPath || process.cwd();
   const resolution = await resolveContextRoot({
     startPath,
-    ...options,
   });
 
   const paths: ContextPathsWithResolution = {
