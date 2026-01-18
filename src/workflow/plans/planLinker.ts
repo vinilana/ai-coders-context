@@ -229,6 +229,17 @@ export class PlanLinker {
     await fs.ensureDir(path.dirname(trackingFile));
     await fs.writeFile(trackingFile, JSON.stringify(tracking, null, 2), 'utf-8');
 
+    // Log phase update to workflow execution history
+    if (this.statusManager) {
+      const currentPhase = await this.statusManager.getCurrentPhase();
+      await this.statusManager.addHistoryEntry({
+        phase: currentPhase,
+        action: 'plan_phase_updated',
+        plan: planSlug,
+        description: `Plan phase ${phaseId} updated to ${status}`,
+      });
+    }
+
     return true;
   }
 
@@ -265,6 +276,17 @@ export class PlanLinker {
 
     await fs.ensureDir(path.dirname(trackingFile));
     await fs.writeFile(trackingFile, JSON.stringify(tracking, null, 2), 'utf-8');
+
+    // Log decision to workflow execution history
+    if (this.statusManager) {
+      const currentPhase = await this.statusManager.getCurrentPhase();
+      await this.statusManager.addHistoryEntry({
+        phase: decision.phase || currentPhase,
+        action: 'decision_recorded',
+        plan: planSlug,
+        description: `Decision recorded: ${decision.title}`,
+      });
+    }
 
     return fullDecision;
   }

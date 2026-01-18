@@ -58,6 +58,11 @@ export function generateResumeContext(
       return `Fase ${phase} ignorada - avançando`;
     case 'settings_changed':
       return `Configurações atualizadas`;
+    // Plan-level tracking actions
+    case 'plan_phase_updated':
+      return `Fase do plano atualizada`;
+    case 'decision_recorded':
+      return `Decisão registrada`;
     // Step-level breadcrumb actions
     case 'step_started':
       if (stepContext?.stepDescription) {

@@ -170,6 +170,9 @@ export type ExecutionAction =
   | 'plan_approved'
   | 'phase_skipped'
   | 'settings_changed'
+  // Plan-level tracking actions
+  | 'plan_phase_updated'
+  | 'decision_recorded'
   // Step-level actions for breadcrumb tracking
   | 'step_started'
   | 'step_completed'
