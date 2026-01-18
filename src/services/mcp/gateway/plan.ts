@@ -36,7 +36,7 @@ export async function handlePlan(
   // Create statusManager for breadcrumb trail logging in step updates
   const contextPath = path.join(repoPath, '.context');
   const statusManager = new PrevcStatusManager(contextPath);
-  const linker = createPlanLinker(repoPath, statusManager);
+  const linker = createPlanLinker(repoPath, statusManager, true);
 
   try {
     switch (params.action) {

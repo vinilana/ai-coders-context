@@ -21,6 +21,7 @@ import {
 import { PrevcPhase, StatusType } from '../types';
 import { AgentRegistry, AgentMetadata, createAgentRegistry } from '../agents';
 import { PrevcStatusManager } from '../status/statusManager';
+import { GitService } from '../../utils/gitService';
 
 /**
  * Plan Linker class
@@ -40,14 +41,16 @@ export class PlanLinker {
   private readonly workflowPath: string;
   private readonly agentRegistry: AgentRegistry;
   private readonly statusManager?: PrevcStatusManager;
+  private readonly autoCommitOnPhaseComplete: boolean;
 
-  constructor(repoPath: string, statusManager?: PrevcStatusManager) {
+  constructor(repoPath: string, statusManager?: PrevcStatusManager, autoCommitOnPhaseComplete: boolean = true) {
     this.repoPath = repoPath;
     this.contextPath = path.join(repoPath, '.context');
     this.plansPath = path.join(this.contextPath, 'plans');
     this.workflowPath = path.join(this.contextPath, 'workflow');
     this.agentRegistry = createAgentRegistry(repoPath);
     this.statusManager = statusManager;
+    this.autoCommitOnPhaseComplete = autoCommitOnPhaseComplete;
   }
 
   /**
@@ -55,9 +58,10 @@ export class PlanLinker {
    */
   static async create(
     repoPath: string = process.cwd(),
-    statusManager?: PrevcStatusManager
+    statusManager?: PrevcStatusManager,
+    autoCommitOnPhaseComplete: boolean = true
   ): Promise<PlanLinker> {
-    return new PlanLinker(repoPath, statusManager);
+    return new PlanLinker(repoPath, statusManager, autoCommitOnPhaseComplete);
   }
 
   /**
@@ -396,6 +400,11 @@ export class PlanLinker {
     if (allStepsCompleted) {
       tracking.phases[phaseId].status = 'completed';
       tracking.phases[phaseId].completedAt = now;
+
+      // Auto-commit on phase completion
+      if (this.autoCommitOnPhaseComplete) {
+        await this.autoCommitPhase(planSlug, phaseId);
+      }
     } else if (anyStepInProgress || phaseSteps.some(s => s.status === 'completed')) {
       tracking.phases[phaseId].status = 'in_progress';
     }
@@ -1101,9 +1110,79 @@ export class PlanLinker {
       await fs.move(trackingDir, path.join(archiveDir, 'plan-tracking'));
     }
   }
+
+  /**
+   * Automatically create a git commit when a phase completes
+   * @param planSlug Plan identifier
+   * @param phaseId Phase identifier
+   * @returns true if commit was created, false if skipped or failed
+   */
+  private async autoCommitPhase(planSlug: string, phaseId: string): Promise<boolean> {
+    try {
+      // Load plan to get phase details
+      const plan = await this.getLinkedPlan(planSlug);
+      if (!plan) {
+        console.warn(`[AutoCommit] Plan not found: ${planSlug}`);
+        return false;
+      }
+
+      const phase = plan.phases.find(p => p.id === phaseId);
+      if (!phase) {
+        console.warn(`[AutoCommit] Phase not found: ${phaseId} in plan ${planSlug}`);
+        return false;
+      }
+
+      // Initialize git service
+      const gitService = new GitService(this.repoPath);
+
+      // Check if this is a git repository
+      if (!gitService.isGitRepository()) {
+        console.warn('[AutoCommit] Not a git repository - skipping auto-commit');
+        return false;
+      }
+
+      // Default commit message from phase's commitCheckpoint or generate one
+      const commitMessage = phase.commitCheckpoint ||
+        `chore(plan): complete ${phase.name} for ${planSlug}`;
+
+      // Stage .context/** files (plan tracking and markdown updates)
+      const stagePatterns = ['.context/**'];
+
+      try {
+        const stagedFiles = gitService.stageFiles(stagePatterns);
+
+        if (stagedFiles.length === 0) {
+          console.info('[AutoCommit] No files to commit - skipping');
+          return false;
+        }
+
+        // Create the commit with AI Context Agent as co-author
+        const coAuthor = 'AI Context Agent';
+        const commitResult = gitService.commit(commitMessage, coAuthor);
+
+        // Record the commit in plan tracking
+        await this.recordPhaseCommit(planSlug, phaseId, {
+          hash: commitResult.hash,
+          shortHash: commitResult.shortHash,
+          committedBy: coAuthor,
+        });
+
+        console.info(`[AutoCommit] Created commit ${commitResult.shortHash} for phase ${phaseId}`);
+        return true;
+      } catch (error) {
+        // Non-critical failure - log but don't throw
+        console.warn(`[AutoCommit] Failed to create commit for phase ${phaseId}:`, error);
+        return false;
+      }
+    } catch (error) {
+      // Catch-all to prevent breaking the main updatePlanStep flow
+      console.error('[AutoCommit] Unexpected error in autoCommitPhase:', error);
+      return false;
+    }
+  }
 }
 
 // Export singleton factory
-export function createPlanLinker(repoPath: string, statusManager?: PrevcStatusManager): PlanLinker {
-  return new PlanLinker(repoPath, statusManager);
+export function createPlanLinker(repoPath: string, statusManager?: PrevcStatusManager, autoCommitOnPhaseComplete: boolean = true): PlanLinker {
+  return new PlanLinker(repoPath, statusManager, autoCommitOnPhaseComplete);
 }
