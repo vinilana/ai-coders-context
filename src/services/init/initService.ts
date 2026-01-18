@@ -6,6 +6,7 @@ import { colors } from '../../utils/theme';
 import { FileMapper } from '../../utils/fileMapper';
 import { DocumentationGenerator } from '../../generators/documentation/documentationGenerator';
 import { AgentGenerator } from '../../generators/agents/agentGenerator';
+import { SkillGenerator } from '../../generators/skills/skillGenerator';
 import type { CLIInterface } from '../../utils/cliUI';
 import type { TranslateFn, TranslationKey } from '../../utils/i18n';
 import type { RepoStructure } from '../../types';
@@ -37,6 +38,7 @@ interface InitOptions {
   verbose: boolean;
   scaffoldDocs: boolean;
   scaffoldAgents: boolean;
+  scaffoldSkills: boolean;
   semantic: boolean;
 }
 
@@ -68,6 +70,7 @@ export class InitService {
       verbose: Boolean(rawOptions.verbose),
       scaffoldDocs: resolvedType === 'docs' || resolvedType === 'both',
       scaffoldAgents: resolvedType === 'agents' || resolvedType === 'both',
+      scaffoldSkills: resolvedType === 'both',
       semantic: rawOptions.semantic !== false
     };
 
@@ -96,14 +99,14 @@ export class InitService {
       'success'
     );
 
-    const { docsGenerated, agentsGenerated } = await this.generateScaffolds(options, repoStructure);
+    const { docsGenerated, agentsGenerated, skillsGenerated } = await this.generateScaffolds(options, repoStructure);
 
-    this.ui.displayGenerationSummary(docsGenerated, agentsGenerated);
+    this.ui.displayGenerationSummary(docsGenerated, agentsGenerated, skillsGenerated);
     this.ui.displaySuccess(this.t('success.scaffold.ready', { path: colors.accent(options.outputDir) }));
   }
 
   private async confirmOverwriteIfNeeded(options: InitOptions): Promise<void> {
-    const prompts: Array<{ key: 'docs' | 'agents'; path: string }> = [];
+    const prompts: Array<{ key: 'docs' | 'agents' | 'skills'; path: string }> = [];
 
     if (options.scaffoldDocs) {
       const docsPath = path.join(options.outputDir, 'docs');
@@ -119,10 +122,19 @@ export class InitService {
       }
     }
 
+    if (options.scaffoldSkills) {
+      const skillsPath = path.join(options.outputDir, 'skills');
+      if (await this.directoryHasContent(skillsPath)) {
+        prompts.push({ key: 'skills', path: skillsPath });
+      }
+    }
+
     for (const prompt of prompts) {
       const questionKey: TranslationKey = prompt.key === 'docs'
         ? 'prompts.init.confirmOverwriteDocs'
-        : 'prompts.init.confirmOverwriteAgents';
+        : prompt.key === 'agents'
+        ? 'prompts.init.confirmOverwriteAgents'
+        : 'prompts.init.confirmOverwriteSkills';
 
       const answer = await inquirer.prompt<{ overwrite: boolean }>([
         {
@@ -149,12 +161,15 @@ export class InitService {
     return entries.length > 0;
   }
 
-  private async generateScaffolds(options: InitOptions, repoStructure: RepoStructure): Promise<{ docsGenerated: number; agentsGenerated: number }> {
+  private async generateScaffolds(options: InitOptions, repoStructure: RepoStructure): Promise<{ docsGenerated: number; agentsGenerated: number; skillsGenerated: number }> {
     let docsGenerated = 0;
     let agentsGenerated = 0;
+    let skillsGenerated = 0;
+    let currentStep = 1;
+    const totalSteps = (options.scaffoldDocs ? 1 : 0) + (options.scaffoldAgents ? 1 : 0) + (options.scaffoldSkills ? 1 : 0);
 
     if (options.scaffoldDocs) {
-      this.ui.displayStep(2, 3, this.t('steps.init.docs'));
+      this.ui.displayStep(currentStep, totalSteps, this.t('steps.init.docs'));
       this.ui.startSpinner(options.semantic
         ? this.t('spinner.docs.creatingWithSemantic')
         : this.t('spinner.docs.creating')
@@ -166,10 +181,11 @@ export class InitService {
         options.verbose
       );
       this.ui.updateSpinner(this.t('spinner.docs.created', { count: docsGenerated }), 'success');
+      currentStep++;
     }
 
     if (options.scaffoldAgents) {
-      this.ui.displayStep(3, options.scaffoldDocs ? 3 : 2, this.t('steps.init.agents'));
+      this.ui.displayStep(currentStep, totalSteps, this.t('steps.init.agents'));
       this.ui.startSpinner(options.semantic
         ? this.t('spinner.agents.creatingWithSemantic')
         : this.t('spinner.agents.creating')
@@ -181,9 +197,27 @@ export class InitService {
         options.verbose
       );
       this.ui.updateSpinner(this.t('spinner.agents.created', { count: agentsGenerated }), 'success');
+      currentStep++;
     }
 
-    return { docsGenerated, agentsGenerated };
+    if (options.scaffoldSkills) {
+      this.ui.displayStep(currentStep, totalSteps, this.t('steps.init.skills'));
+      this.ui.startSpinner(this.t('spinner.skills.creating'));
+      try {
+        const relativeOutputDir = path.relative(options.repoPath, options.outputDir);
+        const skillGenerator = new SkillGenerator({
+          repoPath: options.repoPath,
+          outputDir: relativeOutputDir || '.context',
+        });
+        const skillResult = await skillGenerator.generate({ force: true });
+        skillsGenerated = skillResult.generatedSkills.length;
+      } catch {
+        // Skills generation is optional, continue if it fails
+      }
+      this.ui.updateSpinner(this.t('spinner.skills.created', { count: skillsGenerated }), 'success');
+    }
+
+    return { docsGenerated, agentsGenerated, skillsGenerated };
   }
 
   private async ensurePaths(options: InitOptions): Promise<void> {

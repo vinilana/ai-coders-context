@@ -30,7 +30,7 @@ describe('runInit integration', () => {
     }
   });
 
-  it('scaffolds documentation and agents when both are requested', async () => {
+  it('scaffolds documentation, agents, and skills when both are requested', async () => {
     const fixture = await createFixtureRepo();
     cleanup = fixture.cleanup;
     const outputDir = path.join(fixture.repoPath, '..', '.context-all');
@@ -39,9 +39,11 @@ describe('runInit integration', () => {
 
     const docsDir = path.join(outputDir, 'docs');
     const agentsDir = path.join(outputDir, 'agents');
+    const skillsDir = path.join(outputDir, 'skills');
 
     expect(await fs.pathExists(docsDir)).toBe(true);
     expect(await fs.pathExists(agentsDir)).toBe(true);
+    expect(await fs.pathExists(skillsDir)).toBe(true);
 
     const docsIndex = await fs.readFile(path.join(docsDir, 'README.md'), 'utf8');
     expect(docsIndex).toContain('# Documentation Index');
@@ -53,6 +55,12 @@ describe('runInit integration', () => {
 
     const generatedAgents = await fs.readdir(agentsDir);
     expect(generatedAgents).toContain('code-reviewer.md');
+
+    const skillsIndex = await fs.readFile(path.join(skillsDir, 'README.md'), 'utf8');
+    expect(skillsIndex).toContain('# Skills');
+
+    const generatedSkills = await fs.readdir(skillsDir);
+    expect(generatedSkills.length).toBeGreaterThan(0);
   });
 
   it('supports docs-only scaffolding without creating agent assets', async () => {

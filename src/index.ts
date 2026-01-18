@@ -1407,9 +1407,10 @@ async function runInteractiveScaffold(): Promise<void> {
   if (scaffoldSkills) {
     try {
       const { createSkillGenerator } = await import('./generators/skills');
+      const relativeOutputDir = path.relative(resolvedRepo, outputDir);
       const generator = createSkillGenerator({
         repoPath: resolvedRepo,
-        outputDir
+        outputDir: relativeOutputDir || '.context'
       });
 
       // Display step for skills scaffolding
