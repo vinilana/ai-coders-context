@@ -349,6 +349,16 @@ const englishMessages = {
   'warnings.mcp.noToolsDetected': 'No supported AI tools detected. Specify a tool manually.',
   'errors.mcp.unsupportedTool': 'Unsupported tool: {tool}. Supported: {supported}',
   'errors.mcp.installFailed': 'Failed to install MCP for {tool}',
+  // MCP tool display names
+  'commands.mcpInstall.selectTool.claudeDesktop': 'Claude Desktop',
+  'commands.mcpInstall.selectTool.vscode': 'VS Code (GitHub Copilot)',
+  'commands.mcpInstall.selectTool.roo': 'Roo Code',
+  'commands.mcpInstall.selectTool.warp': 'Warp Terminal',
+  'commands.mcpInstall.selectTool.amazonq': 'Amazon Q Developer CLI',
+  'commands.mcpInstall.selectTool.geminiCli': 'Gemini CLI',
+  'commands.mcpInstall.selectTool.kiro': 'Kiro',
+  'commands.mcpInstall.selectTool.zed': 'Zed Editor',
+  'commands.mcpInstall.selectTool.jetbrains': 'JetBrains IDEs',
   // Export command translations
   'commands.export.description': 'Export rules from .context to AI tool directories',
   'commands.export.options.source': 'Source directory for rules',
@@ -849,6 +859,16 @@ const portugueseMessages: TranslationDictionary = {
   'warnings.mcp.noToolsDetected': 'Nenhuma ferramenta de IA suportada detectada. Especifique uma ferramenta manualmente.',
   'errors.mcp.unsupportedTool': 'Ferramenta não suportada: {tool}. Suportadas: {supported}',
   'errors.mcp.installFailed': 'Falha ao instalar MCP para {tool}',
+  // Nomes de exibição das ferramentas MCP
+  'commands.mcpInstall.selectTool.claudeDesktop': 'Claude Desktop',
+  'commands.mcpInstall.selectTool.vscode': 'VS Code (GitHub Copilot)',
+  'commands.mcpInstall.selectTool.roo': 'Roo Code',
+  'commands.mcpInstall.selectTool.warp': 'Warp Terminal',
+  'commands.mcpInstall.selectTool.amazonq': 'Amazon Q Developer CLI',
+  'commands.mcpInstall.selectTool.geminiCli': 'Gemini CLI',
+  'commands.mcpInstall.selectTool.kiro': 'Kiro',
+  'commands.mcpInstall.selectTool.zed': 'Zed Editor',
+  'commands.mcpInstall.selectTool.jetbrains': 'JetBrains IDEs',
   // Traduções do comando export
   'commands.export.description': 'Exportar regras de .context para diretórios de ferramentas IA',
   'commands.export.options.source': 'Diretório fonte das regras',

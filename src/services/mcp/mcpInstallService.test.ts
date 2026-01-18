@@ -250,4 +250,191 @@ describe('MCPInstallService', () => {
       )).toBe(true);
     });
   });
+
+  describe('Phase 1: Standard JSON tools', () => {
+    it('should install MCP configuration for Claude Desktop', async () => {
+      const result = await service.run({
+        tool: 'claude-desktop',
+        global: false,
+        repoPath: tempDir,
+      });
+
+      expect(result.filesCreated).toBe(1);
+      const configPath = path.join(tempDir, '.claude-desktop', 'mcp_servers.json');
+      expect(await fs.pathExists(configPath)).toBe(true);
+
+      const config = await fs.readJson(configPath);
+      expect(config.mcpServers['ai-context']).toBeDefined();
+      expect(config.mcpServers['ai-context'].command).toBe('npx');
+    });
+
+    it('should install MCP configuration for VS Code', async () => {
+      const result = await service.run({
+        tool: 'vscode',
+        global: false,
+        repoPath: tempDir,
+      });
+
+      expect(result.filesCreated).toBe(1);
+      const configPath = path.join(tempDir, '.vscode', 'mcp.json');
+      expect(await fs.pathExists(configPath)).toBe(true);
+
+      const config = await fs.readJson(configPath);
+      expect(config.mcpServers['ai-context']).toBeDefined();
+    });
+
+    it('should install MCP configuration for Roo Code', async () => {
+      const result = await service.run({
+        tool: 'roo',
+        global: false,
+        repoPath: tempDir,
+      });
+
+      expect(result.filesCreated).toBe(1);
+      const configPath = path.join(tempDir, '.roo', 'mcp.json');
+      expect(await fs.pathExists(configPath)).toBe(true);
+
+      const config = await fs.readJson(configPath);
+      expect(config.mcpServers['ai-context']).toBeDefined();
+    });
+
+    it('should install MCP configuration for Warp Terminal', async () => {
+      const result = await service.run({
+        tool: 'warp',
+        global: false,
+        repoPath: tempDir,
+      });
+
+      expect(result.filesCreated).toBe(1);
+      const configPath = path.join(tempDir, '.warp', 'mcp_servers.json');
+      expect(await fs.pathExists(configPath)).toBe(true);
+
+      const config = await fs.readJson(configPath);
+      expect(config.mcpServers['ai-context']).toBeDefined();
+    });
+
+    it('should install MCP configuration for Amazon Q Developer CLI', async () => {
+      const result = await service.run({
+        tool: 'amazonq',
+        global: false,
+        repoPath: tempDir,
+      });
+
+      expect(result.filesCreated).toBe(1);
+      const configPath = path.join(tempDir, '.amazonq', 'mcp.json');
+      expect(await fs.pathExists(configPath)).toBe(true);
+
+      const config = await fs.readJson(configPath);
+      expect(config.mcpServers['ai-context']).toBeDefined();
+    });
+
+    it('should install MCP configuration for Gemini CLI', async () => {
+      const result = await service.run({
+        tool: 'gemini-cli',
+        global: false,
+        repoPath: tempDir,
+      });
+
+      expect(result.filesCreated).toBe(1);
+      const configPath = path.join(tempDir, '.gemini', 'settings.json');
+      expect(await fs.pathExists(configPath)).toBe(true);
+
+      const config = await fs.readJson(configPath);
+      expect(config.mcpServers['ai-context']).toBeDefined();
+    });
+
+    it('should install MCP configuration for Kiro', async () => {
+      const result = await service.run({
+        tool: 'kiro',
+        global: false,
+        repoPath: tempDir,
+      });
+
+      expect(result.filesCreated).toBe(1);
+      const configPath = path.join(tempDir, '.kiro', 'mcp.json');
+      expect(await fs.pathExists(configPath)).toBe(true);
+
+      const config = await fs.readJson(configPath);
+      expect(config.mcpServers['ai-context']).toBeDefined();
+    });
+  });
+
+  describe('Phase 2: Special JSON formats', () => {
+    it('should install MCP configuration for Zed with context_servers', async () => {
+      const result = await service.run({
+        tool: 'zed',
+        global: false,
+        repoPath: tempDir,
+      });
+
+      expect(result.filesCreated).toBe(1);
+      const configPath = path.join(tempDir, '.zed', 'settings.json');
+      expect(await fs.pathExists(configPath)).toBe(true);
+
+      const config = await fs.readJson(configPath);
+      expect(config.context_servers).toBeDefined();
+      expect(config.context_servers['ai-context']).toBeDefined();
+      expect(config.context_servers['ai-context'].command).toBeDefined();
+      expect(config.context_servers['ai-context'].command.path).toBe('npx');
+    });
+
+    it('should install MCP configuration for JetBrains', async () => {
+      const result = await service.run({
+        tool: 'jetbrains',
+        global: false,
+        repoPath: tempDir,
+      });
+
+      expect(result.filesCreated).toBe(1);
+      const configPath = path.join(tempDir, '.idea', 'mcp.json');
+      expect(await fs.pathExists(configPath)).toBe(true);
+
+      const config = await fs.readJson(configPath);
+      expect(config.mcpServers['ai-context']).toBeDefined();
+    });
+  });
+
+  describe('Merge behavior for new tools', () => {
+    it('should preserve existing MCP servers when installing VS Code', async () => {
+      // Create existing config with another server
+      const configPath = path.join(tempDir, '.vscode', 'mcp.json');
+      await fs.ensureDir(path.dirname(configPath));
+      await fs.writeJson(configPath, {
+        mcpServers: {
+          'other-server': { command: 'other', args: [] }
+        }
+      });
+
+      await service.run({
+        tool: 'vscode',
+        global: false,
+        repoPath: tempDir,
+      });
+
+      const config = await fs.readJson(configPath);
+      expect(config.mcpServers['other-server']).toBeDefined();
+      expect(config.mcpServers['ai-context']).toBeDefined();
+    });
+
+    it('should preserve existing context_servers when installing Zed', async () => {
+      // Create existing config with another server
+      const configPath = path.join(tempDir, '.zed', 'settings.json');
+      await fs.ensureDir(path.dirname(configPath));
+      await fs.writeJson(configPath, {
+        context_servers: {
+          'other-server': { command: { path: 'other', args: [] } }
+        }
+      });
+
+      await service.run({
+        tool: 'zed',
+        global: false,
+        repoPath: tempDir,
+      });
+
+      const config = await fs.readJson(configPath);
+      expect(config.context_servers['other-server']).toBeDefined();
+      expect(config.context_servers['ai-context']).toBeDefined();
+    });
+  });
 });

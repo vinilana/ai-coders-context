@@ -267,6 +267,86 @@ export const TOOL_REGISTRY: ToolDefinition[] = [
     },
     description: 'Zed editor AI settings',
   },
+
+  // Claude Desktop
+  {
+    id: 'claude-desktop',
+    displayName: 'Claude Desktop',
+    directoryPrefix: '.claude-desktop',
+    capabilities: { rules: false, agents: false, skills: false },
+    paths: {},
+    description: 'Claude Desktop MCP configuration',
+  },
+
+  // VS Code (GitHub Copilot)
+  {
+    id: 'vscode',
+    displayName: 'VS Code (GitHub Copilot)',
+    directoryPrefix: '.vscode',
+    capabilities: { rules: false, agents: false, skills: false },
+    paths: {},
+    description: 'VS Code GitHub Copilot MCP configuration',
+  },
+
+  // Roo Code
+  {
+    id: 'roo',
+    displayName: 'Roo Code',
+    directoryPrefix: '.roo',
+    capabilities: { rules: false, agents: false, skills: false },
+    paths: {},
+    description: 'Roo Code MCP configuration',
+  },
+
+  // Warp Terminal
+  {
+    id: 'warp',
+    displayName: 'Warp Terminal',
+    directoryPrefix: '.warp',
+    capabilities: { rules: false, agents: false, skills: false },
+    paths: {},
+    description: 'Warp Terminal MCP configuration',
+  },
+
+  // Amazon Q Developer CLI
+  {
+    id: 'amazonq',
+    displayName: 'Amazon Q Developer CLI',
+    directoryPrefix: '.amazonq',
+    capabilities: { rules: false, agents: false, skills: false },
+    paths: {},
+    description: 'Amazon Q Developer CLI MCP configuration',
+  },
+
+  // Gemini CLI
+  {
+    id: 'gemini-cli',
+    displayName: 'Gemini CLI',
+    directoryPrefix: '.gemini',
+    capabilities: { rules: false, agents: false, skills: false },
+    paths: {},
+    description: 'Gemini CLI MCP configuration',
+  },
+
+  // Kiro
+  {
+    id: 'kiro',
+    displayName: 'Kiro',
+    directoryPrefix: '.kiro',
+    capabilities: { rules: false, agents: false, skills: false },
+    paths: {},
+    description: 'Kiro MCP configuration',
+  },
+
+  // JetBrains IDEs
+  {
+    id: 'jetbrains',
+    displayName: 'JetBrains IDEs',
+    directoryPrefix: '.idea',
+    capabilities: { rules: false, agents: false, skills: false },
+    paths: {},
+    description: 'JetBrains IDEs MCP configuration',
+  },
 ];
 
 // ============================================================================

@@ -200,6 +200,213 @@ const MCP_CONFIG_TEMPLATES: MCPConfigTemplate[] = [
       return servers?.some((s: unknown) => (s as Record<string, unknown>)?.name === 'ai-context') ?? false;
     },
   },
+
+  // Claude Desktop - Cross-platform paths
+  {
+    toolId: 'claude-desktop',
+    globalConfigPath: process.platform === 'darwin'
+      ? path.join('Library', 'Application Support', 'Claude', 'claude_desktop_config.json')
+      : path.join('AppData', 'Roaming', 'Claude', 'claude_desktop_config.json'),
+    localConfigPath: '.claude-desktop/mcp_servers.json',
+    generateConfig: (existing, server) => {
+      const config = (existing as Record<string, unknown>) || {};
+      return {
+        ...config,
+        mcpServers: {
+          ...(config.mcpServers as Record<string, unknown> || {}),
+          'ai-context': server,
+        },
+      };
+    },
+    isConfigured: (config) => {
+      const c = config as Record<string, unknown>;
+      const servers = c?.mcpServers as Record<string, unknown>;
+      return !!servers?.['ai-context'];
+    },
+  },
+
+  // VS Code (GitHub Copilot)
+  {
+    toolId: 'vscode',
+    globalConfigPath: '.vscode/mcp.json',
+    localConfigPath: '.vscode/mcp.json',
+    generateConfig: (existing, server) => {
+      const config = (existing as Record<string, unknown>) || {};
+      return {
+        ...config,
+        mcpServers: {
+          ...(config.mcpServers as Record<string, unknown> || {}),
+          'ai-context': server,
+        },
+      };
+    },
+    isConfigured: (config) => {
+      const c = config as Record<string, unknown>;
+      const servers = c?.mcpServers as Record<string, unknown>;
+      return !!servers?.['ai-context'];
+    },
+  },
+
+  // Roo Code
+  {
+    toolId: 'roo',
+    globalConfigPath: '.roo/mcp_settings.json',
+    localConfigPath: '.roo/mcp.json',
+    generateConfig: (existing, server) => {
+      const config = (existing as Record<string, unknown>) || {};
+      return {
+        ...config,
+        mcpServers: {
+          ...(config.mcpServers as Record<string, unknown> || {}),
+          'ai-context': server,
+        },
+      };
+    },
+    isConfigured: (config) => {
+      const c = config as Record<string, unknown>;
+      const servers = c?.mcpServers as Record<string, unknown>;
+      return !!servers?.['ai-context'];
+    },
+  },
+
+  // Warp Terminal
+  {
+    toolId: 'warp',
+    globalConfigPath: '.warp/mcp_servers.json',
+    localConfigPath: '.warp/mcp_servers.json',
+    generateConfig: (existing, server) => {
+      const config = (existing as Record<string, unknown>) || {};
+      return {
+        ...config,
+        mcpServers: {
+          ...(config.mcpServers as Record<string, unknown> || {}),
+          'ai-context': server,
+        },
+      };
+    },
+    isConfigured: (config) => {
+      const c = config as Record<string, unknown>;
+      const servers = c?.mcpServers as Record<string, unknown>;
+      return !!servers?.['ai-context'];
+    },
+  },
+
+  // Amazon Q Developer CLI
+  {
+    toolId: 'amazonq',
+    globalConfigPath: '.aws/amazonq/mcp.json',
+    localConfigPath: '.amazonq/mcp.json',
+    generateConfig: (existing, server) => {
+      const config = (existing as Record<string, unknown>) || {};
+      return {
+        ...config,
+        mcpServers: {
+          ...(config.mcpServers as Record<string, unknown> || {}),
+          'ai-context': server,
+        },
+      };
+    },
+    isConfigured: (config) => {
+      const c = config as Record<string, unknown>;
+      const servers = c?.mcpServers as Record<string, unknown>;
+      return !!servers?.['ai-context'];
+    },
+  },
+
+  // Gemini CLI
+  {
+    toolId: 'gemini-cli',
+    globalConfigPath: '.gemini/settings.json',
+    localConfigPath: '.gemini/settings.json',
+    generateConfig: (existing, server) => {
+      const config = (existing as Record<string, unknown>) || {};
+      return {
+        ...config,
+        mcpServers: {
+          ...(config.mcpServers as Record<string, unknown> || {}),
+          'ai-context': server,
+        },
+      };
+    },
+    isConfigured: (config) => {
+      const c = config as Record<string, unknown>;
+      const servers = c?.mcpServers as Record<string, unknown>;
+      return !!servers?.['ai-context'];
+    },
+  },
+
+  // Kiro
+  {
+    toolId: 'kiro',
+    globalConfigPath: '.kiro/mcp.json',
+    localConfigPath: '.kiro/mcp.json',
+    generateConfig: (existing, server) => {
+      const config = (existing as Record<string, unknown>) || {};
+      return {
+        ...config,
+        mcpServers: {
+          ...(config.mcpServers as Record<string, unknown> || {}),
+          'ai-context': server,
+        },
+      };
+    },
+    isConfigured: (config) => {
+      const c = config as Record<string, unknown>;
+      const servers = c?.mcpServers as Record<string, unknown>;
+      return !!servers?.['ai-context'];
+    },
+  },
+
+  // Zed Editor - Uses context_servers instead of mcpServers
+  {
+    toolId: 'zed',
+    globalConfigPath: '.config/zed/settings.json',
+    localConfigPath: '.zed/settings.json',
+    generateConfig: (existing, server) => {
+      const config = (existing as Record<string, unknown>) || {};
+      return {
+        ...config,
+        context_servers: {
+          ...(config.context_servers as Record<string, unknown> || {}),
+          'ai-context': {
+            settings: {},
+            command: {
+              path: server.command,
+              args: server.args,
+              env: server.env || {},
+            },
+          },
+        },
+      };
+    },
+    isConfigured: (config) => {
+      const c = config as Record<string, unknown>;
+      const servers = c?.context_servers as Record<string, unknown>;
+      return !!servers?.['ai-context'];
+    },
+  },
+
+  // JetBrains IDEs
+  {
+    toolId: 'jetbrains',
+    globalConfigPath: '.config/JetBrains/mcp.json',
+    localConfigPath: '.idea/mcp.json',
+    generateConfig: (existing, server) => {
+      const config = (existing as Record<string, unknown>) || {};
+      return {
+        ...config,
+        mcpServers: {
+          ...(config.mcpServers as Record<string, unknown> || {}),
+          'ai-context': server,
+        },
+      };
+    },
+    isConfigured: (config) => {
+      const c = config as Record<string, unknown>;
+      const servers = c?.mcpServers as Record<string, unknown>;
+      return !!servers?.['ai-context'];
+    },
+  },
 ];
 
 // ============================================================================
