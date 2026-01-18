@@ -5,61 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-### Changed
-
-- **Context Initialization Simplified**: `.context` folder creation now uses simple path logic instead of complex detection
-  - `.context` is created in the specified path or current working directory
-  - Cleaner, more predictable behavior without hidden traversal logic
-  - Internal complexity reduced from 496 lines to ~20 lines
-  - Public APIs remain unchanged - static factory methods (`WorkflowService.create()`, `PlanLinker.create()`) are preserved
-  - Backwards compatibility maintained for existing code
-
-- **MCP Action Logging**: Logs every MCP tool invocation to `.context/workflow/actions.jsonl` with sanitized metadata for auditability.
-- **Phase Orchestration Skills**: Workflow responses now include recommended skills alongside agent orchestration for each PREVC phase.
-- **Workflow Status Serialization**: Omits empty or default sections to keep `status.yaml` minimal and readable.
-
-### Breaking Changes
-
-- **ENTERPRISE Scale Removed**
-  - `ProjectScale.ENTERPRISE` enum value removed (breaking change for TypeScript code)
-  - Consolidated into `ProjectScale.LARGE` for simpler mental model
-  - Security/compliance keywords now map to LARGE scale instead of ENTERPRISE
-  - **Backward compatibility**: Existing `status.yaml` files with `scale: ENTERPRISE` automatically migrate to LARGE
-  - **API compatibility**: `getScaleFromName('enterprise')` maps to LARGE for smooth transitions
-  - **MCP interface**: `workflow-init` scale parameter no longer accepts 'ENTERPRISE'
-
-- **Context Initialization**
-  - `.context` is now created only in the specified path or current working directory
-  - Removed upward directory traversal (no longer searches parent directories)
-  - Removed git root detection for `.context` location
-  - Removed package.json `ai-context.path` configuration support
-  - Commands running from subdirectories will not find `.context` in parent directories
-
-  **Migration path:**
-  - Always run commands from your project root directory where `.context` should be located
-  - Use explicit `repoPath` or `--output` parameters when needed for non-standard locations
-  - Remove any `ai-context.path` configuration from package.json files (no longer used)
-
-- **Who is affected:**
-  - Users running commands from subdirectories expecting upward traversal
-  - Monorepo users with shared `.context` in root directory
-  - Users with package.json `ai-context.path` configuration
-
-  **Who is NOT affected:**
-  - Users of public APIs (`WorkflowService.create()`, `PlanLinker.create()`) - these are preserved
-  - Users running commands from project root
-  - Users providing explicit paths
-
-### Fixed
-
-- **Workflow Init Paths**: Correctly resolves `.context` repo paths to ensure `status.yaml` is created in the expected location.
-- **Plan Index Initialization**: Ensures `.context/workflow/plans.json` is created when starting a workflow.
-
-## [0.7.0] - 2026-01-17
+## [0.7.0]
 
 ### Added
+
+- **MCP Install Command**: New `mcp:install` CLI command for easy MCP server configuration
+  - Automatically configures ai-context MCP server in AI tools (Claude Code, Cursor, Windsurf, Cline, Continue.dev)
+  - Interactive mode with tool detection and selection
+  - Supports global (home directory) and local (project directory) installation
+  - Merges with existing MCP configurations without overwriting
+  - Dry-run mode for previewing changes
+  - Bilingual support (English and Portuguese)
 
 - **Gateway Tools Consolidation**: Unified MCP tools into 9 focused tools (5 gateways + 4 dedicated workflow tools)
   - `explore` - File and code exploration (read, list, analyze, search, getStructure)
@@ -74,6 +30,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `workflow-manage` - Manage handoffs, collaboration, documents, gates
   - Standardized response utilities and shared context across all handlers
   - Improved organization, discoverability, and reduced cognitive load
+
+- **MCP Export Tools**: New granular export tools for docs, agents, and skills
+  - `exportDocs` - Export documentation from `.context/docs/` with README indexing mode
+  - `exportAgents` - Export agents from `.context/agents/` (symlink by default)
+  - `exportContext` - Unified export of docs, agents, and skills in one operation
+
+- **MCP Import Tools**: Individual import tools for each content type
+  - `importDocs` - Import documentation from AI tool directories into `.context/docs/`
+  - `importAgents` - Import agents from AI tool directories into `.context/agents/`
+  - `importSkills` - Import skills from AI tool directories into `.context/skills/`
+
+- **README Index Mode**: New `indexMode` option for docs export
+  - `readme` (default) - Export only README.md files as indices
+  - `all` - Export all matching files (previous behavior)
+  - Cleaner exports that reference documentation indices
+
+- **Content Type Registry**: Extensible registry for future content types
+  - `ContentTypeRegistry` in `src/services/shared/contentTypeRegistry.ts`
+  - Supports docs, agents, skills, plans
+  - Easy addition of new content types (prompts, workflows, etc.)
+
+- **Unified Context Export Service**: Orchestrates export of all content types
+  - `ContextExportService` combines docs, agents, and skills export
+  - Configurable skip options for each content type
+  - Consistent error handling and reporting
+
+- **MCP Response Optimization**: New `skipContentGeneration` option for `initializeContext`
+  - Reduces response size from ~10k tokens to ~500 tokens
+  - Enables two-phase workflow: scaffold first, fill on-demand
+  - Default `true` for MCP to reduce context usage
+  - Use `fillSingleFile` or `fillScaffolding` tools to generate content when needed
 
 - **Workflow Gates System**: Comprehensive gate checking for phase transitions
   - `require_plan` gate - Enforces plan creation before P → R transition
@@ -122,26 +109,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Deprecated legacy templates in favor of new system
 
 - **Fill Tool Enhancements**: Better context for content generation
-  - `fillSingleFile` and `fillScaffolding` now include scaffold structure context
+  - `fillSingleFile` and `fillScaffolding` exports from scaffolding tools now include scaffold structure context
   - Semantic context integrated into fill instructions
   - Removed deprecated content generation functions
   - Enhanced error handling and user guidance
 
-- **Q&A Service**: Question and answer generation from codebase
+- **Q&A Service**: Question and answer generation from codebase (via MCP context gateway)
   - `QAService` for generating and searching Q&A entries
-  - `generateQA` action creates Q&A files from codebase analysis
+  - `generateQA` action in context gateway creates Q&A files from codebase analysis
   - `searchQA` action for semantic search over generated Q&A
   - Utilizes pre-computed codebase maps when available
 
-- **Topic Detection**: Automatic detection of functional patterns
+- **Topic & Pattern Detection**: Automatic detection of functional patterns (via MCP context gateway)
   - `TopicDetector` identifies capabilities in codebase
   - Detects: authentication, database access, API endpoints, caching, messaging, etc.
-  - Used to generate contextually relevant Q&A content
+  - `detectPatterns` and `getFlow` actions provide pattern analysis
+  - Used to generate contextually relevant Q&A and architectural insights
 
-- **Context Metrics Service**: Usage tracking for context tools
+- **Context Metrics Service**: Usage tracking for context tools (via MCP metrics gateway)
   - Tracks context tool usage and file reads
   - Provides insights into pre-computed context effectiveness
   - Guides optimization of codebase map generation
+  - Accessible via `metrics` gateway with tracking and reporting actions
 
 - **Enhanced Tool Status**: Improved response structures
   - New `incomplete` status for tracking pending actions
@@ -156,10 +145,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `enhancementPrompt` field with clear workflow steps
   - `nextSteps` array with actionable instructions
   - `pendingEnhancement` list of files requiring content
-  - Applied to: `context init`, `project start`, `scaffoldPlan`
+  - Applied to: `context init` and `scaffoldPlan` MCP actions
   - Ensures AI agents always receive instructions to enhance scaffolding via MCP tools
 
 ### Changed
+
+- **Context Initialization Simplified**: `.context` folder creation now uses simple path logic instead of complex detection
+  - `.context` is created in the specified path or current working directory
+  - Cleaner, more predictable behavior without hidden traversal logic
+  - Internal complexity reduced from 496 lines to ~20 lines
+  - Public APIs remain unchanged - static factory methods (`WorkflowService.create()`, `PlanLinker.create()`) are preserved
+  - Backwards compatibility maintained for existing code
+
+- **MCP Action Logging**: Logs every MCP tool invocation to `.context/workflow/actions.jsonl` with sanitized metadata for auditability.
+
+- **Phase Orchestration Skills**: Workflow responses now include recommended skills alongside agent orchestration for each PREVC phase.
+
+- **Workflow Status Serialization**: Omits empty or default sections to keep `status.yaml` minimal and readable.
+
+- **Agents Export Default**: Changed default sync mode from `markdown` to `symlink`
+  - Symlinks keep AI tool directories automatically synchronized
+  - Changes in `.context/agents/` reflect immediately in target directories
 
 - **MCP Tool Simplification**: Removed project-setup and project-report tools
   - Simplified from 11 tools to 9 tools (5 gateways + 4 dedicated workflow tools)
@@ -184,6 +190,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Scale-based default settings for different project sizes
   - `archive_previous` controls handling of existing workflows
 
+### Breaking Changes
+
+- **ENTERPRISE Scale Removed**
+  - `ProjectScale.ENTERPRISE` enum value removed (breaking change for TypeScript code)
+  - Consolidated into `ProjectScale.LARGE` for simpler mental model
+  - Security/compliance keywords now map to LARGE scale instead of ENTERPRISE
+  - **Backward compatibility**: Existing `status.yaml` files with `scale: ENTERPRISE` automatically migrate to LARGE
+  - **API compatibility**: `getScaleFromName('enterprise')` maps to LARGE for smooth transitions
+  - **MCP interface**: `workflow-init` scale parameter no longer accepts 'ENTERPRISE'
+
+- **Context Initialization**
+  - `.context` is now created only in the specified path or current working directory
+
+### Fixed
+
+- **Workflow Init Paths**: Correctly resolves `.context` repo paths to ensure `status.yaml` is created in the expected location.
+- **Plan Index Initialization**: Ensures `.context/workflow/plans.json` is created when starting a workflow.
+- **Export Validation**: Export commands now properly check if source directories exist
+  - `exportContext`, `exportDocs`, `exportAgents`, `exportSkills` only export content that actually exists in `.context/`
+  - Added `fs.pathExists` checks before processing docs, agents, and skills directories
+  - Skills export without `includeBuiltIn` no longer fails silently when `.context/skills/` doesn't exist
+  - Prevents misleading success messages when exporting non-existent content
+
 ### Technical Details
 
 #### New Files
@@ -206,101 +235,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `src/generators/shared/scaffoldStructures.ts` - Centralized scaffold definitions
 - `src/services/qa/qaService.ts` - Q&A generation service
 - `src/services/qa/topicDetector.ts` - Functional pattern detection
-- `src/services/metrics/contextMetricsService.ts` - Usage metrics tracking
 - `src/utils/gitService.ts` - Git operations utility
 - `src/types/scaffoldFrontmatter.ts` - Scaffold frontmatter types
+- `src/services/mcp/mcpInstallService.ts` - MCP installation service for AI tools
+- `src/services/mcp/mcpInstallService.test.ts` - Unit tests for MCP install service
+- `src/services/export/contextExportService.ts` - Unified export orchestrator
+- `src/services/shared/contentTypeRegistry.ts` - Extensible content type definitions
+- `src/services/mcp/gateway/response.ts` - Gateway response helpers and scaffold response builder
+- `src/services/mcp/gateway/types.ts` - Gateway action types and parameters
+- `src/services/mcp/gateway/index.ts` - Gateway module exports
+- `src/services/mcp/gateway/shared.ts` - Shared utilities for gateway handlers
+- `src/services/mcp/gateway/metrics.ts` - Context metrics tracking gateway
 
 #### Modified Files
 - `src/services/mcp/mcpServer.ts` - Gateway integration and new actions
-- `src/services/mcp/gateway/response.ts` - Added `createScaffoldResponse()` helper for consistent enhancement prompts
-- `src/services/mcp/gateway/context.ts` - Updated `init` and `scaffoldPlan` to use scaffold response
-- `src/services/mcp/gateway/project.ts` - Updated `start` to include enhancement prompt when files need content
+- `src/services/mcp/gateway/context.ts` - Gateway implementation with `init`, `scaffoldPlan` actions, Q&A and pattern detection
 - `src/services/ai/tools/scaffoldPlanTool.ts` - Added consistent `status: "incomplete"` pattern and `nextStep` guidance
 - `src/prompts/defaults.ts` - Added `MCP_SCAFFOLD_ENHANCEMENT_PROMPT` constant
 - `src/workflow/orchestrator.ts` - Gate checking and execution history
 - `src/workflow/status/statusManager.ts` - Execution tracking and settings
 - `src/workflow/plans/planLinker.ts` - Step tracking and commit support
-- `src/services/ai/tools/fillScaffoldingTool.ts` - Scaffold structure integration
-- `src/services/ai/tools/fillSingleFileTool.ts` - Enhanced fill context
+- `src/services/ai/tools/fillScaffoldingTool.ts` - Scaffold structure integration, exports both `fillScaffoldingTool` and `fillSingleFileTool`
 - `src/services/ai/schemas.ts` - New action schemas and parameters
 - `src/generators/documentation/documentationGenerator.ts` - V2 scaffold support
 - `src/generators/agents/agentGenerator.ts` - V2 scaffold support
 - `src/generators/skills/skillGenerator.ts` - V2 scaffold support
-
-## [0.6.3] - 2026-01-16
-
-### Added
-
-- **MCP Install Command**: New `mcp:install` CLI command for easy MCP server configuration
-  - Automatically configures ai-context MCP server in AI tools (Claude Code, Cursor, Windsurf, Cline, Continue.dev)
-  - Interactive mode with tool detection and selection
-  - Supports global (home directory) and local (project directory) installation
-  - Merges with existing MCP configurations without overwriting
-  - Dry-run mode for previewing changes
-  - Bilingual support (English and Portuguese)
-
-- **MCP Export Tools**: New granular export tools for docs, agents, and skills
-  - `exportDocs` - Export documentation from `.context/docs/` with README indexing mode
-  - `exportAgents` - Export agents from `.context/agents/` (symlink by default)
-  - `exportContext` - Unified export of docs, agents, and skills in one operation
-
-- **MCP Import Tools**: Individual import tools for each content type
-  - `importDocs` - Import documentation from AI tool directories into `.context/docs/`
-  - `importAgents` - Import agents from AI tool directories into `.context/agents/`
-  - `importSkills` - Import skills from AI tool directories into `.context/skills/`
-
-- **README Index Mode**: New `indexMode` option for docs export
-  - `readme` (default) - Export only README.md files as indices
-  - `all` - Export all matching files (previous behavior)
-  - Cleaner exports that reference documentation indices
-
-- **Content Type Registry**: Extensible registry for future content types
-  - `ContentTypeRegistry` in `src/services/shared/contentTypeRegistry.ts`
-  - Supports docs, agents, skills, plans
-  - Easy addition of new content types (prompts, workflows, etc.)
-
-- **Unified Context Export Service**: Orchestrates export of all content types
-  - `ContextExportService` combines docs, agents, and skills export
-  - Configurable skip options for each content type
-  - Consistent error handling and reporting
-
-- **MCP Response Optimization**: New `skipContentGeneration` option for `initializeContext`
-  - Reduces response size from ~10k tokens to ~500 tokens
-  - Enables two-phase workflow: scaffold first, fill on-demand
-  - Default `true` for MCP to reduce context usage
-  - Use `fillSingleFile` or `fillScaffolding` tools to generate content when needed
-
-### Changed
-
-- **Agents Export Default**: Changed default sync mode from `markdown` to `symlink`
-  - Symlinks keep AI tool directories automatically synchronized
-  - Changes in `.context/agents/` reflect immediately in target directories
-
-### Fixed
-
-- **Export Validation**: Export commands now properly check if source directories exist
-  - `exportContext`, `exportDocs`, `exportAgents`, `exportSkills` only export content that actually exists in `.context/`
-  - Added `fs.pathExists` checks before processing docs, agents, and skills directories
-  - Skills export without `includeBuiltIn` no longer fails silently when `.context/skills/` doesn't exist
-  - Prevents misleading success messages when exporting non-existent content
-
-### Technical Details
-
-#### New Files
-- `src/services/mcp/mcpInstallService.ts` - MCP installation service for AI tools
-- `src/services/mcp/mcpInstallService.test.ts` - Unit tests for MCP install service
-- `src/services/export/contextExportService.ts` - Unified export orchestrator
-- `src/services/shared/contentTypeRegistry.ts` - Extensible content type definitions
-
-#### Modified Files
 - `src/index.ts` - Added `mcp:install` CLI command with interactive mode
 - `src/services/mcp/index.ts` - Exported MCPInstallService
 - `src/utils/i18n.ts` - Added translations for mcp:install command (EN + PT-BR)
-- `src/services/mcp/mcpServer.ts` - Added 7 new MCP tools (export + import), added `skipContentGeneration` option
-- `src/services/ai/schemas.ts` - Added `skipContentGeneration` option to InitializeContextInputSchema
-- `src/services/ai/tools/initializeContextTool.ts` - Implemented lean response for `skipContentGeneration`
 - `src/services/export/exportRulesService.ts` - Added `indexMode` option and source path validation
-- `src/services/export/contextExportService.ts` - Added directory existence checks before export
 - `src/services/export/skillExportService.ts` - Added skills directory existence check
 - `src/services/export/index.ts` - Export ContextExportService
 - `src/services/shared/index.ts` - Export ContentTypeRegistry
