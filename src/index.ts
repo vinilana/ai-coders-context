@@ -37,6 +37,7 @@ import {
   promptLLMConfig,
   promptAnalysisOptions,
   promptConfirmProceed,
+  promptLoadEnv,
   displayConfigSummary,
   type ConfigSummary
 } from './utils/prompts';
@@ -44,7 +45,18 @@ import { VERSION, PACKAGE_NAME } from './version';
 
 const rawArgs = process.argv.slice(2);
 const isMcpCommand = rawArgs.includes('mcp');
-if (!isMcpCommand) {
+
+// Determine if we're in interactive mode (no command args, only flags like --lang)
+const isInteractiveMode = rawArgs.every(arg =>
+  arg.startsWith('-') ||
+  rawArgs[rawArgs.indexOf(arg) - 1]?.startsWith('--lang') ||
+  rawArgs[rawArgs.indexOf(arg) - 1]?.startsWith('--language') ||
+  rawArgs[rawArgs.indexOf(arg) - 1]?.startsWith('-l')
+);
+
+// Load dotenv immediately for command-line mode (not MCP, not interactive)
+// For interactive mode, we'll ask the user first
+if (!isMcpCommand && !isInteractiveMode) {
   dotenv.config();
 }
 
@@ -1060,6 +1072,12 @@ type StateAction = 'create' | 'fill' | 'menu' | 'exit' | 'scaffold';
 
 async function runInteractive(): Promise<void> {
   await selectLocale(false); // Don't show welcome yet
+
+  // Ask user if they want to load environment variables from .env
+  const loadEnv = await promptLoadEnv(t);
+  if (loadEnv) {
+    dotenv.config();
+  }
 
   // Show welcome screen with PREVC explanation
   ui.displayWelcome(VERSION);

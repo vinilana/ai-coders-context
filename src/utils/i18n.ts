@@ -509,7 +509,9 @@ const englishMessages = {
   'status.new': 'No context found.',
   'status.unfilled': 'Context: {count} files need filling',
   // Hit Enter / Press Enter
-  'prompts.pressEnter': 'Press Enter to continue...'
+  'prompts.pressEnter': 'Press Enter to continue...',
+  // Environment variable loading
+  'prompts.env.loadEnv': 'Load environment variables from .env file?'
 } as const;
 
 export type TranslationKey = keyof typeof englishMessages;
@@ -1022,7 +1024,9 @@ const portugueseMessages: TranslationDictionary = {
   'status.new': 'Nenhum contexto encontrado.',
   'status.unfilled': 'Contexto: {count} arquivos precisam preenchimento',
   // Hit Enter / Press Enter
-  'prompts.pressEnter': 'Pressione Enter para continuar...'
+  'prompts.pressEnter': 'Pressione Enter para continuar...',
+  // Environment variable loading
+  'prompts.env.loadEnv': 'Carregar variáveis de ambiente do arquivo .env?'
 };
 
 const dictionaries: Record<Locale, TranslationDictionary> = {

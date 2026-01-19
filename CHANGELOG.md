@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Interactive Mode Environment Prompt**: Ask user before loading `.env` file in interactive mode
+  - Prompts "Load environment variables from .env file?" at startup
+  - Default is No for explicit/secure approach
+  - Command-line mode still loads `.env` automatically (no change)
+  - MCP mode continues to skip `.env` loading (existing behavior)
+
 - **MCP Install Command**: New `mcp:install` CLI command for easy MCP server configuration
   - Automatically configures ai-context MCP server in AI tools (Claude Code, Cursor, Windsurf, Cline, Continue.dev)
   - Interactive mode with tool detection and selection
@@ -248,6 +254,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `src/services/mcp/gateway/metrics.ts` - Context metrics tracking gateway
 
 #### Modified Files
+- `src/index.ts` - Interactive mode environment prompt, conditional dotenv loading
+- `src/utils/prompts/index.ts` - Added `promptLoadEnv()` function
+- `src/utils/i18n.ts` - Added `prompts.env.loadEnv` translations (EN/PT)
 - `src/services/mcp/mcpServer.ts` - Gateway integration and new actions
 - `src/services/mcp/gateway/context.ts` - Gateway implementation with `init`, `scaffoldPlan` actions, Q&A and pattern detection
 - `src/services/ai/tools/scaffoldPlanTool.ts` - Added consistent `status: "incomplete"` pattern and `nextStep` guidance
