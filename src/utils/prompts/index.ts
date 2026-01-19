@@ -106,3 +106,18 @@ export async function promptConfirmProceed(t: TranslateFn): Promise<boolean> {
   ]);
   return proceed;
 }
+
+/**
+ * Prompts user to load environment variables from .env file
+ */
+export async function promptLoadEnv(t: TranslateFn): Promise<boolean> {
+  const { loadEnv } = await inquirer.prompt<{ loadEnv: boolean }>([
+    {
+      type: 'confirm',
+      name: 'loadEnv',
+      message: t('prompts.env.loadEnv'),
+      default: false
+    }
+  ]);
+  return loadEnv;
+}

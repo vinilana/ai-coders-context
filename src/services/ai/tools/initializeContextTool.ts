@@ -1,10 +1,11 @@
 import { tool } from 'ai';
 import * as path from 'path';
 import * as fs from 'fs-extra';
-import { InitializeContextInputSchema, type InitializeContextInput } from '../schemas';
+import { InitializeContextInputSchema, type InitializeContextInput, type RequiredAction } from '../schemas';
 import { FileMapper } from '../../../utils/fileMapper';
 import { DocumentationGenerator } from '../../../generators/documentation/documentationGenerator';
 import { AgentGenerator } from '../../../generators/agents/agentGenerator';
+import { SkillGenerator } from '../../../generators/skills/skillGenerator';
 import {
   StackDetector,
   classifyProject,
@@ -13,7 +14,8 @@ import {
   ProjectType,
   ProjectClassification,
 } from '../../stack';
-import { getOrBuildContext, generateDocContent, generateAgentContent } from './fillScaffoldingTool';
+import { UPDATE_SCAFFOLD_PROMPT_FALLBACK } from '../../../prompts/defaults';
+import { QAService } from '../../qa';
 
 export const initializeContextTool = tool({
   description: `Initialize .context scaffolding and create template files.
@@ -31,6 +33,9 @@ The AI agent MUST then fill each generated file using the provided context and i
       projectType: overrideProjectType,
       disableFiltering = false,
       autoFill = true,
+      skipContentGeneration = true, // Default true to reduce response size
+      generateQA = true,
+      generateSkills = true,
     } = input;
 
     const resolvedRepoPath = path.resolve(repoPath);
@@ -45,7 +50,7 @@ The AI agent MUST then fill each generated file using the provided context and i
       // Validate repo path exists
       if (!await fs.pathExists(resolvedRepoPath)) {
         return {
-          success: false,
+          status: 'error',
           outputDir,
           error: `Repository path does not exist: ${resolvedRepoPath}`
         };
@@ -110,6 +115,34 @@ The AI agent MUST then fill each generated file using the provided context and i
         );
       }
 
+      // Generate skills scaffolding
+      let skillsGenerated = 0;
+      if (generateSkills) {
+        try {
+          const skillGenerator = new SkillGenerator({
+            repoPath: resolvedRepoPath,
+            outputDir: path.relative(resolvedRepoPath, outputDir),
+          });
+          const skillResult = await skillGenerator.generate({ force: false });
+          skillsGenerated = skillResult.generatedSkills.length;
+        } catch {
+          // Skills generation is optional, continue if it fails
+        }
+      }
+
+      // Generate Q&A files
+      let qaGenerated = 0;
+      if (generateQA) {
+        try {
+          const qaService = new QAService();
+          const qaResult = await qaService.generateFromCodebase(resolvedRepoPath);
+          qaGenerated = qaResult.generated.length;
+          await qaService.shutdown();
+        } catch {
+          // Q&A generation is optional, continue if it fails
+        }
+      }
+
       // Build list of generated files with their types
       interface FileInfo {
         path: string;
@@ -145,45 +178,190 @@ The AI agent MUST then fill each generated file using the provided context and i
         }
       }
 
-      // Build semantic context if autoFill is enabled
-      let semanticContext: string | undefined;
+      // Build requiredActions - always return lightweight info, LLM will use fillSingleFile for context
+      const requiredActions: RequiredAction[] = [];
+
       if (autoFill && generatedFiles.length > 0) {
-        try {
-          semanticContext = await getOrBuildContext(resolvedRepoPath);
-        } catch (contextError) {
-          // Continue without semantic context if it fails
-          semanticContext = undefined;
+        for (let i = 0; i < generatedFiles.length; i++) {
+          const file = generatedFiles[i];
+
+          requiredActions.push({
+            order: i + 1,
+            actionType: 'WRITE_FILE',
+            filePath: file.path,
+            fileType: file.type,
+            instructions: file.fillInstructions,
+            status: 'pending',
+          });
         }
       }
 
-      // Build the response with fill instructions
-      const fillPrompt = autoFill ? buildFillPrompt(generatedFiles, semanticContext) : undefined;
+      // When skipContentGeneration is true, return response with clear incomplete signal
+      if (skipContentGeneration) {
+        const hasFilesToFill = generatedFiles.length > 0;
+
+        // Build pendingWrites array (lightweight, without content)
+        const pendingWrites: RequiredAction[] = generatedFiles.map((f, i) => ({
+          order: i + 1,
+          actionType: 'WRITE_FILE' as const,
+          filePath: f.path,
+          fileType: f.type,
+          instructions: f.fillInstructions,
+          status: 'pending' as const,
+        }));
+
+        // Build human-readable checklist
+        const checklist = generatedFiles.map(f => `[ ] Fill ${f.relativePath}`);
+
+        // Build instruction message
+        const instruction = hasFilesToFill
+          ? `IMPORTANT ACTION REQUIRED: Scaffolding created but ${generatedFiles.length} files need content.
+
+You MUST fill each file with appropriate content based on the codebase.
+
+DO THIS NOW:
+${generatedFiles.slice(0, 5).map((f, i) => `${i + 1}. Read and fill: ${f.relativePath}`).join('\n')}${generatedFiles.length > 5 ? `\n... and ${generatedFiles.length - 5} more files` : ''}
+
+Use fillSingleFile tool for each file to get AI-generated content suggestions.
+After getting suggestions, write the content using the Write tool.
+
+DO NOT say "initialization complete" until ALL files are filled.`
+          : undefined;
+
+        return {
+          // Immediate action signals (appear first in JSON)
+          instruction,
+          _warning: hasFilesToFill ? 'INCOMPLETE - ACTION REQUIRED' : undefined,
+
+          // Status signals
+          status: hasFilesToFill ? 'incomplete' : 'success',
+          complete: !hasFilesToFill,
+          operationType: 'scaffold_only',
+
+          // Fill instructions (the standard prompt for HOW to fill)
+          fillInstructions: hasFilesToFill ? UPDATE_SCAFFOLD_PROMPT_FALLBACK : undefined,
+
+          // Pending writes (files that need content)
+          pendingWrites: hasFilesToFill ? pendingWrites : undefined,
+
+          // Human-readable checklist
+          checklist: hasFilesToFill ? checklist : undefined,
+
+          // Next step guidance
+          nextStep: hasFilesToFill ? {
+            action: 'Call fillSingleFile for each file to get content, then Write to save',
+            example: `fillSingleFile({ repoPath: "${resolvedRepoPath}", filePath: "${pendingWrites[0]?.filePath || ''}" })`,
+          } : undefined,
+
+          // Metadata
+          _metadata: {
+            docsGenerated,
+            agentsGenerated,
+            skillsGenerated,
+            qaGenerated,
+            outputDir,
+            classification: classification ? {
+              projectType: classification.primaryType,
+              confidence: classification.confidence,
+              reasoning: classification.reasoning,
+            } : undefined,
+          },
+
+          // Legacy fields for backwards compatibility
+          docsGenerated,
+          agentsGenerated,
+          skillsGenerated,
+          qaGenerated,
+          outputDir,
+          classification: classification ? {
+            projectType: classification.primaryType,
+            confidence: classification.confidence,
+            reasoning: classification.reasoning,
+          } : undefined,
+        };
+      }
+
+      // Full response (when skipContentGeneration is false - still directs to fillSingleFile)
+      const hasActionsRequired = requiredActions.length > 0;
+
+      // Build human-readable checklist
+      const checklist = requiredActions.map(a => `[ ] Fill ${a.filePath}`);
+
+      // Build instruction message
+      const instruction = hasActionsRequired
+        ? `IMPORTANT ACTION REQUIRED: Scaffolding created with ${requiredActions.length} files that need content.
+
+You MUST fill each file with appropriate content based on the codebase.
+
+DO THIS NOW:
+${requiredActions.slice(0, 5).map((a, i) => `${i + 1}. Call fillSingleFile for: ${a.filePath}`).join('\n')}${requiredActions.length > 5 ? `\n... and ${requiredActions.length - 5} more files` : ''}
+
+fillSingleFile returns semantic context and scaffold structure for intelligent content generation.
+After generating content, write it using the Write tool.
+
+DO NOT say "initialization complete" until ALL files are filled.`
+        : undefined;
 
       return {
-        success: true,
+        // Immediate action signals (appear first in JSON)
+        instruction,
+        _warning: hasActionsRequired ? 'INCOMPLETE - ACTION REQUIRED' : undefined,
+
+        // Status signals
+        status: hasActionsRequired ? 'incomplete' : 'success',
+        complete: !hasActionsRequired,
+        operationType: 'initialize_and_fill',
+        completionCriteria: hasActionsRequired
+          ? 'Call fillSingleFile for each file, generate content using the returned context, then write to file'
+          : undefined,
+
+        // Fill instructions (the standard prompt for HOW to fill)
+        fillInstructions: hasActionsRequired ? UPDATE_SCAFFOLD_PROMPT_FALLBACK : undefined,
+
+        // Pending writes (files that need content)
+        pendingWrites: hasActionsRequired ? requiredActions : undefined,
+
+        // Legacy: requiredActions (kept for backwards compatibility)
+        requiredActions: hasActionsRequired ? requiredActions : undefined,
+
+        // Human-readable checklist
+        checklist: hasActionsRequired ? checklist : undefined,
+
+        // Explicit next step with example
+        nextStep: hasActionsRequired ? {
+          action: 'Call fillSingleFile for each file to get context, generate content, then Write to save',
+          example: `fillSingleFile({ repoPath: "${resolvedRepoPath}", filePath: "${requiredActions[0]?.filePath || ''}" })`,
+        } : undefined,
+
+        // Metadata
+        _metadata: {
+          docsGenerated,
+          agentsGenerated,
+          skillsGenerated,
+          qaGenerated,
+          outputDir,
+          classification: classification ? {
+            projectType: classification.primaryType,
+            confidence: classification.confidence,
+            reasoning: classification.reasoning,
+          } : undefined,
+        },
+
+        // Legacy fields for backwards compatibility
         docsGenerated,
         agentsGenerated,
+        skillsGenerated,
+        qaGenerated,
         outputDir,
-        generatedFiles: generatedFiles.map(f => ({
-          path: f.path,
-          relativePath: f.relativePath,
-          type: f.type,
-          fillInstructions: f.fillInstructions,
-        })),
         classification: classification ? {
           projectType: classification.primaryType,
           confidence: classification.confidence,
           reasoning: classification.reasoning,
         } : undefined,
-        semanticContext: autoFill ? semanticContext : undefined,
-        fillPrompt,
-        instructions: autoFill
-          ? 'IMPORTANT: You MUST now fill each generated file using the semantic context and fill instructions provided. Write the content to each file path.'
-          : 'Call fillScaffolding tool to get codebase-aware content for each file, then write the suggestedContent to each file.',
       };
     } catch (error) {
       return {
-        success: false,
+        status: 'error',
         outputDir,
         error: error instanceof Error ? error.message : String(error)
       };
@@ -286,50 +464,3 @@ function getAgentFillInstructions(agentType: string): string {
 - Common pitfalls to avoid`;
 }
 
-/**
- * Build a comprehensive fill prompt for the AI agent
- */
-function buildFillPrompt(files: Array<{ path: string; relativePath: string; type: string; fillInstructions: string }>, semanticContext?: string): string {
-  const lines: string[] = [];
-
-  lines.push('# Fill Instructions for Scaffolded Files');
-  lines.push('');
-  lines.push('You MUST fill each of the following files with appropriate content based on the codebase analysis.');
-  lines.push('');
-
-  if (semanticContext) {
-    lines.push('## Codebase Context');
-    lines.push('');
-    lines.push('Use this semantic context to understand the codebase structure:');
-    lines.push('');
-    lines.push('```');
-    // Limit context size to avoid overwhelming the response
-    lines.push(semanticContext.length > 8000 ? semanticContext.substring(0, 8000) + '\n...(truncated)' : semanticContext);
-    lines.push('```');
-    lines.push('');
-  }
-
-  lines.push('## Files to Fill');
-  lines.push('');
-
-  for (const file of files) {
-    lines.push(`### ${file.relativePath}`);
-    lines.push(`**Path:** \`${file.path}\``);
-    lines.push(`**Type:** ${file.type}`);
-    lines.push('');
-    lines.push('**Instructions:**');
-    lines.push(file.fillInstructions);
-    lines.push('');
-  }
-
-  lines.push('## Action Required');
-  lines.push('');
-  lines.push('For each file listed above:');
-  lines.push('1. Read the current template content');
-  lines.push('2. Generate appropriate content based on the instructions and codebase context');
-  lines.push('3. Write the filled content to the file');
-  lines.push('');
-  lines.push('DO NOT skip any files. Each file must be filled with meaningful, codebase-specific content.');
-
-  return lines.join('\n');
-}

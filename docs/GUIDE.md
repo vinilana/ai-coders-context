@@ -28,7 +28,7 @@ A comprehensive guide on how to use `@ai-coders/context` for AI-assisted softwar
 | **Context Generation** | Creates `.context/` folder with docs and agent playbooks |
 | **PREVC Workflow** | 5-phase structured development workflow |
 | **Agent Orchestration** | Maps tasks to specialized AI agents |
-| **MCP Server** | Integrates with Claude, Cursor, Windsurf, and more |
+| **MCP Server** | Integrates with Claude, Cursor, Windsurf, Antigravity, Trae, and more |
 
 ---
 
@@ -55,9 +55,9 @@ Need AI to understand my code?
 Starting new feature/project?
 ├── Simple task → Use QUICK scale
 ├── Regular feature → Use MEDIUM scale
-└── Large project → Use LARGE/ENTERPRISE scale
+└── Large project → Use LARGE scale
 
-Using Claude/Cursor/Windsurf?
+Using Claude/Cursor/Windsurf/Antigravity/Trae?
 ├── Yes → Configure MCP server
 └── No  → Use CLI commands
 ```
@@ -311,8 +311,10 @@ Different AI tools store context in different locations:
 |------|--------|--------|-------|
 | Claude | `.claude/agents/` | `.claude/skills/` | `CLAUDE.md` |
 | Cursor | `.cursor/agents/` | - | `.cursorrules` |
-| Windsurf | `.windsurf/agents/` | - | `.windsurfrules` |
+| Windsurf | `.windsurf/agents/` | - | `.windsurf/rules/` |
 | Cline | `.cline/agents/` | - | `.clinerules` |
+| Antigravity | `.agent/agents/` | `.agent/workflows/` | `.agent/rules/` |
+| Trae | `.trae/agents/` | - | `.trae/rules/` |
 | Codex | - | `.codex/skills/` | - |
 | Gemini | - | `.gemini/skills/` | - |
 | Aider | - | - | `CONVENTIONS.md` |
@@ -376,6 +378,8 @@ When running interactively, Quick Sync offers:
 | `github` | GitHub Copilot |
 | `windsurf` | Windsurf |
 | `cline` | Cline VS Code extension |
+| `antigravity` | Google Antigravity |
+| `trae` | Trae AI |
 | `codex` | OpenAI Codex CLI |
 | `aider` | Aider |
 | `agents` | Universal AGENTS.md (works with most AI tools) |
@@ -676,7 +680,7 @@ npx @ai-coders/context init . && npx @ai-coders/context fill .
 | Small feature | SMALL | "Add password reset" |
 | Regular feature | MEDIUM | "Implement user dashboard" |
 | Major feature | LARGE | "Build payment system" |
-| New product | ENTERPRISE | "Create microservices platform" |
+| Compliance work | LARGE | "Add GDPR compliance" |
 
 ### 3. Keep Documentation Updated
 

@@ -39,6 +39,12 @@ export interface PlanReference {
   linkedAt: string;
   /** Plan status */
   status: 'active' | 'completed' | 'paused' | 'cancelled';
+  /** Approval status for workflow gates */
+  approval_status?: 'pending' | 'approved' | 'rejected';
+  /** When the plan was approved */
+  approved_at?: string;
+  /** Who approved the plan */
+  approved_by?: string;
 }
 
 /**
@@ -185,4 +191,65 @@ export interface PlanSyncEvent {
   timestamp: string;
   /** Event details */
   details?: Record<string, unknown>;
+}
+
+/**
+ * Individual step execution tracking
+ */
+export interface StepExecution {
+  /** Step index (1-based) within the phase */
+  stepIndex: number;
+  /** Step description */
+  description: string;
+  /** Current status */
+  status: StatusType;
+  /** When step was started */
+  startedAt?: string;
+  /** When step was completed */
+  completedAt?: string;
+  /** Output artifact produced */
+  output?: string;
+  /** Execution notes */
+  notes?: string;
+}
+
+/**
+ * Enhanced phase tracking with step-level detail
+ */
+export interface PlanPhaseTracking {
+  /** Phase ID */
+  phaseId: string;
+  /** Phase status */
+  status: StatusType;
+  /** When phase was started */
+  startedAt?: string;
+  /** When phase was completed */
+  completedAt?: string;
+  /** Individual step execution records */
+  steps: StepExecution[];
+  /** Full commit hash when phase was committed */
+  commitHash?: string;
+  /** Short commit hash for display */
+  commitShortHash?: string;
+  /** When the commit was made */
+  committedAt?: string;
+  /** Agent or role that triggered the commit */
+  committedBy?: string;
+}
+
+/**
+ * Complete plan execution tracking
+ * Stored in .context/workflow/plan-tracking/{slug}.json
+ */
+export interface PlanExecutionTracking {
+  /** Plan slug */
+  planSlug: string;
+  /** Overall progress (0-100) */
+  progress: number;
+  /** Phase tracking with steps */
+  phases: Record<string, PlanPhaseTracking>;
+  /** Decisions recorded during execution */
+  decisions: PlanDecision[];
+  /** Last update timestamp */
+  lastUpdated: string;
 }

@@ -18,7 +18,7 @@ import { PlanService } from './services/plan/planService';
 import { SyncService } from './services/sync/syncService';
 import { ImportRulesService, ImportAgentsService } from './services/import';
 import { ServeService } from './services/serve';
-import { startMCPServer } from './services/mcp';
+import { startMCPServer, MCPInstallService } from './services/mcp';
 import { StateDetector } from './services/state';
 import { UpdateService } from './services/update';
 import { WorkflowService, WorkflowServiceDependencies } from './services/workflow';
@@ -27,6 +27,7 @@ import { ExportRulesService, EXPORT_PRESETS } from './services/export';
 import { ReportService } from './services/report';
 import { StackDetector } from './services/stack';
 import { QuickSyncService, QuickSyncOptions } from './services/quickSync';
+import { ReverseQuickSyncService, type MergeStrategy } from './services/reverseSync';
 import { AutoAdvanceDetector } from './services/workflow/autoAdvance';
 import { getScaleName, PHASE_NAMES_PT, PHASE_NAMES_EN, ROLE_DISPLAY_NAMES, ROLE_DISPLAY_NAMES_EN, type PrevcRole, ProjectScale } from './workflow';
 import { DEFAULT_MODELS, getApiKeyFromEnv } from './services/ai/providerFactory';
@@ -36,6 +37,7 @@ import {
   promptLLMConfig,
   promptAnalysisOptions,
   promptConfirmProceed,
+  promptLoadEnv,
   displayConfigSummary,
   type ConfigSummary
 } from './utils/prompts';
@@ -43,7 +45,18 @@ import { VERSION, PACKAGE_NAME } from './version';
 
 const rawArgs = process.argv.slice(2);
 const isMcpCommand = rawArgs.includes('mcp');
-if (!isMcpCommand) {
+
+// Determine if we're in interactive mode (no command args, only flags like --lang)
+const isInteractiveMode = rawArgs.every(arg =>
+  arg.startsWith('-') ||
+  rawArgs[rawArgs.indexOf(arg) - 1]?.startsWith('--lang') ||
+  rawArgs[rawArgs.indexOf(arg) - 1]?.startsWith('--language') ||
+  rawArgs[rawArgs.indexOf(arg) - 1]?.startsWith('-l')
+);
+
+// Load dotenv immediately for command-line mode (not MCP, not interactive)
+// For interactive mode, we'll ask the user first
+if (!isMcpCommand && !isInteractiveMode) {
   dotenv.config();
 }
 
@@ -141,6 +154,7 @@ program
   .option('--include <patterns...>', t('commands.init.options.include'))
   .option('-v, --verbose', t('commands.init.options.verbose'))
   .option('--no-semantic', t('commands.init.options.noSemantic'))
+  .option('--no-content-stubs', t('commands.init.options.noContentStubs'))
   .action(async (repoPath: string, type: string, options: any) => {
     try {
       await initService.run(repoPath, type, options);
@@ -385,6 +399,39 @@ program
   });
 
 program
+  .command('reverse-sync')
+  .description('Import rules, agents, and skills from AI tool directories into .context/')
+  .argument('[repo-path]', 'Repository path to scan', process.cwd())
+  .option('--dry-run', 'Preview changes without importing')
+  .option('-f, --force', 'Overwrite existing files')
+  .option('--skip-agents', 'Skip importing agents')
+  .option('--skip-skills', 'Skip importing skills')
+  .option('--skip-rules', 'Skip importing rules')
+  .option('--merge-strategy <strategy>', 'How to handle conflicts: skip|overwrite|merge|rename', 'skip')
+  .option('--format <format>', 'Output format for rules: markdown|raw|formatted', 'formatted')
+  .option('--no-metadata', 'Do not add import metadata to files')
+  .option('-v, --verbose', 'Verbose output')
+  .action(async (repoPath: string, options: any) => {
+    try {
+      const service = new ReverseQuickSyncService({ ui, t, version: VERSION });
+      await service.run(repoPath, {
+        dryRun: options.dryRun,
+        force: options.force,
+        skipAgents: options.skipAgents,
+        skipSkills: options.skipSkills,
+        skipRules: options.skipRules,
+        mergeStrategy: options.mergeStrategy as MergeStrategy,
+        format: options.format,
+        metadata: options.metadata !== false,
+        verbose: options.verbose,
+      });
+    } catch (error) {
+      ui.displayError(t('errors.reverseSync.failed'), error as Error);
+      process.exit(1);
+    }
+  });
+
+program
   .command('serve')
   .description('Start passthrough server for external AI agents (stdin/stdout JSON)')
   .option('-r, --repo-path <path>', 'Default repository path for tools')
@@ -433,6 +480,64 @@ program
       if (options.verbose) {
         process.stderr.write(`[mcp] Error: ${error}\n`);
       }
+      process.exit(1);
+    }
+  });
+
+// MCP Install Command
+program
+  .command('mcp:install [tool]')
+  .description(t('commands.mcpInstall.description'))
+  .option('-g, --global', t('commands.mcpInstall.options.global'), true)
+  .option('-l, --local', t('commands.mcpInstall.options.local'))
+  .option('--dry-run', t('commands.mcpInstall.options.dryRun'))
+  .option('-v, --verbose', t('commands.mcpInstall.options.verbose'))
+  .action(async (tool: string | undefined, options: any) => {
+    try {
+      const mcpInstallService = new MCPInstallService({ ui, t, version: VERSION });
+
+      // If no tool specified and not in CI, show interactive prompt
+      if (!tool && process.stdin.isTTY) {
+        const supportedTools = mcpInstallService.getSupportedTools();
+        const detectedTools = await mcpInstallService.detectInstalledTools();
+
+        const choices = supportedTools.map(tool => ({
+          name: detectedTools.includes(tool.id)
+            ? `${tool.displayName} (${t('labels.detected')})`
+            : tool.displayName,
+          value: tool.id,
+        }));
+
+        choices.unshift({
+          name: t('commands.mcpInstall.allDetected'),
+          value: 'all',
+        });
+
+        const { selectedTool } = await inquirer.prompt([
+          {
+            type: 'list',
+            name: 'selectedTool',
+            message: t('commands.mcpInstall.selectTool'),
+            choices,
+          },
+        ]);
+
+        tool = selectedTool;
+      }
+
+      const result = await mcpInstallService.run({
+        tool,
+        global: options.local ? false : options.global,
+        dryRun: options.dryRun,
+        verbose: options.verbose,
+        repoPath: process.cwd(),
+      });
+
+      if (result.installations.length > 0) {
+        ui.displayInfo('MCP', t('info.mcp.restartTools'));
+      }
+    } catch (error) {
+      ui.displayError(t('errors.mcp.installFailed', { tool: tool || 'unknown' }), error as Error);
       process.exit(1);
     }
   });
@@ -751,7 +856,7 @@ workflowCommand
   .command('init <name>')
   .description('Initialize a new PREVC workflow')
   .option('-d, --description <text>', 'Project description for scale detection')
-  .option('-s, --scale <scale>', 'Project scale: QUICK, SMALL, MEDIUM, LARGE, ENTERPRISE')
+  .option('-s, --scale <scale>', 'Project scale: QUICK, SMALL, MEDIUM, LARGE')
   .option('-r, --repo-path <path>', 'Repository path', process.cwd())
   .action(async (name: string, options: any) => {
     try {
@@ -962,11 +1067,17 @@ async function selectLocale(showWelcome: boolean): Promise<void> {
   }
 }
 
-type InteractiveAction = 'scaffold' | 'fill' | 'plan' | 'syncAgents' | 'update' | 'workflow' | 'skills' | 'changeLanguage' | 'exit' | 'quickSync' | 'agents' | 'settings';
+type InteractiveAction = 'scaffold' | 'fill' | 'plan' | 'syncAgents' | 'update' | 'workflow' | 'skills' | 'changeLanguage' | 'exit' | 'quickSync' | 'reverseSync' | 'agents' | 'settings';
 type StateAction = 'create' | 'fill' | 'menu' | 'exit' | 'scaffold';
 
 async function runInteractive(): Promise<void> {
   await selectLocale(false); // Don't show welcome yet
+
+  // Ask user if they want to load environment variables from .env
+  const loadEnv = await promptLoadEnv(t);
+  if (loadEnv) {
+    dotenv.config();
+  }
 
   // Show welcome screen with PREVC explanation
   ui.displayWelcome(VERSION);
@@ -1176,6 +1287,7 @@ async function runFullMenu(daysBehind?: number): Promise<void> {
     const choices = [
       // Quick Actions (most used)
       { name: t('prompts.main.choice.quickSync'), value: 'quickSync' as InteractiveAction },
+      { name: t('prompts.main.choice.reverseSync'), value: 'reverseSync' as InteractiveAction },
       { name: t('prompts.main.choice.startWorkflow'), value: 'workflow' as InteractiveAction },
       { name: t('prompts.main.choice.createPlan'), value: 'plan' as InteractiveAction },
       new inquirer.Separator(),
@@ -1211,6 +1323,8 @@ async function runFullMenu(daysBehind?: number): Promise<void> {
 
     if (action === 'quickSync') {
       await runQuickSync();
+    } else if (action === 'reverseSync') {
+      await runReverseSync();
     } else if (action === 'scaffold') {
       await runInteractiveScaffold();
     } else if (action === 'fill') {
@@ -1312,9 +1426,10 @@ async function runInteractiveScaffold(): Promise<void> {
   if (scaffoldSkills) {
     try {
       const { createSkillGenerator } = await import('./generators/skills');
+      const relativeOutputDir = path.relative(resolvedRepo, outputDir);
       const generator = createSkillGenerator({
         repoPath: resolvedRepo,
-        outputDir
+        outputDir: relativeOutputDir || '.context'
       });
 
       // Display step for skills scaffolding
@@ -1836,8 +1951,7 @@ async function createNewWorkflow(workflowService: WorkflowService): Promise<bool
         { name: t('prompts.workflow.scale.quick'), value: 'QUICK' },
         { name: t('prompts.workflow.scale.small'), value: 'SMALL' },
         { name: t('prompts.workflow.scale.medium'), value: 'MEDIUM' },
-        { name: t('prompts.workflow.scale.large'), value: 'LARGE' },
-        { name: t('prompts.workflow.scale.enterprise'), value: 'ENTERPRISE' }
+        { name: t('prompts.workflow.scale.large'), value: 'LARGE' }
       ],
       default: ''
     }
@@ -2301,6 +2415,110 @@ async function runQuickSync(): Promise<void> {
   }
 
   ui.displaySuccess(t('success.quickSync.complete'));
+}
+
+// ============================================================================
+// Reverse Quick Sync - Import from AI tool directories
+// ============================================================================
+
+async function runReverseSync(): Promise<void> {
+  const projectPath = process.cwd();
+
+  // Create service
+  const reverseSyncService = new ReverseQuickSyncService({
+    ui,
+    t,
+    version: VERSION,
+  });
+
+  // Step 1: Detect available tools
+  ui.startSpinner(t('prompts.reverseSync.detecting'));
+  const detection = await reverseSyncService.detect(projectPath);
+  ui.stopSpinner();
+
+  if (detection.summary.totalFiles === 0) {
+    ui.displayWarning(t('prompts.reverseSync.noFilesFound'));
+    return;
+  }
+
+  // Display detection summary
+  console.log('');
+  console.log(t('prompts.reverseSync.detected'));
+  console.log('');
+  for (const tool of detection.tools) {
+    if (tool.detected) {
+      const parts: string[] = [];
+      if (tool.counts.rules > 0) parts.push(`${tool.counts.rules} rules`);
+      if (tool.counts.agents > 0) parts.push(`${tool.counts.agents} agents`);
+      if (tool.counts.skills > 0) parts.push(`${tool.counts.skills} skills`);
+      console.log(`  ${colors.success('✓')} ${colors.primary(tool.displayName)} (${parts.join(', ')})`);
+    }
+  }
+  console.log('');
+
+  // Step 2: Select components to import
+  const { components } = await inquirer.prompt<{ components: string[] }>([
+    {
+      type: 'checkbox',
+      name: 'components',
+      message: t('prompts.reverseSync.selectComponents'),
+      choices: [
+        {
+          name: `Rules (${detection.summary.totalRules} files)`,
+          value: 'rules',
+          checked: detection.summary.totalRules > 0,
+          disabled: detection.summary.totalRules === 0,
+        },
+        {
+          name: `Agents (${detection.summary.totalAgents} files)`,
+          value: 'agents',
+          checked: detection.summary.totalAgents > 0,
+          disabled: detection.summary.totalAgents === 0,
+        },
+        {
+          name: `Skills (${detection.summary.totalSkills} files)`,
+          value: 'skills',
+          checked: detection.summary.totalSkills > 0,
+          disabled: detection.summary.totalSkills === 0,
+        },
+      ],
+    },
+  ]);
+
+  if (components.length === 0) {
+    ui.displayWarning(t('prompts.reverseSync.noComponentsSelected'));
+    return;
+  }
+
+  // Step 3: Select merge strategy
+  const { mergeStrategy } = await inquirer.prompt<{ mergeStrategy: MergeStrategy }>([
+    {
+      type: 'list',
+      name: 'mergeStrategy',
+      message: t('prompts.reverseSync.mergeStrategy'),
+      choices: [
+        { name: t('prompts.reverseSync.strategy.skip'), value: 'skip' },
+        { name: t('prompts.reverseSync.strategy.overwrite'), value: 'overwrite' },
+        { name: t('prompts.reverseSync.strategy.merge'), value: 'merge' },
+        { name: t('prompts.reverseSync.strategy.rename'), value: 'rename' },
+      ],
+    },
+  ]);
+
+  // Step 4: Run import
+  const result = await reverseSyncService.run(projectPath, {
+    skipRules: !components.includes('rules'),
+    skipAgents: !components.includes('agents'),
+    skipSkills: !components.includes('skills'),
+    mergeStrategy,
+    verbose: false,
+  });
+
+  // Display result
+  const totalImported = result.rulesImported + result.agentsImported + result.skillsImported;
+  if (totalImported > 0) {
+    ui.displaySuccess(t('success.reverseSync.complete', { count: totalImported }));
+  }
 }
 
 // ============================================================================

@@ -90,9 +90,12 @@ describe('DocumentationGenerator', () => {
     const indexContent = await fs.readFile(path.join(docsDir, 'README.md'), 'utf8');
     expect(indexContent).toContain('# Documentation Index');
 
+    // v2.0 scaffold system: files contain only frontmatter, content is AI-generated during fill
     const overviewContent = await fs.readFile(path.join(docsDir, 'project-overview.md'), 'utf8');
-    expect(overviewContent).toContain('# Project Overview');
-    expect(overviewContent).toContain('Root path:');
+    expect(overviewContent).toContain('type: doc');
+    expect(overviewContent).toContain('name: project-overview');
+    expect(overviewContent).toContain('status: unfilled');
+    expect(overviewContent).toContain('scaffoldVersion: "2.0.0"');
   });
 
   it('respects explicit guide selection', async () => {

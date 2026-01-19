@@ -14,6 +14,7 @@ import {
   ensureDirectory,
   pathExists,
   displayOperationSummary,
+  getSkillsExportPresets,
 } from '../shared';
 import { createSkillRegistry, Skill, BUILT_IN_SKILLS, getBuiltInSkillTemplates, SKILL_TO_PHASES, BuiltInSkillType, wrapWithFrontmatter } from '../../workflow/skills';
 
@@ -43,25 +44,28 @@ export interface SkillExportResult extends OperationResult {
 }
 
 /**
- * Skill export presets for different AI tools
+ * Build skill export presets from the unified tool registry
  */
-export const SKILL_EXPORT_PRESETS: Record<string, SkillExportTarget[]> = {
-  claude: [
-    { name: 'claude-skills', path: '.claude/skills', description: 'Claude Code skills directory' },
-  ],
-  gemini: [
-    { name: 'gemini-skills', path: '.gemini/skills', description: 'Gemini CLI skills directory' },
-  ],
-  codex: [
-    { name: 'codex-skills', path: '.codex/skills', description: 'Codex CLI skills directory' },
-  ],
-  all: [], // Populated dynamically below
-};
+function buildSkillExportPresets(): Record<string, SkillExportTarget[]> {
+  const registryPresets = getSkillsExportPresets();
+  const presets: Record<string, SkillExportTarget[]> = {};
 
-// Populate 'all' preset
-SKILL_EXPORT_PRESETS.all = Object.entries(SKILL_EXPORT_PRESETS)
-  .filter(([key]) => key !== 'all')
-  .flatMap(([, targets]) => targets);
+  for (const [toolId, targets] of Object.entries(registryPresets)) {
+    presets[toolId] = targets;
+  }
+
+  // Build 'all' preset
+  presets.all = Object.entries(presets)
+    .filter(([key]) => key !== 'all')
+    .flatMap(([, targets]) => targets);
+
+  return presets;
+}
+
+/**
+ * Skill export presets for different AI tools (derived from tool registry)
+ */
+export const SKILL_EXPORT_PRESETS: Record<string, SkillExportTarget[]> = buildSkillExportPresets();
 
 export class SkillExportService {
   constructor(private deps: SkillExportServiceDependencies) {}
@@ -118,6 +122,15 @@ export class SkillExportService {
    * Get skills to export
    */
   private async getSkillsToExport(repoPath: string, options: SkillExportOptions): Promise<Skill[]> {
+    const fs = await import('fs-extra');
+    const skillsPath = path.join(repoPath, '.context', 'skills');
+    const skillsExist = await fs.pathExists(skillsPath);
+
+    // If skills directory doesn't exist and includeBuiltIn is not enabled, return empty
+    if (!skillsExist && !options.includeBuiltIn) {
+      return [];
+    }
+
     const registry = createSkillRegistry(repoPath);
     const discovered = await registry.discoverAll();
 
@@ -248,6 +261,11 @@ export class SkillExportService {
 
   /**
    * Resolve export targets from options
+   *
+   * Supports three formats:
+   * 1. Preset name via `preset` option (e.g., 'all', 'claude')
+   * 2. Preset names in `targets` array (e.g., ['claude', 'gemini'])
+   * 3. Direct paths in `targets` array (e.g., ['.custom/skills'])
    */
   private resolveTargets(options: SkillExportOptions): SkillExportTarget[] {
     if (options.preset) {
@@ -256,11 +274,24 @@ export class SkillExportService {
     }
 
     if (options.targets?.length) {
-      return options.targets.map((t) => ({
-        name: path.basename(t),
-        path: t,
-        description: 'Custom target',
-      }));
+      const resolved: SkillExportTarget[] = [];
+
+      for (const t of options.targets) {
+        // First check if target is a preset name
+        const preset = SKILL_EXPORT_PRESETS[t.toLowerCase()];
+        if (preset) {
+          resolved.push(...preset);
+        } else {
+          // Treat as a direct path
+          resolved.push({
+            name: path.basename(t),
+            path: t,
+            description: 'Custom target',
+          });
+        }
+      }
+
+      return resolved;
     }
 
     // Default: export to all supported tools

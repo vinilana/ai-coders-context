@@ -238,10 +238,13 @@ export class SemanticContextBuilder {
     const lines = ['## Architecture\n'];
 
     for (const layer of architecture.layers.slice(0, 8)) {
+      const dirs = layer.directories.length > 0
+        ? layer.directories.join(', ')
+        : 'various locations';
       const deps = layer.dependsOn.length > 0
-        ? ` (depends on: ${layer.dependsOn.join(', ')})`
+        ? ` → depends on: ${layer.dependsOn.join(', ')}`
         : '';
-      lines.push(`- **${layer.name}**: ${layer.symbols.length} symbols${deps}`);
+      lines.push(`- **${layer.name}**: \`${dirs}\`${deps}`);
     }
 
     lines.push('');
@@ -392,8 +395,8 @@ export class SemanticContextBuilder {
     for (const layer of layers) {
       lines.push(`### ${layer.name}\n`);
       lines.push(`${layer.description}\n`);
-      lines.push(`**Directories**: ${layer.directories.join(', ')}`);
-      lines.push(`**Key Symbols** (${layer.symbols.length} total):\n`);
+      lines.push(`**Directories**: \`${layer.directories.join('`, `')}\`\n`);
+      lines.push(`**Key Exports**:\n`);
 
       const keySymbols = layer.symbols
         .filter((s) => s.exported)
@@ -498,8 +501,16 @@ export class SemanticContextBuilder {
       for (const layer of architecture.layers) {
         lines.push(`**${layer.name}**`);
         lines.push(`- ${layer.description}`);
-        lines.push(`- Directories: ${layer.directories.join(', ')}`);
-        lines.push(`- Symbols: ${layer.symbols.length}`);
+        lines.push(`- Directories: \`${layer.directories.join('`, `')}\``);
+        // Show key exported symbols with their file locations instead of just count
+        const keySymbols = layer.symbols.filter(s => s.exported).slice(0, 5);
+        if (keySymbols.length > 0) {
+          const symbolRefs = keySymbols.map(s => {
+            const relPath = path.relative(projectPath, s.location.file);
+            return `\`${s.name}\` (${relPath}:${s.location.line})`;
+          });
+          lines.push(`- Key exports: ${symbolRefs.join(', ')}`);
+        }
         if (layer.dependsOn.length > 0) {
           lines.push(`- Depends on: ${layer.dependsOn.join(', ')}`);
         }
@@ -566,7 +577,10 @@ export class SemanticContextBuilder {
     const lines = ['## Symbols by Layer\n'];
 
     for (const layer of architecture.layers) {
-      lines.push(`### ${layer.name}\n`);
+      const dirs = layer.directories.length > 0
+        ? ` (\`${layer.directories.join('`, `')}\`)`
+        : '';
+      lines.push(`### ${layer.name}${dirs}\n`);
 
       const exported = layer.symbols.filter((s) => s.exported).slice(0, 15);
       for (const symbol of exported) {
@@ -574,7 +588,8 @@ export class SemanticContextBuilder {
       }
 
       if (layer.symbols.length > exported.length) {
-        lines.push(`... and ${layer.symbols.length - exported.length} more`);
+        const remaining = layer.symbols.length - exported.length;
+        lines.push(`... and ${remaining} more in this layer`);
       }
       lines.push('');
     }

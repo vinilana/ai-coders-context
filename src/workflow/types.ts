@@ -34,8 +34,7 @@ export enum ProjectScale {
   QUICK = 0, // Bug fixes, tweaks (~5 min)
   SMALL = 1, // Simple features (~15 min)
   MEDIUM = 2, // Medium features (~30 min)
-  LARGE = 3, // Products (~1 hour)
-  ENTERPRISE = 4, // Systems with compliance
+  LARGE = 3, // Products, complex systems, compliance (~1+ hour)
 }
 
 /**
@@ -99,6 +98,7 @@ export interface OutputStatus {
 
 /**
  * Role status in the workflow
+ * @deprecated Use AgentStatus instead
  */
 export interface RoleStatus {
   status?: StatusType;
@@ -109,12 +109,105 @@ export interface RoleStatus {
 }
 
 /**
+ * Agent status in the workflow (replaces RoleStatus)
+ */
+export interface AgentStatus {
+  status: StatusType;
+  started_at?: string;
+  completed_at?: string;
+  outputs?: string[];
+}
+
+/**
  * Plan reference in workflow (lightweight)
  */
 export interface WorkflowPlanRef {
   slug: string;
   path: string;
   status: 'active' | 'completed' | 'paused';
+}
+
+/**
+ * Workflow settings for gate control
+ */
+export interface WorkflowSettings {
+  /** Skip all gates and plan requirements */
+  autonomous_mode: boolean;
+  /** Require a linked plan before advancing P → R */
+  require_plan: boolean;
+  /** Require plan approval before advancing R → E */
+  require_approval: boolean;
+}
+
+/**
+ * Gate types for workflow phase transitions
+ */
+export type GateType = 'plan_required' | 'approval_required';
+
+/**
+ * Plan approval status tracking
+ */
+export interface PlanApproval {
+  /** Whether a plan has been created/linked */
+  plan_created: boolean;
+  /** Whether the plan has been approved */
+  plan_approved: boolean;
+  /** Who approved the plan */
+  approved_by?: PrevcRole | string;
+  /** When the plan was approved */
+  approved_at?: string;
+  /** Optional notes from approver */
+  approval_notes?: string;
+}
+
+/**
+ * Execution history action types
+ */
+export type ExecutionAction =
+  | 'started'
+  | 'completed'
+  | 'plan_linked'
+  | 'plan_approved'
+  | 'phase_skipped'
+  | 'settings_changed'
+  // Plan-level tracking actions
+  | 'plan_phase_updated'
+  | 'decision_recorded'
+  // Step-level actions for breadcrumb tracking
+  | 'step_started'
+  | 'step_completed'
+  | 'step_skipped';
+
+/**
+ * Entry in the execution history
+ */
+export interface ExecutionHistoryEntry {
+  timestamp: string;
+  phase: PrevcPhase;
+  action: ExecutionAction;
+  plan?: string;
+  approved_by?: string;
+  description?: string;
+  // Step-level fields for breadcrumb tracking
+  /** Plan phase ID (e.g., "phase-1") */
+  planPhase?: string;
+  /** 1-based step index within the plan phase */
+  stepIndex?: number;
+  /** Human-readable description of the step */
+  stepDescription?: string;
+  /** Output artifact from step completion */
+  output?: string;
+  /** Execution notes */
+  notes?: string;
+}
+
+/**
+ * Execution history tracking for workflow
+ */
+export interface ExecutionHistory {
+  history: ExecutionHistoryEntry[];
+  last_activity: string;
+  resume_context: string;
 }
 
 /**
@@ -129,6 +222,8 @@ export interface ProjectMetadata {
   plan?: string;
   /** All linked plans */
   plans?: WorkflowPlanRef[];
+  /** Workflow settings for gate control */
+  settings?: WorkflowSettings;
 }
 
 /**
@@ -137,7 +232,14 @@ export interface ProjectMetadata {
 export interface PrevcStatus {
   project: ProjectMetadata;
   phases: Record<PrevcPhase, PhaseStatus>;
+  /** Execution history (replaces roles) */
+  execution?: ExecutionHistory;
+  /** Agent status tracking (replaces roles) */
+  agents: Record<string, AgentStatus>;
+  /** Legacy roles - kept for backward compatibility */
   roles: Partial<Record<PrevcRole, RoleStatus>>;
+  /** Plan approval tracking */
+  approval?: PlanApproval;
 }
 
 /**
@@ -163,6 +265,7 @@ export interface PhaseUpdate {
 
 /**
  * Update payload for role status
+ * @deprecated Use AgentUpdate instead
  */
 export interface RoleUpdate {
   status?: StatusType;
@@ -170,6 +273,14 @@ export interface RoleUpdate {
   current_task?: string;
   outputs?: string[];
   last_active?: string;
+}
+
+/**
+ * Update payload for agent status (replaces RoleUpdate)
+ */
+export interface AgentUpdate {
+  status?: StatusType;
+  outputs?: string[];
 }
 
 /**
@@ -201,4 +312,55 @@ export interface CollaborationSynthesis {
   contributions: Contribution[];
   decisions: string[];
   recommendations: string[];
+}
+
+/**
+ * Suggested agent step in orchestration sequence
+ */
+export interface AgentSequenceStep {
+  agent: string;
+  task: string;
+}
+
+/**
+ * Skill suggestion for orchestration
+ */
+export interface SkillSuggestion {
+  slug: string;
+  name: string;
+  description: string;
+  path: string;
+  isBuiltIn: boolean;
+}
+
+/**
+ * Tool usage guidance for explicit agent orchestration
+ */
+export interface ToolGuidance {
+  /** Example agent discovery tool call */
+  discoverExample: string;
+  /** Example agent sequence tool call */
+  sequenceExample: string;
+  /** Example handoff tool call */
+  handoffExample: string;
+}
+
+/**
+ * Phase orchestration guidance for agent-based workflows
+ */
+export interface PhaseOrchestration {
+  /** Recommended agents for this phase */
+  recommendedAgents: string[];
+  /** Suggested sequence of agents with tasks */
+  suggestedSequence: AgentSequenceStep[];
+  /** Agent to start with */
+  startWith: string;
+  /** Instruction for starting the phase */
+  instruction: string;
+  /** Recommended skills for this phase */
+  recommendedSkills?: SkillSuggestion[];
+  /** Explicit tool usage guidance for agent orchestration */
+  toolGuidance?: ToolGuidance;
+  /** Step-by-step orchestration instructions with tool calls */
+  orchestrationSteps?: string[];
 }

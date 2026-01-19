@@ -30,13 +30,7 @@ export const SCALE_ROUTES: Record<ProjectScale, ScaleRoute> = {
   [ProjectScale.LARGE]: {
     phases: ['P', 'R', 'E', 'V', 'C'],
     roles: 'all',
-    documents: ['prd', 'architecture', 'code', 'test-report', 'documentation'],
-  },
-  [ProjectScale.ENTERPRISE]: {
-    phases: ['P', 'R', 'E', 'V', 'C'],
-    roles: 'all',
-    documents: 'all',
-    extras: ['security-audit', 'compliance-check', 'adr'],
+    documents: ['prd', 'architecture', 'code', 'test-report', 'documentation', 'adr'],
   },
 };
 
@@ -143,21 +137,18 @@ export function detectProjectScale(context: ProjectContext): ProjectScale {
     return ProjectScale.QUICK;
   }
 
-  // ENTERPRISE: Compliance, critical security
-  if (hasCompliance || requiresSecurityAudit(description)) {
-    return ProjectScale.ENTERPRISE;
-  }
-
   // SMALL: Simple features, no new architecture
   if (isSimpleFeature(description) && files.length <= 10) {
     return ProjectScale.SMALL;
   }
 
-  // LARGE: Multiple modules, documentation needed
+  // LARGE: Multiple modules, documentation needed, compliance/security
   if (
     files.length > 30 ||
     requiresDocumentation(description) ||
-    complexity === 'high'
+    complexity === 'high' ||
+    hasCompliance ||
+    requiresSecurityAudit(description)
   ) {
     return ProjectScale.LARGE;
   }
@@ -206,13 +197,13 @@ export function getScaleName(scale: ProjectScale): string {
     [ProjectScale.SMALL]: 'Small',
     [ProjectScale.MEDIUM]: 'Medium',
     [ProjectScale.LARGE]: 'Large',
-    [ProjectScale.ENTERPRISE]: 'Enterprise',
   };
   return names[scale];
 }
 
 /**
  * Get scale from string name
+ * Maps 'enterprise' to LARGE for backward compatibility
  */
 export function getScaleFromName(name: string): ProjectScale | null {
   const nameMap: Record<string, ProjectScale> = {
@@ -220,7 +211,7 @@ export function getScaleFromName(name: string): ProjectScale | null {
     small: ProjectScale.SMALL,
     medium: ProjectScale.MEDIUM,
     large: ProjectScale.LARGE,
-    enterprise: ProjectScale.ENTERPRISE,
+    enterprise: ProjectScale.LARGE, // Legacy migration
   };
   return nameMap[name.toLowerCase()] ?? null;
 }
@@ -233,8 +224,7 @@ export function getEstimatedTime(scale: ProjectScale): string {
     [ProjectScale.QUICK]: '~5 min',
     [ProjectScale.SMALL]: '~15 min',
     [ProjectScale.MEDIUM]: '~30 min',
-    [ProjectScale.LARGE]: '~1 hour',
-    [ProjectScale.ENTERPRISE]: '~2+ hours',
+    [ProjectScale.LARGE]: '~1+ hours',
   };
   return times[scale];
 }

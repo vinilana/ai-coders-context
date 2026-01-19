@@ -19,7 +19,10 @@ export const checkScaffoldingTool = tool({
   description: 'Check if .context scaffolding exists and return granular status',
   inputSchema: CheckScaffoldingInputSchema,
   execute: async (input: CheckScaffoldingInput) => {
-    const repoPath = input.repoPath || process.cwd();
+    if (!input.repoPath) {
+      throw new Error('repoPath is required for checkScaffolding');
+    }
+    const repoPath = input.repoPath;
     const outputDir = path.resolve(repoPath, '.context');
 
     try {

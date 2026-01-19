@@ -72,6 +72,73 @@ export interface DetectedPattern {
   description: string;
 }
 
+/**
+ * Functional pattern types for Q&A topic detection
+ * These patterns indicate functional capabilities in the codebase
+ */
+export type FunctionalPatternType =
+  | 'auth'
+  | 'database'
+  | 'api'
+  | 'cache'
+  | 'queue'
+  | 'websocket'
+  | 'logging'
+  | 'validation'
+  | 'error-handling'
+  | 'testing';
+
+export interface FunctionalPattern {
+  type: FunctionalPatternType;
+  confidence: number;
+  indicators: PatternIndicator[];
+  description: string;
+}
+
+export interface PatternIndicator {
+  file: string;
+  symbol?: string;
+  line?: number;
+  reason: string;
+}
+
+export interface DetectedFunctionalPatterns {
+  hasAuthPattern: boolean;
+  hasDatabasePattern: boolean;
+  hasApiPattern: boolean;
+  hasCachePattern: boolean;
+  hasQueuePattern: boolean;
+  hasWebSocketPattern: boolean;
+  hasLoggingPattern: boolean;
+  hasValidationPattern: boolean;
+  hasErrorHandlingPattern: boolean;
+  hasTestingPattern: boolean;
+  patterns: FunctionalPattern[];
+}
+
+/**
+ * Flow tracing types for understanding execution paths
+ */
+export interface FlowNode {
+  file: string;
+  symbol: string;
+  line: number;
+  type: 'entry' | 'call' | 'return' | 'branch';
+}
+
+export interface FlowEdge {
+  from: FlowNode;
+  to: FlowNode;
+  label?: string;
+}
+
+export interface ExecutionFlow {
+  entryPoint: FlowNode;
+  nodes: FlowNode[];
+  edges: FlowEdge[];
+  mermaidDiagram: string;
+}
+
 export interface DependencyInfo {
   graph: Map<string, string[]>;
   reverseGraph: Map<string, string[]>;

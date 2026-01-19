@@ -10,23 +10,76 @@ import {
   PrevcRole,
   ProjectScale,
   PhaseStatus,
+  ExecutionAction,
 } from '../types';
 import { PREVC_PHASE_ORDER } from '../phases';
 import { getScaleRoute } from '../scaling';
 
 /**
- * All available roles constant
+ * Phase names for resume context
  */
-const ALL_ROLES: PrevcRole[] = [
-  'planner',
-  'designer',
-  'architect',
-  'developer',
-  'qa',
-  'reviewer',
-  'documenter',
-  'solo-dev',
-];
+const PHASE_NAMES: Record<PrevcPhase, string> = {
+  P: 'Planejamento',
+  R: 'Revisão',
+  E: 'Execução',
+  V: 'Validação',
+  C: 'Confirmação',
+};
+
+/**
+ * Step context for resume context generation
+ */
+interface StepContext {
+  planPhase?: string;
+  stepIndex?: number;
+  stepDescription?: string;
+}
+
+/**
+ * Generate resume context based on current phase and action
+ */
+export function generateResumeContext(
+  phase: PrevcPhase,
+  action: ExecutionAction,
+  stepContext?: StepContext
+): string {
+  const phaseName = PHASE_NAMES[phase];
+
+  switch (action) {
+    case 'started':
+      return `Fase ${phase} (${phaseName}) em progresso`;
+    case 'completed':
+      return `Fase ${phase} (${phaseName}) concluída`;
+    case 'plan_linked':
+      return `Plano vinculado - aguardando revisão`;
+    case 'plan_approved':
+      return `Plano aprovado - pronto para execução`;
+    case 'phase_skipped':
+      return `Fase ${phase} ignorada - avançando`;
+    case 'settings_changed':
+      return `Configurações atualizadas`;
+    // Plan-level tracking actions
+    case 'plan_phase_updated':
+      return `Fase do plano atualizada`;
+    case 'decision_recorded':
+      return `Decisão registrada`;
+    // Step-level breadcrumb actions
+    case 'step_started':
+      if (stepContext?.stepDescription) {
+        return `Trabalhando em: ${stepContext.stepDescription}`;
+      }
+      return `Trabalhando no passo ${stepContext?.stepIndex || '?'} de ${stepContext?.planPhase || 'fase'}`;
+    case 'step_completed':
+      if (stepContext?.stepDescription) {
+        return `Concluído: ${stepContext.stepDescription}`;
+      }
+      return `Passo ${stepContext?.stepIndex || '?'} de ${stepContext?.planPhase || 'fase'} concluído`;
+    case 'step_skipped':
+      return `Passo ${stepContext?.stepIndex || '?'} de ${stepContext?.planPhase || 'fase'} ignorado`;
+    default:
+      return `Fase ${phase} (${phaseName})`;
+  }
+}
 
 /**
  * Options for creating initial status
@@ -42,7 +95,7 @@ export interface CreateStatusOptions {
  * Create initial workflow status
  */
 export function createInitialStatus(options: CreateStatusOptions): PrevcStatus {
-  const { name, scale, phases, roles } = options;
+  const { name, scale, phases } = options;
 
   const route = getScaleRoute(scale);
   const activePhasesSet = new Set(phases || route.phases);
@@ -81,33 +134,19 @@ export function createInitialStatus(options: CreateStatusOptions): PrevcStatus {
     started_at: new Date().toISOString(),
   };
 
-  // Get active roles
-  const activeRoles =
-    roles === 'all'
-      ? ALL_ROLES
-      : Array.isArray(roles)
-      ? roles
-      : route.roles === 'all'
-      ? ALL_ROLES.filter(r => r !== 'solo-dev')
-      : route.roles;
-
-  // Create role statuses
-  const roleStatuses: Partial<Record<PrevcRole, object>> = {};
-  for (const role of activeRoles) {
-    roleStatuses[role] = {
-      status: 'pending',
-    };
-  }
+  // Create initial status
+  const now = new Date().toISOString();
 
   return {
     project: {
       name,
       scale,
-      started: new Date().toISOString(),
+      started: now,
       current_phase: firstPhase,
     },
     phases: phaseStatuses,
-    roles: roleStatuses,
+    agents: {},
+    roles: {},
   };
 }
 
@@ -159,14 +198,3 @@ export function createLargeProjectStatus(name: string): PrevcStatus {
   });
 }
 
-/**
- * Create a status for enterprise projects
- */
-export function createEnterpriseProjectStatus(name: string): PrevcStatus {
-  return createInitialStatus({
-    name,
-    scale: ProjectScale.ENTERPRISE,
-    phases: ['P', 'R', 'E', 'V', 'C'],
-    roles: 'all',
-  });
-}

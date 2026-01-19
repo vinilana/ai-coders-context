@@ -15,6 +15,12 @@ export interface GitState {
   lastCommit: string;
 }
 
+export interface CommitResult {
+  hash: string;
+  shortHash: string;
+  filesCommitted: string[];
+}
+
 export class GitService {
   private repoPath: string;
   private stateFile: string;
@@ -393,6 +399,110 @@ export class GitService {
         stdio: 'pipe'
       });
       return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Get list of files with unstaged changes (modified but not staged)
+   */
+  getUnstagedFiles(): string[] {
+    try {
+      const output = execSync('git diff --name-only', {
+        cwd: this.repoPath,
+        encoding: 'utf8'
+      }).trim();
+
+      return output ? output.split('\n') : [];
+    } catch (error) {
+      throw new Error(`Failed to get unstaged files: ${error}`);
+    }
+  }
+
+  /**
+   * Stage files matching the given patterns
+   * @param patterns Array of file paths or glob patterns
+   * @returns Array of files that were staged
+   */
+  stageFiles(patterns: string[]): string[] {
+    if (patterns.length === 0) {
+      return [];
+    }
+
+    try {
+      // Stage files matching the patterns
+      for (const pattern of patterns) {
+        try {
+          execSync(`git add "${pattern}"`, {
+            cwd: this.repoPath,
+            stdio: 'pipe'
+          });
+        } catch {
+          // Pattern might not match any files, continue
+        }
+      }
+
+      // Return what was actually staged
+      return this.getStagedFiles();
+    } catch (error) {
+      throw new Error(`Failed to stage files: ${error}`);
+    }
+  }
+
+  /**
+   * Create a git commit with the staged changes
+   * @param message Commit message
+   * @param coAuthor Optional co-author for the commit (agent name)
+   * @returns Commit result with hash and files committed
+   */
+  commit(message: string, coAuthor?: string): CommitResult {
+    const stagedFiles = this.getStagedFiles();
+
+    if (stagedFiles.length === 0) {
+      throw new Error('Nothing to commit: no staged files');
+    }
+
+    // Build commit message with optional co-author
+    let fullMessage = message;
+    if (coAuthor) {
+      fullMessage += `\n\nCo-Authored-By: ${coAuthor} <noreply@anthropic.com>`;
+    }
+
+    try {
+      // Create commit using heredoc-style to handle multiline messages
+      execSync(`git commit -m "${fullMessage.replace(/"/g, '\\"')}"`, {
+        cwd: this.repoPath,
+        stdio: 'pipe'
+      });
+
+      // Get the commit info
+      const commitInfo = this.getCommitInfo('HEAD');
+      if (!commitInfo) {
+        throw new Error('Failed to get commit info after commit');
+      }
+
+      return {
+        hash: commitInfo.hash,
+        shortHash: commitInfo.shortHash,
+        filesCommitted: stagedFiles
+      };
+    } catch (error) {
+      throw new Error(`Failed to create commit: ${error}`);
+    }
+  }
+
+  /**
+   * Check if there are any uncommitted changes (staged or unstaged)
+   */
+  hasUncommittedChanges(): boolean {
+    try {
+      const output = execSync('git status --porcelain', {
+        cwd: this.repoPath,
+        encoding: 'utf8'
+      }).trim();
+
+      return output.length > 0;
     } catch {
       return false;
     }

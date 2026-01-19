@@ -4,17 +4,46 @@
  * Manages workflow progression, phase transitions, and role handoffs.
  */
 
+import * as fs from 'fs-extra';
+import * as path from 'path';
 import {
   PrevcStatus,
   PrevcPhase,
   PrevcRole,
   ProjectContext,
   ProjectScale,
+  WorkflowSettings,
+  PlanApproval,
+  PhaseOrchestration,
+  AgentSequenceStep,
+  ToolGuidance,
 } from './types';
 import { PrevcStatusManager } from './status/statusManager';
 import { detectProjectScale, getScaleRoute } from './scaling';
-import { PREVC_PHASE_ORDER, getPhaseDefinition } from './phases';
+import { PREVC_PHASE_ORDER, getPhaseDefinition, PHASE_NAMES_EN } from './phases';
 import { getRoleConfig } from './prevcConfig';
+import { WorkflowGateChecker, GateCheckResult, getDefaultSettings } from './gates';
+import { PlanLinker } from './plans/planLinker';
+import { AgentOrchestrator, PHASE_TO_AGENTS } from './orchestration/agentOrchestrator';
+import { createSkillRegistry } from './skills';
+
+/**
+ * Options for completing a phase
+ */
+export interface CompletePhaseOptions {
+  /** Force advancement even if gates would block */
+  force?: boolean;
+}
+
+/**
+ * Options for initializing a workflow with settings
+ */
+export interface InitWorkflowOptions {
+  name: string;
+  scale: ProjectScale;
+  /** Override default settings */
+  settings?: Partial<WorkflowSettings>;
+}
 
 /**
  * PREVC Workflow Orchestrator
@@ -22,10 +51,19 @@ import { getRoleConfig } from './prevcConfig';
  * Coordinates the execution of the PREVC workflow.
  */
 export class PrevcOrchestrator {
+  private repoPath: string;
+  private contextPath: string;
   private statusManager: PrevcStatusManager;
+  private gateChecker: WorkflowGateChecker;
+  private planLinker: PlanLinker;
 
   constructor(contextPath: string) {
+    this.repoPath = path.dirname(contextPath);
+    this.contextPath = contextPath;
     this.statusManager = new PrevcStatusManager(contextPath);
+    this.gateChecker = new WorkflowGateChecker();
+    // Pass statusManager to PlanLinker for breadcrumb trail logging
+    this.planLinker = new PlanLinker(path.dirname(contextPath), this.statusManager);
   }
 
   /**
@@ -42,29 +80,110 @@ export class PrevcOrchestrator {
     const scale = detectProjectScale(context);
     const route = getScaleRoute(scale);
 
-    return this.statusManager.create({
+    const status = await this.statusManager.create({
       name: context.name,
       scale,
       phases: route.phases,
       roles: route.roles,
     });
+
+    await this.planLinker.ensureWorkflowPlanIndex();
+
+    return status;
   }
 
   /**
    * Initialize a workflow with explicit scale
+   * @param archivePrevious - If undefined and workflow exists, throws error. If true, archives. If false, deletes.
    */
   async initWorkflowWithScale(
     name: string,
-    scale: ProjectScale
+    scale: ProjectScale,
+    settings?: Partial<WorkflowSettings>,
+    archivePrevious?: boolean
   ): Promise<PrevcStatus> {
+    // Check for existing workflow
+    if (await this.hasWorkflow()) {
+      if (archivePrevious === undefined) {
+        throw new Error(
+          'A workflow already exists. Use archivePrevious=true to archive or archivePrevious=false to delete the existing workflow.'
+        );
+      }
+      await this.resetWorkflow(archivePrevious);
+    }
+
     const route = getScaleRoute(scale);
 
-    return this.statusManager.create({
+    const status = await this.statusManager.create({
       name,
       scale,
       phases: route.phases,
       roles: route.roles,
     });
+
+    await this.planLinker.ensureWorkflowPlanIndex();
+
+    // Apply custom settings if provided
+    if (settings) {
+      await this.statusManager.setSettings(settings);
+      return this.statusManager.load();
+    }
+
+    return status;
+  }
+
+  /**
+   * Reset the current workflow
+   * @param archive - If true, archives the current workflow. If false, deletes it.
+   */
+  async resetWorkflow(archive: boolean): Promise<void> {
+    if (archive) {
+      await this.archiveCurrentWorkflow();
+      await this.planLinker.archivePlans();
+    } else {
+      await this.planLinker.clearAllPlans();
+      // Delete status.yaml
+      const statusPath = path.join(this.contextPath, 'workflow', 'status.yaml');
+      if (await fs.pathExists(statusPath)) {
+        await fs.remove(statusPath);
+      }
+    }
+  }
+
+  /**
+   * Archive the current workflow to .context/workflow/archive/
+   */
+  private async archiveCurrentWorkflow(): Promise<void> {
+    const workflowPath = path.join(this.contextPath, 'workflow');
+    const statusPath = path.join(workflowPath, 'status.yaml');
+
+    if (!(await fs.pathExists(statusPath))) {
+      return;
+    }
+
+    // Get current workflow name for archive folder
+    let archiveName = 'workflow';
+    try {
+      const status = await this.statusManager.load();
+      archiveName = status.project.name.replace(/[^a-zA-Z0-9-_]/g, '-');
+    } catch {
+      // Use default name if can't load status
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const archiveDir = path.join(workflowPath, 'archive', `${archiveName}-${timestamp}`);
+
+    await fs.ensureDir(archiveDir);
+
+    // Move status.yaml to archive
+    await fs.move(statusPath, path.join(archiveDir, 'status.yaml'));
+  }
+
+  /**
+   * Initialize a workflow with full options
+   */
+  async initWorkflowWithOptions(options: InitWorkflowOptions): Promise<PrevcStatus> {
+    return this.initWorkflowWithScale(options.name, options.scale, options.settings);
   }
 
   /**
@@ -97,41 +216,247 @@ export class PrevcOrchestrator {
   }
 
   /**
-   * Perform a handoff from one role to another
+   * Perform a handoff from one agent to another
+   * @param from - Agent name handing off (e.g., 'feature-developer')
+   * @param to - Agent name receiving (e.g., 'test-writer')
+   * @param artifacts - Array of output file paths
    */
   async handoff(
-    from: PrevcRole,
-    to: PrevcRole,
+    from: string,
+    to: string,
     artifacts: string[]
   ): Promise<void> {
-    // Update the outgoing role
-    await this.statusManager.updateRole(from, {
+    // Update the outgoing agent
+    await this.statusManager.updateAgent(from, {
       status: 'completed',
       outputs: artifacts,
     });
 
-    // Update the incoming role
-    await this.statusManager.updateRole(to, {
+    // Update the incoming agent
+    await this.statusManager.updateAgent(to, {
       status: 'in_progress',
     });
   }
 
   /**
+   * Get the next agent suggestion after a handoff
+   */
+  getNextAgentSuggestion(currentAgent: string): { agent: string; reason: string } | null {
+    const orchestrator = new AgentOrchestrator();
+
+    // Common handoff sequences
+    const handoffSequences: Record<string, { agent: string; reason: string }> = {
+      'feature-developer': { agent: 'test-writer', reason: 'Write tests for the new code' },
+      'bug-fixer': { agent: 'test-writer', reason: 'Write regression tests' },
+      'test-writer': { agent: 'code-reviewer', reason: 'Review implementation and tests' },
+      'code-reviewer': { agent: 'documentation-writer', reason: 'Document the changes' },
+      'backend-specialist': { agent: 'test-writer', reason: 'Write API tests' },
+      'frontend-specialist': { agent: 'test-writer', reason: 'Write UI tests' },
+      'refactoring-specialist': { agent: 'test-writer', reason: 'Verify refactored code' },
+    };
+
+    return handoffSequences[currentAgent] || null;
+  }
+
+  /**
+   * Get orchestration guidance for a phase
+   */
+  async getPhaseOrchestration(phase: PrevcPhase): Promise<PhaseOrchestration> {
+    const orchestrator = new AgentOrchestrator();
+    const agents = PHASE_TO_AGENTS[phase] || [];
+    const sequence = orchestrator.getAgentHandoffSequence([phase]);
+
+    const suggestedSequence: AgentSequenceStep[] = sequence.map((agent) => ({
+      agent,
+      task: this.getAgentDefaultTask(agent),
+    }));
+
+    const startWith = agents.length > 0 ? agents[0] : 'feature-developer';
+    const instruction = this.buildOrchestrationInstruction(phase, startWith);
+    const skillRegistry = createSkillRegistry(this.repoPath);
+    const skills = await skillRegistry.getSkillsForPhase(phase);
+    const recommendedSkills = skills.map((skill) => ({
+      slug: skill.slug,
+      name: skill.metadata.name,
+      description: skill.metadata.description,
+      path: skill.path,
+      isBuiltIn: skill.isBuiltIn,
+    }));
+
+    // Build tool guidance for explicit orchestration
+    const toolGuidance = this.buildToolGuidance(phase, startWith);
+
+    // Build step-by-step orchestration instructions
+    const orchestrationSteps = this.buildOrchestrationSteps(phase, sequence);
+
+    return {
+      recommendedAgents: agents,
+      suggestedSequence,
+      startWith,
+      instruction,
+      recommendedSkills,
+      toolGuidance,
+      orchestrationSteps,
+    };
+  }
+
+  /**
+   * Get default task description for an agent
+   */
+  private getAgentDefaultTask(agent: string): string {
+    const taskMap: Record<string, string> = {
+      'feature-developer': 'Implement core functionality',
+      'bug-fixer': 'Fix identified issues',
+      'test-writer': 'Write tests for new code',
+      'code-reviewer': 'Review implementation',
+      'documentation-writer': 'Document the changes',
+      'backend-specialist': 'Implement server-side logic',
+      'frontend-specialist': 'Build user interface',
+      'database-specialist': 'Design and optimize database',
+      'architect-specialist': 'Design system architecture',
+      'security-auditor': 'Audit for security vulnerabilities',
+      'performance-optimizer': 'Optimize performance',
+      'refactoring-specialist': 'Improve code structure',
+      'devops-specialist': 'Configure deployment pipeline',
+      'mobile-specialist': 'Develop mobile features',
+    };
+
+    return taskMap[agent] || 'Execute assigned tasks';
+  }
+
+  /**
+   * Build tool guidance with concrete MCP tool call examples
+   */
+  private buildToolGuidance(phase: PrevcPhase, startAgent: string): ToolGuidance {
+    return {
+      discoverExample: `agent({ action: "orchestrate", phase: "${phase}" })`,
+      sequenceExample: `agent({ action: "getSequence", phases: ["${phase}"] })`,
+      handoffExample: `workflow-manage({ action: "handoff", from: "${startAgent}", to: "<next-agent>", artifacts: ["output.md"] })`,
+    };
+  }
+
+  /**
+   * Build step-by-step orchestration instructions with tool calls
+   */
+  private buildOrchestrationSteps(phase: PrevcPhase, agents: string[]): string[] {
+    const phaseName = PHASE_NAMES_EN[phase];
+    const startAgent = agents[0] || 'feature-developer';
+    const nextAgent = agents[1] || '<next-agent>';
+
+    return [
+      `1. Discover agents for ${phaseName} phase: agent({ action: "orchestrate", phase: "${phase}" })`,
+      `2. Review recommended sequence: agent({ action: "getSequence", phases: ["${phase}"] })`,
+      `3. Begin with ${startAgent} agent - follow playbook at .context/agents/${startAgent}.md`,
+      `4. Execute handoffs: workflow-manage({ action: "handoff", from: "${startAgent}", to: "${nextAgent}", artifacts: ["output.md"] })`,
+      `5. Leverage skills: skill({ action: "getForPhase", phase: "${phase}" })`,
+    ];
+  }
+
+  /**
+   * Build orchestration instruction for a phase
+   */
+  private buildOrchestrationInstruction(phase: PrevcPhase, startAgent: string): string {
+    const phaseName = PHASE_NAMES_EN[phase];
+
+    return `ORCHESTRATION GUIDE for ${phaseName} phase:\n\n` +
+      `1. START: Activate ${startAgent} agent\n` +
+      `   - Review agent playbook: .context/agents/${startAgent}.md\n` +
+      `   - Understand responsibilities and outputs\n\n` +
+      `2. DISCOVER: Find all agents for this phase\n` +
+      `   - Call: agent({ action: "orchestrate", phase: "${phase}" })\n` +
+      `   - Review: Recommended agents and their roles\n\n` +
+      `3. SEQUENCE: Plan agent handoff order\n` +
+      `   - Call: agent({ action: "getSequence", phases: ["${phase}"] })\n` +
+      `   - Follow: Suggested sequence for optimal workflow\n\n` +
+      `4. EXECUTE: Perform work and handoffs\n` +
+      `   - Work: Complete tasks as ${startAgent}\n` +
+      `   - Handoff: workflow-manage({ action: "handoff", from: "${startAgent}", to: "<next-agent>", artifacts: [...] })\n` +
+      `   - Repeat: Continue through sequence until phase complete\n\n` +
+      `5. ADVANCE: Move to next phase\n` +
+      `   - Call: workflow-advance({ outputs: [...] })\n` +
+      `   - Review: Next phase orchestration guidance`;
+  }
+
+  /**
    * Complete the current phase and advance to the next
    */
-  async completePhase(outputs?: string[]): Promise<PrevcPhase | null> {
-    const currentPhase = await this.getCurrentPhase();
+  async completePhase(
+    outputs?: string[],
+    options: CompletePhaseOptions = {}
+  ): Promise<PrevcPhase | null> {
+    const status = await this.getStatus();
+    const currentPhase = status.project.current_phase;
+    const nextPhase = await this.getNextPhase();
+
+    // Check gates before advancing (unless force is true)
+    if (nextPhase) {
+      this.gateChecker.enforceGates(status, {
+        force: options.force,
+        nextPhase,
+      });
+    }
 
     // Mark current phase as complete
     await this.statusManager.markPhaseComplete(currentPhase, outputs);
 
+    // Auto-sync linked plan markdown with execution progress
+    if (status.project.plan) {
+      try {
+        await this.planLinker.syncPlanMarkdown(status.project.plan);
+      } catch {
+        // Silent fail - plan sync is non-critical
+      }
+    }
+
     // Get and transition to next phase
-    const nextPhase = await this.getNextPhase();
     if (nextPhase) {
       await this.statusManager.transitionToPhase(nextPhase);
     }
 
     return nextPhase;
+  }
+
+  /**
+   * Check gates for the current phase transition
+   */
+  async checkGates(): Promise<GateCheckResult> {
+    const status = await this.getStatus();
+    return this.gateChecker.checkGates(status);
+  }
+
+  /**
+   * Set workflow settings
+   */
+  async setSettings(settings: Partial<WorkflowSettings>): Promise<WorkflowSettings> {
+    return this.statusManager.setSettings(settings);
+  }
+
+  /**
+   * Get workflow settings
+   */
+  async getSettings(): Promise<WorkflowSettings> {
+    return this.statusManager.getSettings();
+  }
+
+  /**
+   * Mark that a plan has been created/linked
+   */
+  async markPlanCreated(planSlug: string): Promise<void> {
+    return this.statusManager.markPlanCreated(planSlug);
+  }
+
+  /**
+   * Approve the plan
+   */
+  async approvePlan(approver: PrevcRole | string, notes?: string): Promise<PlanApproval> {
+    return this.statusManager.approvePlan(approver, notes);
+  }
+
+  /**
+   * Get approval status
+   */
+  async getApproval(): Promise<PlanApproval | undefined> {
+    return this.statusManager.getApproval();
   }
 
   /**

@@ -26,7 +26,10 @@ The AI agent MUST then fill the plan with specific implementation details.`,
       autoFill = true,
     } = input;
 
-    const repoPath = customRepoPath ? path.resolve(customRepoPath) : process.cwd();
+    if (!customRepoPath) {
+      throw new Error('repoPath is required for scaffoldPlan');
+    }
+    const repoPath = path.resolve(customRepoPath);
     const outputDir = customOutputDir
       ? path.resolve(customOutputDir)
       : path.resolve(repoPath, '.context');
@@ -65,19 +68,52 @@ The AI agent MUST then fill the plan with specific implementation details.`,
       // Build fill instructions for the plan
       const fillInstructions = autoFill ? buildPlanFillInstructions(planName, result.planPath, summary) : undefined;
 
+      // Build response with consistent status signals (matching initializeContextTool pattern)
+      const instruction = autoFill
+        ? `IMPORTANT ACTION REQUIRED: Plan template created but needs specific implementation details.
+
+You MUST fill in the plan with:
+1. Specific goals and scope for "${planName}"
+2. Detailed phases with concrete steps
+3. Agent assignments and focus areas
+4. Documentation touchpoints
+5. Success criteria
+
+Use context({ action: "fillSingle", filePath: "${result.planPath}" }) to get semantic context,
+then write the enhanced plan.
+
+DO NOT report completion until the plan has specific, actionable content.`
+        : 'The plan template has been created. You can customize it manually or use fillScaffolding to get suggested content.';
+
       return {
+        // Action signals (appear first for visibility)
+        instruction,
+        _warning: autoFill ? 'INCOMPLETE - ACTION REQUIRED' : undefined,
+
+        // Status signals
+        status: autoFill ? 'incomplete' : 'success',
+        complete: !autoFill,
         success: true,
+
+        // Plan details
         planPath: result.planPath,
         planContent,
+
+        // Classification
         classification: {
           projectType: classification.primaryType,
           confidence: classification.confidence,
           reasoning: classification.reasoning,
         },
+
+        // Fill instructions
         fillInstructions,
-        instructions: autoFill
-          ? 'IMPORTANT: Review the generated plan and fill in the specific implementation details. The plan template has been created with codebase context - you must now customize it with the actual tasks, phases, and deliverables for this feature/project.'
-          : 'The plan template has been created. You can customize it manually or use fillScaffolding to get suggested content.',
+
+        // Next step guidance
+        nextStep: autoFill ? {
+          action: 'Call fillSingle to get context, then write enhanced plan',
+          example: `context({ action: "fillSingle", filePath: "${result.planPath}" })`,
+        } : undefined,
       };
     } catch (error) {
       return {

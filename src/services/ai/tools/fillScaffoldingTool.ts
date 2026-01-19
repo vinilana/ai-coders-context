@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs-extra';
 import { z } from 'zod';
 import { SemanticContextBuilder } from '../../semantic/contextBuilder';
+import { getScaffoldStructure, serializeStructureForAI } from '../../../generators/shared/scaffoldStructures';
 
 // Shared context builder instance for efficiency
 let sharedContextBuilder: SemanticContextBuilder | null = null;
@@ -158,8 +159,9 @@ const FillSingleFileInputSchema = z.object({
 export type FillSingleFileInput = z.infer<typeof FillSingleFileInputSchema>;
 
 export const fillSingleFileTool = tool({
-  description: `Generate suggested content for a single scaffold file.
-Call listFilesToFill first to get file paths, then call this for each file.`,
+  description: `Get context and structure guidance for filling a single scaffold file.
+Returns semantic context (codebase analysis) and scaffold structure (section guidance, tone, audience).
+Use this context to generate intelligent content, then write the content to the file path.`,
   inputSchema: FillSingleFileInputSchema,
   execute: async (input: FillSingleFileInput) => {
     const { repoPath, filePath } = input;
@@ -178,36 +180,47 @@ Call listFilesToFill first to get file paths, then call this for each file.`,
       // Get or build semantic context (cached)
       const semanticContext = await getOrBuildContext(resolvedRepoPath);
 
-      // Read current content
+      // Read current content (frontmatter/template)
       const currentContent = await fs.readFile(resolvedFilePath, 'utf-8');
       const fileName = path.basename(resolvedFilePath);
       const parentDir = path.basename(path.dirname(resolvedFilePath));
 
-      // Generate suggested content based on file type
-      let suggestedContent: string;
-      let fileType: 'doc' | 'agent' | 'plan';
+      // Determine file type and get scaffold structure
+      let fileType: 'doc' | 'agent' | 'plan' | 'skill';
+      let documentName: string;
 
       if (parentDir === 'docs') {
-        suggestedContent = generateDocContent(fileName, currentContent, semanticContext);
         fileType = 'doc';
+        documentName = path.basename(fileName, '.md');
       } else if (parentDir === 'agents') {
-        const agentType = path.basename(fileName, '.md');
-        suggestedContent = generateAgentContent(agentType, currentContent, semanticContext);
         fileType = 'agent';
+        documentName = path.basename(fileName, '.md');
       } else if (parentDir === 'plans') {
-        suggestedContent = currentContent; // Plans need manual filling
         fileType = 'plan';
+        documentName = path.basename(fileName, '.md');
+      } else if (parentDir === 'skills') {
+        fileType = 'skill';
+        documentName = path.basename(fileName, '.md');
       } else {
-        suggestedContent = currentContent;
         fileType = 'doc';
+        documentName = path.basename(fileName, '.md');
       }
+
+      // Get scaffold structure and serialize for AI
+      const structure = getScaffoldStructure(documentName);
+      const scaffoldStructure = structure ? serializeStructureForAI(structure) : undefined;
 
       return {
         success: true,
         filePath: resolvedFilePath,
         fileType,
-        suggestedContent,
-        instructions: `Write this suggestedContent to ${resolvedFilePath}`
+        documentName,
+        // Context for intelligent generation
+        semanticContext,
+        scaffoldStructure,
+        currentContent,
+        // Instructions for the calling LLM
+        instructions: `Generate content for "${fileName}" using the provided semanticContext and scaffoldStructure. Follow the structure's tone (${structure?.tone || 'technical'}), audience (${structure?.audience || 'developers'}), and section guidance. Write the complete markdown content (without frontmatter) to ${resolvedFilePath}.`
       };
     } catch (error) {
       return {
@@ -236,15 +249,16 @@ export type FillScaffoldingInput = z.infer<typeof FillScaffoldingInputSchema>;
 interface FileToFill {
   path: string;
   relativePath: string;
-  suggestedContent: string;
-  type: 'doc' | 'agent' | 'plan';
+  type: 'doc' | 'agent' | 'plan' | 'skill';
+  documentName: string;
+  scaffoldStructure?: string;
+  currentContent: string;
 }
 
 export const fillScaffoldingTool = tool({
-  description: `Analyze codebase and generate filled content for scaffolding templates.
-Returns suggestedContent for each file. Supports pagination with offset/limit.
-For large projects, use listFilesToFill + fillSingleFile instead.
-After calling this tool, write the suggestedContent to each file path.`,
+  description: `Get context and structure guidance for filling multiple scaffold files.
+Returns semantic context (shared) and scaffold structure per file for intelligent content generation.
+Supports pagination with offset/limit. Generate content for each file using its scaffoldStructure, then write to its path.`,
   inputSchema: FillScaffoldingInputSchema,
   execute: async (input: FillScaffoldingInput) => {
     const {
@@ -336,26 +350,23 @@ After calling this tool, write the suggestedContent to each file path.`,
       const effectiveLimit = limit === 0 ? totalCount : limit;
       const paginatedFiles = allFiles.slice(offset, offset + effectiveLimit);
 
-      // Generate content only for paginated files
+      // Build context info for paginated files
       const filesToFill: FileToFill[] = [];
       for (const fileInfo of paginatedFiles) {
         const currentContent = await fs.readFile(fileInfo.path, 'utf-8');
-        let suggestedContent: string;
+        const documentName = path.basename(fileInfo.path, '.md');
 
-        if (fileInfo.type === 'doc') {
-          suggestedContent = generateDocContent(path.basename(fileInfo.path), currentContent, semanticContext);
-        } else if (fileInfo.type === 'agent') {
-          const agentType = path.basename(fileInfo.path, '.md');
-          suggestedContent = generateAgentContent(agentType, currentContent, semanticContext);
-        } else {
-          suggestedContent = currentContent; // Plans need manual filling
-        }
+        // Get scaffold structure for this file
+        const structure = getScaffoldStructure(documentName);
+        const scaffoldStructure = structure ? serializeStructureForAI(structure) : undefined;
 
         filesToFill.push({
           path: fileInfo.path,
           relativePath: fileInfo.relativePath,
-          suggestedContent,
-          type: fileInfo.type
+          type: fileInfo.type,
+          documentName,
+          scaffoldStructure,
+          currentContent
         });
       }
 
@@ -363,6 +374,8 @@ After calling this tool, write the suggestedContent to each file path.`,
 
       return {
         success: true,
+        // Shared semantic context for all files
+        semanticContext,
         filesToFill,
         pagination: {
           offset,
@@ -372,8 +385,8 @@ After calling this tool, write the suggestedContent to each file path.`,
           hasMore
         },
         instructions: hasMore
-          ? `Processed ${filesToFill.length} of ${totalCount} files. Call again with offset=${offset + paginatedFiles.length} to continue.`
-          : `All ${totalCount} files processed. Write each suggestedContent to its file path.`
+          ? `Returned ${filesToFill.length} of ${totalCount} files. Generate content for each file using semanticContext + its scaffoldStructure. Call again with offset=${offset + paginatedFiles.length} to continue.`
+          : `All ${totalCount} files ready. Generate content for each file using semanticContext + its scaffoldStructure. Write each generated content to its file path.`
       };
     } catch (error) {
       return {
@@ -383,121 +396,3 @@ After calling this tool, write the suggestedContent to each file path.`,
     }
   }
 });
-
-/**
- * Generate filled documentation content based on file type and semantic context.
- */
-export function generateDocContent(fileName: string, template: string, context: string): string {
-  // Extract key information from semantic context
-  const contextLines = context.split('\n');
-
-  // Find architecture info
-  const archSection = extractSection(context, '## Architecture', '##');
-  const patternsSection = extractSection(context, '## Patterns', '##');
-  const statsSection = extractSection(context, '## Stats', '##');
-
-  switch (fileName.toLowerCase()) {
-    case 'architecture.md':
-      return `# Architecture
-
-## Overview
-
-${archSection || 'This document describes the architecture of the codebase.'}
-
-## Key Patterns
-
-${patternsSection || 'Document the key architectural patterns used.'}
-
-## Project Structure
-
-${statsSection || 'Document the project structure.'}
-
----
-*Generated from codebase analysis. Review and enhance with specific details.*
-`;
-
-    case 'project-overview.md':
-      return `# Project Overview
-
-## Summary
-
-${statsSection || 'Provide a high-level summary of the project.'}
-
-## Architecture
-
-${archSection || 'Describe the overall architecture.'}
-
-## Key Components
-
-Analyze the codebase to identify and document key components.
-
----
-*Generated from codebase analysis. Review and enhance with specific details.*
-`;
-
-    default:
-      // For other files, include the semantic context as reference
-      return `${template}
-
-<!-- Codebase Context for Reference:
-${context.substring(0, 2000)}...
--->
-`;
-  }
-}
-
-/**
- * Generate filled agent playbook content based on agent type and semantic context.
- */
-export function generateAgentContent(agentType: string, template: string, context: string): string {
-  const archSection = extractSection(context, '## Architecture', '##');
-  const patternsSection = extractSection(context, '## Patterns', '##');
-
-  const title = agentType.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-
-  return `# ${title} Agent
-
-## Role
-
-This agent specializes in ${agentType.replace(/-/g, ' ')} tasks for this codebase.
-
-## Codebase Context
-
-${archSection || 'Review the codebase architecture.'}
-
-## Key Patterns
-
-${patternsSection || 'Understand the patterns used in this codebase.'}
-
-## Responsibilities
-
-Based on the codebase analysis, this agent should:
-1. Understand the project structure and patterns
-2. Follow established conventions
-3. Focus on ${agentType.replace(/-/g, ' ')} specific tasks
-
-## Relevant Files
-
-Analyze the codebase to identify files relevant to this agent's responsibilities.
-
----
-*Generated from codebase analysis. Review and enhance with specific responsibilities.*
-`;
-}
-
-/**
- * Extract a section from content between markers.
- */
-export function extractSection(content: string, startMarker: string, endMarker: string): string {
-  const startIndex = content.indexOf(startMarker);
-  if (startIndex === -1) return '';
-
-  const afterStart = content.substring(startIndex + startMarker.length);
-  const endIndex = afterStart.indexOf(endMarker);
-
-  if (endIndex === -1) {
-    return afterStart.trim();
-  }
-
-  return afterStart.substring(0, endIndex).trim();
-}

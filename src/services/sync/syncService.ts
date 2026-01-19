@@ -72,6 +72,14 @@ export class SyncService {
     }
   }
 
+  /**
+   * Resolve sync options from raw flags
+   *
+   * Supports three formats for targets:
+   * 1. Preset name via `preset` option (e.g., 'all', 'claude')
+   * 2. Preset names in `target` array (e.g., ['claude', 'github'])
+   * 3. Direct paths in `target` array (e.g., ['.custom/agents'])
+   */
   private async resolveOptions(rawOptions: SyncCommandFlags): Promise<SyncOptions> {
     const sourcePath = path.resolve(rawOptions.source || './.context/agents');
 
@@ -83,8 +91,18 @@ export class SyncService {
     }
 
     if (rawOptions.target && rawOptions.target.length > 0) {
-      const customTargets = rawOptions.target.map(t => path.resolve(t));
-      targetPaths = [...new Set([...targetPaths, ...customTargets])];
+      for (const t of rawOptions.target) {
+        // First check if target is a preset name
+        const presets = resolvePresets(t as Parameters<typeof resolvePresets>[0]);
+        if (presets.length > 0) {
+          targetPaths.push(...presets.map(p => path.resolve(p.path)));
+        } else {
+          // Treat as a direct path
+          targetPaths.push(path.resolve(t));
+        }
+      }
+      // Deduplicate
+      targetPaths = [...new Set(targetPaths)];
     }
 
     if (targetPaths.length === 0) {

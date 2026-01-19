@@ -27,6 +27,50 @@ You are an AI assistant responsible for refreshing the documentation (\`docs/\`)
 - Updated Markdown files.
 `;
 
+/**
+ * Prompt for AI agents to enhance scaffolding via MCP tools.
+ * This prompt MUST be included in ALL scaffolding generation responses.
+ */
+export const MCP_SCAFFOLD_ENHANCEMENT_PROMPT = `# AI Enhancement Required
+
+Your scaffolding has been generated but contains placeholder content that MUST be enhanced.
+
+## Required Actions
+
+1. **For each generated file**, call \`fillSingleFile\` to get:
+   - Semantic context from the codebase
+   - Scaffold structure with section guidance
+   - Current file content to enhance
+
+2. **Generate rich content** based on the context provided:
+   - Replace ALL placeholders with accurate, codebase-specific information
+   - Follow the tone and audience guidelines in the scaffold structure
+   - Include cross-references to related docs/agents
+   - Use concrete examples from the actual codebase
+
+3. **Write the enhanced content** using the Write tool
+
+## Quality Checklist
+
+- [ ] No TODO placeholders remain
+- [ ] All sections have concrete, actionable content
+- [ ] Cross-references point to existing files
+- [ ] Examples are drawn from actual codebase code
+- [ ] Terminology matches project conventions
+
+## Example Workflow
+
+\`\`\`
+1. context({ action: "listToFill" })           → Get list of files needing content
+2. context({ action: "fillSingle", filePath }) → Get context for each file
+3. Generate content based on semantic context
+4. Write enhanced content to file
+5. Repeat for all files
+\`\`\`
+
+DO NOT consider scaffolding complete until ALL files have been enhanced with codebase-specific content.
+`;
+
 export const UPDATE_PLAN_PROMPT_FALLBACK = `# Prompt: Update Collaboration Plans
 
 ## Purpose

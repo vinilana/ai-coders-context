@@ -7,6 +7,7 @@
 
 import { glob } from 'glob';
 import * as path from 'path';
+import * as fs from 'fs/promises';
 import { TreeSitterLayer } from './treeSitter/treeSitterLayer';
 import { LSPLayer } from './lsp/lspLayer';
 import {
@@ -19,6 +20,13 @@ import {
   DependencyInfo,
   DEFAULT_EXCLUDE_PATTERNS,
   LANGUAGE_EXTENSIONS,
+  FunctionalPattern,
+  FunctionalPatternType,
+  DetectedFunctionalPatterns,
+  PatternIndicator,
+  FlowNode,
+  FlowEdge,
+  ExecutionFlow,
 } from './types';
 
 const DEFAULT_OPTIONS: Required<AnalyzerOptions> = {
@@ -656,5 +664,738 @@ export class CodebaseAnalyzer {
         // LSP errors are non-fatal, continue with other symbols
       }
     }
+  }
+
+  /**
+   * Detect functional patterns in the codebase
+   * These patterns indicate functional capabilities like auth, database, API, etc.
+   */
+  async detectFunctionalPatterns(projectPath: string): Promise<DetectedFunctionalPatterns> {
+    const files = await this.findCodeFiles(projectPath);
+    const analyses = await this.analyzeFiles(files);
+
+    const patterns: FunctionalPattern[] = [];
+    const allSymbols = [...analyses.values()].flatMap((a) => a.symbols);
+    const allImports = [...analyses.values()].flatMap((a) =>
+      a.imports.map((imp) => ({ ...imp, file: a.filePath }))
+    );
+
+    // Authentication pattern detection
+    const authPattern = this.detectAuthPattern(allSymbols, allImports, files);
+    if (authPattern) patterns.push(authPattern);
+
+    // Database pattern detection
+    const dbPattern = this.detectDatabasePattern(allSymbols, allImports, files);
+    if (dbPattern) patterns.push(dbPattern);
+
+    // API pattern detection
+    const apiPattern = this.detectApiPattern(allSymbols, allImports, files);
+    if (apiPattern) patterns.push(apiPattern);
+
+    // Cache pattern detection
+    const cachePattern = this.detectCachePattern(allSymbols, allImports, files);
+    if (cachePattern) patterns.push(cachePattern);
+
+    // Queue/messaging pattern detection
+    const queuePattern = this.detectQueuePattern(allSymbols, allImports, files);
+    if (queuePattern) patterns.push(queuePattern);
+
+    // WebSocket pattern detection
+    const wsPattern = this.detectWebSocketPattern(allSymbols, allImports, files);
+    if (wsPattern) patterns.push(wsPattern);
+
+    // Logging pattern detection
+    const loggingPattern = this.detectLoggingPattern(allSymbols, allImports, files);
+    if (loggingPattern) patterns.push(loggingPattern);
+
+    // Validation pattern detection
+    const validationPattern = this.detectValidationPattern(allSymbols, allImports, files);
+    if (validationPattern) patterns.push(validationPattern);
+
+    // Error handling pattern detection
+    const errorPattern = this.detectErrorHandlingPattern(allSymbols, allImports, files);
+    if (errorPattern) patterns.push(errorPattern);
+
+    // Testing pattern detection
+    const testingPattern = this.detectTestingPattern(allSymbols, allImports, files);
+    if (testingPattern) patterns.push(testingPattern);
+
+    return {
+      hasAuthPattern: patterns.some((p) => p.type === 'auth'),
+      hasDatabasePattern: patterns.some((p) => p.type === 'database'),
+      hasApiPattern: patterns.some((p) => p.type === 'api'),
+      hasCachePattern: patterns.some((p) => p.type === 'cache'),
+      hasQueuePattern: patterns.some((p) => p.type === 'queue'),
+      hasWebSocketPattern: patterns.some((p) => p.type === 'websocket'),
+      hasLoggingPattern: patterns.some((p) => p.type === 'logging'),
+      hasValidationPattern: patterns.some((p) => p.type === 'validation'),
+      hasErrorHandlingPattern: patterns.some((p) => p.type === 'error-handling'),
+      hasTestingPattern: patterns.some((p) => p.type === 'testing'),
+      patterns,
+    };
+  }
+
+  private detectAuthPattern(
+    symbols: ExtractedSymbol[],
+    imports: Array<{ source: string; specifiers: string[]; file: string }>,
+    files: string[]
+  ): FunctionalPattern | null {
+    const indicators: PatternIndicator[] = [];
+
+    // Check for auth-related symbols
+    const authSymbols = symbols.filter((s) =>
+      /^(auth|login|logout|verify|jwt|token|session|password|credential|oauth)/i.test(s.name)
+    );
+    for (const sym of authSymbols) {
+      indicators.push({
+        file: sym.location.file,
+        symbol: sym.name,
+        line: sym.location.line,
+        reason: `Auth-related symbol: ${sym.name}`,
+      });
+    }
+
+    // Check for auth-related imports
+    const authImports = imports.filter((imp) =>
+      /^(jsonwebtoken|passport|bcrypt|argon2|@auth|next-auth|express-session|cookie-session)/i.test(
+        imp.source
+      )
+    );
+    for (const imp of authImports) {
+      indicators.push({
+        file: imp.file,
+        reason: `Auth library import: ${imp.source}`,
+      });
+    }
+
+    // Check for auth-related files
+    const authFiles = files.filter((f) =>
+      /\/(auth|login|session|middleware)[\./]/i.test(f)
+    );
+    for (const f of authFiles) {
+      indicators.push({
+        file: f,
+        reason: 'Auth-related file path',
+      });
+    }
+
+    if (indicators.length === 0) return null;
+
+    return {
+      type: 'auth',
+      confidence: Math.min(1, indicators.length * 0.15),
+      indicators: indicators.slice(0, 10),
+      description: 'Authentication and authorization functionality',
+    };
+  }
+
+  private detectDatabasePattern(
+    symbols: ExtractedSymbol[],
+    imports: Array<{ source: string; specifiers: string[]; file: string }>,
+    files: string[]
+  ): FunctionalPattern | null {
+    const indicators: PatternIndicator[] = [];
+
+    // Check for database-related symbols
+    const dbSymbols = symbols.filter((s) =>
+      /^(repository|model|entity|schema|migration|query|database|db|prisma|sequelize|mongoose)/i.test(
+        s.name
+      )
+    );
+    for (const sym of dbSymbols) {
+      indicators.push({
+        file: sym.location.file,
+        symbol: sym.name,
+        line: sym.location.line,
+        reason: `Database-related symbol: ${sym.name}`,
+      });
+    }
+
+    // Check for database-related imports
+    const dbImports = imports.filter((imp) =>
+      /^(prisma|@prisma|sequelize|mongoose|typeorm|knex|pg|mysql|mysql2|sqlite3|better-sqlite3|drizzle-orm|@supabase)/i.test(
+        imp.source
+      )
+    );
+    for (const imp of dbImports) {
+      indicators.push({
+        file: imp.file,
+        reason: `Database library import: ${imp.source}`,
+      });
+    }
+
+    // Check for database-related files
+    const dbFiles = files.filter((f) =>
+      /\/(models?|repositories|entities|migrations?|schemas?|database)[\./]/i.test(f)
+    );
+    for (const f of dbFiles) {
+      indicators.push({
+        file: f,
+        reason: 'Database-related file path',
+      });
+    }
+
+    if (indicators.length === 0) return null;
+
+    return {
+      type: 'database',
+      confidence: Math.min(1, indicators.length * 0.15),
+      indicators: indicators.slice(0, 10),
+      description: 'Database access and ORM functionality',
+    };
+  }
+
+  private detectApiPattern(
+    symbols: ExtractedSymbol[],
+    imports: Array<{ source: string; specifiers: string[]; file: string }>,
+    files: string[]
+  ): FunctionalPattern | null {
+    const indicators: PatternIndicator[] = [];
+
+    // Check for API-related symbols
+    const apiSymbols = symbols.filter((s) =>
+      /^(controller|handler|router|route|endpoint|api|rest|graphql|resolver)/i.test(s.name)
+    );
+    for (const sym of apiSymbols) {
+      indicators.push({
+        file: sym.location.file,
+        symbol: sym.name,
+        line: sym.location.line,
+        reason: `API-related symbol: ${sym.name}`,
+      });
+    }
+
+    // Check for API framework imports
+    const apiImports = imports.filter((imp) =>
+      /^(express|fastify|koa|hapi|@nestjs|next|nuxt|graphql|apollo|@apollo|trpc|@trpc)/i.test(
+        imp.source
+      )
+    );
+    for (const imp of apiImports) {
+      indicators.push({
+        file: imp.file,
+        reason: `API framework import: ${imp.source}`,
+      });
+    }
+
+    // Check for API-related files
+    const apiFiles = files.filter((f) =>
+      /\/(routes?|controllers?|handlers?|api|endpoints?|resolvers?)[\./]/i.test(f)
+    );
+    for (const f of apiFiles) {
+      indicators.push({
+        file: f,
+        reason: 'API-related file path',
+      });
+    }
+
+    if (indicators.length === 0) return null;
+
+    return {
+      type: 'api',
+      confidence: Math.min(1, indicators.length * 0.15),
+      indicators: indicators.slice(0, 10),
+      description: 'API endpoints and routing',
+    };
+  }
+
+  private detectCachePattern(
+    symbols: ExtractedSymbol[],
+    imports: Array<{ source: string; specifiers: string[]; file: string }>,
+    _files: string[]
+  ): FunctionalPattern | null {
+    const indicators: PatternIndicator[] = [];
+
+    // Check for cache-related symbols
+    const cacheSymbols = symbols.filter((s) =>
+      /^(cache|redis|memcache|lru|ttl)/i.test(s.name)
+    );
+    for (const sym of cacheSymbols) {
+      indicators.push({
+        file: sym.location.file,
+        symbol: sym.name,
+        line: sym.location.line,
+        reason: `Cache-related symbol: ${sym.name}`,
+      });
+    }
+
+    // Check for cache-related imports
+    const cacheImports = imports.filter((imp) =>
+      /^(redis|ioredis|memcached|lru-cache|node-cache|cache-manager)/i.test(imp.source)
+    );
+    for (const imp of cacheImports) {
+      indicators.push({
+        file: imp.file,
+        reason: `Cache library import: ${imp.source}`,
+      });
+    }
+
+    if (indicators.length === 0) return null;
+
+    return {
+      type: 'cache',
+      confidence: Math.min(1, indicators.length * 0.2),
+      indicators: indicators.slice(0, 10),
+      description: 'Caching and data memoization',
+    };
+  }
+
+  private detectQueuePattern(
+    symbols: ExtractedSymbol[],
+    imports: Array<{ source: string; specifiers: string[]; file: string }>,
+    _files: string[]
+  ): FunctionalPattern | null {
+    const indicators: PatternIndicator[] = [];
+
+    // Check for queue-related symbols
+    const queueSymbols = symbols.filter((s) =>
+      /^(queue|worker|job|task|consumer|producer|message|event)/i.test(s.name)
+    );
+    for (const sym of queueSymbols) {
+      indicators.push({
+        file: sym.location.file,
+        symbol: sym.name,
+        line: sym.location.line,
+        reason: `Queue-related symbol: ${sym.name}`,
+      });
+    }
+
+    // Check for queue-related imports
+    const queueImports = imports.filter((imp) =>
+      /^(bull|bullmq|bee-queue|agenda|amqplib|rabbitmq|kafka|kafkajs|sqs)/i.test(imp.source)
+    );
+    for (const imp of queueImports) {
+      indicators.push({
+        file: imp.file,
+        reason: `Queue library import: ${imp.source}`,
+      });
+    }
+
+    if (indicators.length === 0) return null;
+
+    return {
+      type: 'queue',
+      confidence: Math.min(1, indicators.length * 0.2),
+      indicators: indicators.slice(0, 10),
+      description: 'Message queues and background jobs',
+    };
+  }
+
+  private detectWebSocketPattern(
+    symbols: ExtractedSymbol[],
+    imports: Array<{ source: string; specifiers: string[]; file: string }>,
+    _files: string[]
+  ): FunctionalPattern | null {
+    const indicators: PatternIndicator[] = [];
+
+    // Check for WebSocket-related symbols
+    const wsSymbols = symbols.filter((s) =>
+      /^(websocket|socket|ws|realtime|broadcast|subscribe)/i.test(s.name)
+    );
+    for (const sym of wsSymbols) {
+      indicators.push({
+        file: sym.location.file,
+        symbol: sym.name,
+        line: sym.location.line,
+        reason: `WebSocket-related symbol: ${sym.name}`,
+      });
+    }
+
+    // Check for WebSocket-related imports
+    const wsImports = imports.filter((imp) =>
+      /^(ws|socket\.io|@socket\.io|sockjs|pusher|ably)/i.test(imp.source)
+    );
+    for (const imp of wsImports) {
+      indicators.push({
+        file: imp.file,
+        reason: `WebSocket library import: ${imp.source}`,
+      });
+    }
+
+    if (indicators.length === 0) return null;
+
+    return {
+      type: 'websocket',
+      confidence: Math.min(1, indicators.length * 0.2),
+      indicators: indicators.slice(0, 10),
+      description: 'Real-time WebSocket communication',
+    };
+  }
+
+  private detectLoggingPattern(
+    symbols: ExtractedSymbol[],
+    imports: Array<{ source: string; specifiers: string[]; file: string }>,
+    _files: string[]
+  ): FunctionalPattern | null {
+    const indicators: PatternIndicator[] = [];
+
+    // Check for logging-related symbols
+    const logSymbols = symbols.filter((s) =>
+      /^(logger|log|logging|telemetry|metrics)/i.test(s.name)
+    );
+    for (const sym of logSymbols) {
+      indicators.push({
+        file: sym.location.file,
+        symbol: sym.name,
+        line: sym.location.line,
+        reason: `Logging-related symbol: ${sym.name}`,
+      });
+    }
+
+    // Check for logging-related imports
+    const logImports = imports.filter((imp) =>
+      /^(winston|pino|bunyan|log4js|morgan|@sentry|newrelic|datadog)/i.test(imp.source)
+    );
+    for (const imp of logImports) {
+      indicators.push({
+        file: imp.file,
+        reason: `Logging library import: ${imp.source}`,
+      });
+    }
+
+    if (indicators.length === 0) return null;
+
+    return {
+      type: 'logging',
+      confidence: Math.min(1, indicators.length * 0.2),
+      indicators: indicators.slice(0, 10),
+      description: 'Logging and observability',
+    };
+  }
+
+  private detectValidationPattern(
+    symbols: ExtractedSymbol[],
+    imports: Array<{ source: string; specifiers: string[]; file: string }>,
+    _files: string[]
+  ): FunctionalPattern | null {
+    const indicators: PatternIndicator[] = [];
+
+    // Check for validation-related symbols
+    const validSymbols = symbols.filter((s) =>
+      /^(valid|schema|sanitize|parse|check|assert)/i.test(s.name)
+    );
+    for (const sym of validSymbols) {
+      indicators.push({
+        file: sym.location.file,
+        symbol: sym.name,
+        line: sym.location.line,
+        reason: `Validation-related symbol: ${sym.name}`,
+      });
+    }
+
+    // Check for validation-related imports
+    const validImports = imports.filter((imp) =>
+      /^(zod|yup|joi|ajv|class-validator|validator|io-ts|valibot)/i.test(imp.source)
+    );
+    for (const imp of validImports) {
+      indicators.push({
+        file: imp.file,
+        reason: `Validation library import: ${imp.source}`,
+      });
+    }
+
+    if (indicators.length === 0) return null;
+
+    return {
+      type: 'validation',
+      confidence: Math.min(1, indicators.length * 0.2),
+      indicators: indicators.slice(0, 10),
+      description: 'Input validation and schema enforcement',
+    };
+  }
+
+  private detectErrorHandlingPattern(
+    symbols: ExtractedSymbol[],
+    imports: Array<{ source: string; specifiers: string[]; file: string }>,
+    files: string[]
+  ): FunctionalPattern | null {
+    const indicators: PatternIndicator[] = [];
+
+    // Check for error-related symbols
+    const errorSymbols = symbols.filter((s) =>
+      /^(error|exception|handler|catch|fallback)/i.test(s.name)
+    );
+    for (const sym of errorSymbols) {
+      indicators.push({
+        file: sym.location.file,
+        symbol: sym.name,
+        line: sym.location.line,
+        reason: `Error handling symbol: ${sym.name}`,
+      });
+    }
+
+    // Check for error-related files
+    const errorFiles = files.filter((f) =>
+      /\/(errors?|exceptions?)[\./]/i.test(f)
+    );
+    for (const f of errorFiles) {
+      indicators.push({
+        file: f,
+        reason: 'Error handling file path',
+      });
+    }
+
+    if (indicators.length === 0) return null;
+
+    return {
+      type: 'error-handling',
+      confidence: Math.min(1, indicators.length * 0.15),
+      indicators: indicators.slice(0, 10),
+      description: 'Error handling and exception management',
+    };
+  }
+
+  private detectTestingPattern(
+    symbols: ExtractedSymbol[],
+    imports: Array<{ source: string; specifiers: string[]; file: string }>,
+    files: string[]
+  ): FunctionalPattern | null {
+    const indicators: PatternIndicator[] = [];
+
+    // Check for test-related imports
+    const testImports = imports.filter((imp) =>
+      /^(jest|vitest|mocha|chai|@testing-library|cypress|playwright|supertest)/i.test(imp.source)
+    );
+    for (const imp of testImports) {
+      indicators.push({
+        file: imp.file,
+        reason: `Test library import: ${imp.source}`,
+      });
+    }
+
+    // Check for test files
+    const testFiles = files.filter((f) =>
+      /\.(test|spec)\.(ts|tsx|js|jsx)$/.test(f) || /\/__tests__\//.test(f)
+    );
+    for (const f of testFiles.slice(0, 5)) {
+      indicators.push({
+        file: f,
+        reason: 'Test file',
+      });
+    }
+
+    if (indicators.length === 0) return null;
+
+    return {
+      type: 'testing',
+      confidence: Math.min(1, indicators.length * 0.15),
+      indicators: indicators.slice(0, 10),
+      description: 'Testing infrastructure and test files',
+    };
+  }
+
+  /**
+   * Trace execution flow from an entry point
+   * Uses tree-sitter to extract call expressions and build flow graph
+   */
+  async traceFlow(
+    projectPath: string,
+    entryFile: string,
+    entryFunction?: string
+  ): Promise<ExecutionFlow> {
+    const absoluteEntryFile = path.isAbsolute(entryFile)
+      ? entryFile
+      : path.join(projectPath, entryFile);
+
+    const nodes: FlowNode[] = [];
+    const edges: FlowEdge[] = [];
+    const visited = new Set<string>();
+
+    // Analyze entry file
+    const analysis = await this.treeSitter.analyzeFile(absoluteEntryFile);
+
+    // Find entry point
+    let entrySymbol = analysis.symbols[0];
+    if (entryFunction) {
+      const found = analysis.symbols.find(
+        (s) => s.name === entryFunction && (s.kind === 'function' || s.kind === 'method')
+      );
+      if (found) entrySymbol = found;
+    }
+
+    if (!entrySymbol) {
+      return {
+        entryPoint: {
+          file: absoluteEntryFile,
+          symbol: 'unknown',
+          line: 1,
+          type: 'entry',
+        },
+        nodes: [],
+        edges: [],
+        mermaidDiagram: 'flowchart TD\n    A[Entry] --> B[No symbols found]',
+      };
+    }
+
+    const entryNode: FlowNode = {
+      file: absoluteEntryFile,
+      symbol: entrySymbol.name,
+      line: entrySymbol.location.line,
+      type: 'entry',
+    };
+    nodes.push(entryNode);
+
+    // Build flow graph using file content analysis
+    await this.traceCallsFromFile(
+      absoluteEntryFile,
+      entryNode,
+      nodes,
+      edges,
+      visited,
+      projectPath,
+      3 // Max depth
+    );
+
+    // Generate Mermaid diagram
+    const mermaidDiagram = this.generateMermaidDiagram(nodes, edges);
+
+    return {
+      entryPoint: entryNode,
+      nodes,
+      edges,
+      mermaidDiagram,
+    };
+  }
+
+  private async traceCallsFromFile(
+    filePath: string,
+    currentNode: FlowNode,
+    nodes: FlowNode[],
+    edges: FlowEdge[],
+    visited: Set<string>,
+    projectPath: string,
+    maxDepth: number
+  ): Promise<void> {
+    if (maxDepth <= 0) return;
+
+    const nodeKey = `${filePath}:${currentNode.symbol}`;
+    if (visited.has(nodeKey)) return;
+    visited.add(nodeKey);
+
+    try {
+      const content = await fs.readFile(filePath, 'utf-8');
+      const analysis = await this.treeSitter.analyzeFile(filePath);
+
+      // Extract function calls using regex (simple approximation)
+      // This could be enhanced with tree-sitter AST traversal
+      const callPattern = /(\w+)\s*\(/g;
+      let match;
+      const calls: string[] = [];
+
+      while ((match = callPattern.exec(content)) !== null) {
+        const funcName = match[1];
+        // Skip common keywords and built-ins
+        if (!/^(if|for|while|switch|return|await|async|function|const|let|var|new|typeof|instanceof|import|export|class|interface|type)$/.test(funcName)) {
+          if (!calls.includes(funcName)) {
+            calls.push(funcName);
+          }
+        }
+      }
+
+      // Match calls to symbols in the analysis
+      for (const call of calls.slice(0, 20)) {
+        // Check if it's a local symbol
+        const localSymbol = analysis.symbols.find((s) => s.name === call);
+        if (localSymbol) {
+          const callNode: FlowNode = {
+            file: filePath,
+            symbol: call,
+            line: localSymbol.location.line,
+            type: 'call',
+          };
+
+          if (!nodes.find((n) => n.file === callNode.file && n.symbol === callNode.symbol)) {
+            nodes.push(callNode);
+            edges.push({ from: currentNode, to: callNode });
+
+            await this.traceCallsFromFile(
+              filePath,
+              callNode,
+              nodes,
+              edges,
+              visited,
+              projectPath,
+              maxDepth - 1
+            );
+          }
+        }
+
+        // Check if it's an imported symbol
+        for (const imp of analysis.imports) {
+          if (imp.specifiers.includes(call)) {
+            const resolvedPath = this.resolveImportPath(filePath, imp.source, projectPath);
+            if (resolvedPath) {
+              const importedAnalysis = await this.treeSitter.analyzeFile(resolvedPath);
+              const importedSymbol = importedAnalysis.symbols.find((s) => s.name === call);
+
+              if (importedSymbol) {
+                const callNode: FlowNode = {
+                  file: resolvedPath,
+                  symbol: call,
+                  line: importedSymbol.location.line,
+                  type: 'call',
+                };
+
+                if (!nodes.find((n) => n.file === callNode.file && n.symbol === callNode.symbol)) {
+                  nodes.push(callNode);
+                  edges.push({ from: currentNode, to: callNode });
+
+                  await this.traceCallsFromFile(
+                    resolvedPath,
+                    callNode,
+                    nodes,
+                    edges,
+                    visited,
+                    projectPath,
+                    maxDepth - 1
+                  );
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch {
+      // File read or analysis error, skip
+    }
+  }
+
+  private generateMermaidDiagram(nodes: FlowNode[], edges: FlowEdge[]): string {
+    if (nodes.length === 0) {
+      return 'flowchart TD\n    A[No nodes]';
+    }
+
+    const lines: string[] = ['flowchart TD'];
+    const nodeIds = new Map<string, string>();
+
+    // Assign IDs to nodes
+    nodes.forEach((node, index) => {
+      const key = `${node.file}:${node.symbol}`;
+      nodeIds.set(key, `N${index}`);
+    });
+
+    // Add nodes
+    for (const node of nodes) {
+      const key = `${node.file}:${node.symbol}`;
+      const id = nodeIds.get(key)!;
+      const label = `${node.symbol}`;
+      const shape = node.type === 'entry' ? `([${label}])` : `[${label}]`;
+      lines.push(`    ${id}${shape}`);
+    }
+
+    // Add edges
+    for (const edge of edges) {
+      const fromKey = `${edge.from.file}:${edge.from.symbol}`;
+      const toKey = `${edge.to.file}:${edge.to.symbol}`;
+      const fromId = nodeIds.get(fromKey);
+      const toId = nodeIds.get(toKey);
+
+      if (fromId && toId) {
+        const label = edge.label ? `|${edge.label}|` : '';
+        lines.push(`    ${fromId} -->${label} ${toId}`);
+      }
+    }
+
+    return lines.join('\n');
   }
 }
