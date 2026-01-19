@@ -12,6 +12,10 @@ import type { AgentEventCallbacks } from '../ai/agentEvents';
 import type { LLMConfig } from '../../types';
 import { resolveLlmConfig } from '../shared/llmConfig';
 import { createSkillRegistry } from '../../workflow/skills';
+import {
+  getScaffoldStructure,
+  serializeStructureForAI,
+} from '../../generators/shared/scaffoldStructures';
 
 export interface SkillFillCommandFlags {
   output?: string;
@@ -267,6 +271,12 @@ export class SkillFillService {
     console.log(''); // Add spacing before agent output
 
     try {
+      // Load scaffold structure for this skill
+      const scaffoldStructure = getScaffoldStructure(skillSlug);
+      const structureContext = scaffoldStructure
+        ? serializeStructureForAI(scaffoldStructure)
+        : undefined;
+
       const skillAgent = new SkillAgent(llmConfig);
 
       const result = await skillAgent.generateSkill({
@@ -277,7 +287,8 @@ export class SkillFillService {
         agentsContext,
         useSemanticContext: options.useSemanticContext,
         useLSP: options.useLSP,
-        callbacks
+        callbacks,
+        scaffoldStructure: structureContext,
       });
 
       if (!result.text || !result.text.trim()) {

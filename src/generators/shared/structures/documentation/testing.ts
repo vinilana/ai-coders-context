@@ -1,0 +1,55 @@
+import { ScaffoldStructure } from '../types';
+
+export const testingStrategyStructure: ScaffoldStructure = {
+  fileType: 'doc',
+  documentName: 'testing-strategy',
+  title: 'Testing Strategy',
+  description: 'Test frameworks, patterns, coverage requirements, and quality gates',
+  tone: 'instructional',
+  audience: 'developers',
+  sections: [
+    {
+      heading: 'Testing Strategy',
+      order: 1,
+      contentType: 'prose',
+      guidance: 'Document how quality is maintained across the codebase.',
+      required: true,
+      headingLevel: 2,
+    },
+    {
+      heading: 'Test Types',
+      order: 2,
+      contentType: 'list',
+      guidance: 'For Unit, Integration, and E2E tests: list frameworks, file naming conventions, and required tooling.',
+      exampleContent: '- **Unit**: Jest, files named `*.test.ts`\n- **Integration**: Describe scenarios\n- **E2E**: Note harnesses or environments',
+      required: true,
+      headingLevel: 2,
+    },
+    {
+      heading: 'Running Tests',
+      order: 3,
+      contentType: 'list',
+      guidance: 'Commands for running all tests, watch mode, and coverage. Use code blocks.',
+      exampleContent: '- All tests: `npm run test`\n- Watch mode: `npm run test -- --watch`\n- Coverage: `npm run test -- --coverage`',
+      required: true,
+      headingLevel: 2,
+    },
+    {
+      heading: 'Quality Gates',
+      order: 4,
+      contentType: 'list',
+      guidance: 'Define minimum coverage expectations. Capture linting or formatting requirements before merging.',
+      required: true,
+      headingLevel: 2,
+    },
+    {
+      heading: 'Troubleshooting',
+      order: 5,
+      contentType: 'prose',
+      guidance: 'Document flaky suites, long-running tests, or environment quirks.',
+      required: false,
+      headingLevel: 2,
+    },
+  ],
+  linkTo: ['development-workflow.md'],
+};

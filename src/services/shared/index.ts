@@ -43,7 +43,9 @@ export {
 // Path Helpers
 export {
   ContextPaths,
+  ContextPathsWithResolution,
   resolveContextPaths,
+  resolveContextPathsAsync,
   resolveAbsolutePath,
   ensureDirectory,
   ensureParentDirectory,
@@ -57,3 +59,51 @@ export {
   getBasename,
   joinPaths,
 } from './pathHelpers';
+
+// Context Root Resolver
+export {
+  SimpleContextResult,
+  ContextResolutionResult,
+  resolveContextPath,
+  resolveSimpleContext,
+  resolveContextRoot,
+  getContextPath as getContextPathResolved,
+  getProjectRoot,
+} from './contextRootResolver';
+
+// Tool Registry
+export {
+  ToolCapabilities,
+  ToolPaths,
+  ToolDefinition,
+  TOOL_REGISTRY,
+  getToolById,
+  getAllToolIds,
+  getToolsWithCapability,
+  getToolIdFromPath,
+  getToolDisplayName,
+  getToolCapabilities,
+  getDirectoryPrefixMap,
+  getDisplayNameMap,
+  getCapabilitiesMap,
+  getRulesExportPresets,
+  getAgentsSyncPresets,
+  getSkillsExportPresets,
+  getRulesImportSources,
+  getAgentsImportSources,
+  getSkillsImportSources,
+} from './toolRegistry';
+
+// Content Type Registry
+export {
+  ContentType,
+  CONTENT_TYPE_REGISTRY,
+  getContentType,
+  getExportableContentTypes,
+  getImportableContentTypes,
+  getContentTypeIds,
+  hasContentType,
+  registerContentType,
+  getContextPath,
+  getIndexFile,
+} from './contentTypeRegistry';

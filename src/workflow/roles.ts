@@ -23,6 +23,8 @@ export const PREVC_ROLES = [
 
 /**
  * Mapping from PREVC roles to existing agent types (specialists)
+ * @deprecated Use ROLE_TO_AGENTS from orchestration/agentOrchestrator instead.
+ * This mapping is kept for backward compatibility.
  */
 export const ROLE_TO_SPECIALISTS: Record<PrevcRole, string[]> = {
   planner: [], // New role, no existing mapping
@@ -43,6 +45,8 @@ export const ROLE_TO_SPECIALISTS: Record<PrevcRole, string[]> = {
 
 /**
  * Mapping from existing agent types to PREVC roles
+ * @deprecated Use agent-based tracking instead of role-based.
+ * This mapping is kept for backward compatibility.
  */
 export const SPECIALIST_TO_ROLE: Record<string, PrevcRole> = {
   'frontend-specialist': 'designer',
@@ -103,6 +107,7 @@ export function isValidRole(role: string): role is PrevcRole {
 
 /**
  * Get the PREVC role for an existing agent type
+ * @deprecated Use agent-based tracking instead of role-based.
  */
 export function getRoleForSpecialist(specialist: string): PrevcRole | null {
   return SPECIALIST_TO_ROLE[specialist] || null;
@@ -110,6 +115,7 @@ export function getRoleForSpecialist(specialist: string): PrevcRole | null {
 
 /**
  * Get all specialists for a PREVC role
+ * @deprecated Use ROLE_TO_AGENTS from orchestration/agentOrchestrator instead.
  */
 export function getSpecialistsForRole(role: PrevcRole): string[] {
   return ROLE_TO_SPECIALISTS[role] || [];

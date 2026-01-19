@@ -12,13 +12,21 @@ import {
   PrevcRole,
   PhaseUpdate,
   RoleUpdate,
+  AgentUpdate,
   ProjectScale,
   PhaseStatus,
   RoleStatus,
+  AgentStatus,
+  WorkflowSettings,
+  PlanApproval,
+  ExecutionHistory,
+  ExecutionHistoryEntry,
+  ExecutionAction,
 } from '../types';
 import { PREVC_PHASE_ORDER } from '../phases';
 import { getScaleRoute } from '../scaling';
-import { createInitialStatus } from './templates';
+import { createInitialStatus, generateResumeContext } from './templates';
+import { getDefaultSettings } from '../gates';
 
 /**
  * Default status file path relative to .context directory
@@ -57,7 +65,10 @@ export class PrevcStatusManager {
 
     const content = await fs.readFile(this.statusPath, 'utf-8');
     // Parse YAML manually (simple format)
-    this.cachedStatus = this.parseYaml(content);
+    let status = this.parseYaml(content);
+    // Apply migration for existing workflows
+    status = this.migrateStatus(status);
+    this.cachedStatus = status;
     return this.cachedStatus;
   }
 
@@ -74,7 +85,10 @@ export class PrevcStatusManager {
     }
 
     const content = fs.readFileSync(this.statusPath, 'utf-8');
-    this.cachedStatus = this.parseYaml(content);
+    let status = this.parseYaml(content);
+    // Apply migration for existing workflows
+    status = this.migrateStatus(status);
+    this.cachedStatus = status;
     return this.cachedStatus;
   }
 
@@ -130,6 +144,7 @@ export class PrevcStatusManager {
 
   /**
    * Update a role's status
+   * @deprecated Use updateAgent instead
    */
   async updateRole(role: PrevcRole, update: RoleUpdate): Promise<void> {
     const status = await this.load();
@@ -147,10 +162,46 @@ export class PrevcStatusManager {
   }
 
   /**
+   * Update an agent's status (replaces updateRole)
+   */
+  async updateAgent(agentName: string, update: AgentUpdate): Promise<void> {
+    const status = await this.load();
+    const now = new Date().toISOString();
+
+    // Initialize agents if not present
+    if (!status.agents) {
+      status.agents = {};
+    }
+
+    const existingAgent = status.agents[agentName];
+
+    // Build agent status
+    const agentStatus: AgentStatus = {
+      status: update.status ?? existingAgent?.status ?? 'pending',
+      started_at: existingAgent?.started_at,
+      completed_at: existingAgent?.completed_at,
+      outputs: update.outputs ?? existingAgent?.outputs,
+    };
+
+    // Track timestamps based on status changes
+    if (update.status === 'in_progress' && !existingAgent?.started_at) {
+      agentStatus.started_at = now;
+    }
+    if (update.status === 'completed' && !existingAgent?.completed_at) {
+      agentStatus.completed_at = now;
+    }
+
+    status.agents[agentName] = agentStatus;
+
+    await this.save(status);
+  }
+
+  /**
    * Transition to a new phase
    */
   async transitionToPhase(phase: PrevcPhase): Promise<void> {
     const status = await this.load();
+    const now = new Date().toISOString();
 
     // Update current phase
     status.project.current_phase = phase;
@@ -159,8 +210,24 @@ export class PrevcStatusManager {
     status.phases[phase] = {
       ...status.phases[phase],
       status: 'in_progress',
-      started_at: new Date().toISOString(),
+      started_at: now,
     };
+
+    // Add history entry
+    if (!status.execution) {
+      status.execution = {
+        history: [],
+        last_activity: now,
+        resume_context: '',
+      };
+    }
+    status.execution.history.push({
+      timestamp: now,
+      phase,
+      action: 'started',
+    });
+    status.execution.last_activity = now;
+    status.execution.resume_context = generateResumeContext(phase, 'started');
 
     await this.save(status);
   }
@@ -173,11 +240,12 @@ export class PrevcStatusManager {
     outputs?: string[]
   ): Promise<void> {
     const status = await this.load();
+    const now = new Date().toISOString();
 
     const phaseStatus: PhaseStatus = {
       ...status.phases[phase],
       status: 'completed',
-      completed_at: new Date().toISOString(),
+      completed_at: now,
     };
 
     if (outputs) {
@@ -185,6 +253,23 @@ export class PrevcStatusManager {
     }
 
     status.phases[phase] = phaseStatus;
+
+    // Add history entry
+    if (!status.execution) {
+      status.execution = {
+        history: [],
+        last_activity: now,
+        resume_context: '',
+      };
+    }
+    status.execution.history.push({
+      timestamp: now,
+      phase,
+      action: 'completed',
+    });
+    status.execution.last_activity = now;
+    status.execution.resume_context = generateResumeContext(phase, 'completed');
+
     await this.save(status);
   }
 
@@ -250,6 +335,295 @@ export class PrevcStatusManager {
   }
 
   /**
+   * Set workflow settings
+   */
+  async setSettings(settings: Partial<WorkflowSettings>): Promise<WorkflowSettings> {
+    const status = await this.load();
+    const defaults = getDefaultSettings(status.project.scale);
+
+    const currentSettings = status.project.settings || defaults;
+    const newSettings: WorkflowSettings = {
+      autonomous_mode: settings.autonomous_mode ?? currentSettings.autonomous_mode,
+      require_plan: settings.require_plan ?? currentSettings.require_plan,
+      require_approval: settings.require_approval ?? currentSettings.require_approval,
+    };
+
+    status.project.settings = newSettings;
+    await this.save(status);
+    return newSettings;
+  }
+
+  /**
+   * Get workflow settings (with defaults applied)
+   */
+  async getSettings(): Promise<WorkflowSettings> {
+    const status = await this.load();
+    const defaults = getDefaultSettings(status.project.scale);
+    return status.project.settings || defaults;
+  }
+
+  /**
+   * Mark that a plan has been created/linked
+   */
+  async markPlanCreated(planSlug: string): Promise<void> {
+    const status = await this.load();
+    const now = new Date().toISOString();
+
+    if (!status.approval) {
+      status.approval = {
+        plan_created: false,
+        plan_approved: false,
+      };
+    }
+
+    status.approval.plan_created = true;
+    status.project.plan = planSlug;
+
+    // Add history entry
+    if (!status.execution) {
+      status.execution = {
+        history: [],
+        last_activity: now,
+        resume_context: '',
+      };
+    }
+    status.execution.history.push({
+      timestamp: now,
+      phase: status.project.current_phase,
+      action: 'plan_linked',
+      plan: planSlug,
+    });
+    status.execution.last_activity = now;
+    status.execution.resume_context = generateResumeContext(status.project.current_phase, 'plan_linked');
+
+    await this.save(status);
+  }
+
+  /**
+   * Approve the plan
+   */
+  async approvePlan(approver: PrevcRole | string, notes?: string): Promise<PlanApproval> {
+    const status = await this.load();
+    const now = new Date().toISOString();
+
+    if (!status.approval) {
+      status.approval = {
+        plan_created: false,
+        plan_approved: false,
+      };
+    }
+
+    status.approval.plan_approved = true;
+    status.approval.approved_by = approver;
+    status.approval.approved_at = now;
+    if (notes) {
+      status.approval.approval_notes = notes;
+    }
+
+    // Add history entry
+    if (!status.execution) {
+      status.execution = {
+        history: [],
+        last_activity: now,
+        resume_context: '',
+      };
+    }
+    status.execution.history.push({
+      timestamp: now,
+      phase: status.project.current_phase,
+      action: 'plan_approved',
+      approved_by: String(approver),
+    });
+    status.execution.last_activity = now;
+    status.execution.resume_context = generateResumeContext(status.project.current_phase, 'plan_approved');
+
+    await this.save(status);
+    return status.approval;
+  }
+
+  /**
+   * Get approval status
+   */
+  async getApproval(): Promise<PlanApproval | undefined> {
+    const status = await this.load();
+    return status.approval;
+  }
+
+  /**
+   * Add an entry to the execution history
+   */
+  async addHistoryEntry(entry: Omit<ExecutionHistoryEntry, 'timestamp'>): Promise<void> {
+    const status = await this.load();
+    const now = new Date().toISOString();
+
+    // Ensure execution exists
+    if (!status.execution) {
+      status.execution = {
+        history: [],
+        last_activity: now,
+        resume_context: '',
+      };
+    }
+
+    // Add new entry
+    const fullEntry: ExecutionHistoryEntry = {
+      ...entry,
+      timestamp: now,
+    };
+    status.execution.history.push(fullEntry);
+    status.execution.last_activity = now;
+    status.execution.resume_context = generateResumeContext(entry.phase, entry.action);
+
+    await this.save(status);
+  }
+
+  /**
+   * Add a step-level entry to the execution history (breadcrumb trail)
+   */
+  async addStepHistoryEntry(entry: {
+    action: 'step_started' | 'step_completed' | 'step_skipped';
+    plan: string;
+    planPhase: string;
+    stepIndex: number;
+    stepDescription?: string;
+    output?: string;
+    notes?: string;
+  }): Promise<void> {
+    const status = await this.load();
+    const now = new Date().toISOString();
+
+    // Ensure execution exists
+    if (!status.execution) {
+      status.execution = {
+        history: [],
+        last_activity: now,
+        resume_context: '',
+      };
+    }
+
+    // Add new step entry
+    const fullEntry: ExecutionHistoryEntry = {
+      timestamp: now,
+      phase: status.project.current_phase,
+      action: entry.action,
+      plan: entry.plan,
+      planPhase: entry.planPhase,
+      stepIndex: entry.stepIndex,
+      stepDescription: entry.stepDescription,
+      output: entry.output,
+      notes: entry.notes,
+    };
+    status.execution.history.push(fullEntry);
+    status.execution.last_activity = now;
+    status.execution.resume_context = generateResumeContext(
+      status.project.current_phase,
+      entry.action,
+      { planPhase: entry.planPhase, stepIndex: entry.stepIndex, stepDescription: entry.stepDescription }
+    );
+
+    await this.save(status);
+  }
+
+  /**
+   * Get execution history
+   */
+  async getExecutionHistory(): Promise<ExecutionHistory | undefined> {
+    const status = await this.load();
+    return status.execution;
+  }
+
+  /**
+   * Apply migration logic for existing workflows
+   * - Add default settings based on scale
+   * - Initialize approval tracking based on current state
+   * - Initialize execution history for old workflows
+   * - Initialize agents object for old workflows
+   */
+  private migrateStatus(status: PrevcStatus): PrevcStatus {
+    // Add default settings if missing
+    if (!status.project.settings) {
+      status.project.settings = getDefaultSettings(status.project.scale);
+    }
+
+    // Initialize agents if missing (migration from old workflows)
+    if (!status.agents) {
+      status.agents = {};
+    }
+
+    // Initialize approval tracking if missing
+    if (!status.approval) {
+      const hasPlan = Boolean(status.project.plan || (status.project.plans && status.project.plans.length > 0));
+      const isPastReview = ['E', 'V', 'C'].includes(status.project.current_phase) ||
+        status.phases['R'].status === 'completed';
+
+      status.approval = {
+        plan_created: hasPlan,
+        // Auto-approve if already past R phase (grandfather clause)
+        plan_approved: isPastReview,
+        approved_by: isPastReview ? 'system-migration' : undefined,
+        approved_at: isPastReview ? new Date().toISOString() : undefined,
+      };
+    }
+
+    // Initialize execution history if missing (migration from old workflows)
+    if (!status.execution) {
+      const now = new Date().toISOString();
+      const currentPhase = status.project.current_phase;
+      const history: ExecutionHistoryEntry[] = [];
+
+      // Reconstruct history from phase data
+      for (const phase of PREVC_PHASE_ORDER) {
+        const phaseStatus = status.phases[phase];
+        if (phaseStatus.started_at) {
+          history.push({
+            timestamp: phaseStatus.started_at,
+            phase,
+            action: 'started',
+          });
+        }
+        if (phaseStatus.completed_at) {
+          history.push({
+            timestamp: phaseStatus.completed_at,
+            phase,
+            action: 'completed',
+          });
+        }
+        if (phaseStatus.status === 'skipped') {
+          history.push({
+            timestamp: now,
+            phase,
+            action: 'phase_skipped',
+          });
+        }
+      }
+
+      // Sort by timestamp
+      history.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+
+      // Determine resume context based on current state
+      let resumeContext = generateResumeContext(currentPhase, 'started');
+      if (status.approval?.plan_approved) {
+        resumeContext = generateResumeContext(currentPhase, 'plan_approved');
+      } else if (status.approval?.plan_created) {
+        resumeContext = generateResumeContext(currentPhase, 'plan_linked');
+      }
+
+      status.execution = {
+        history: history.length > 0 ? history : [{
+          timestamp: status.project.started || now,
+          phase: currentPhase,
+          action: 'started',
+          description: 'Migrated from legacy workflow',
+        }],
+        last_activity: history.length > 0 ? history[history.length - 1].timestamp : now,
+        resume_context: resumeContext,
+      };
+    }
+
+    return status;
+  }
+
+  /**
    * Parse YAML content to PrevcStatus object
    * Simple implementation for the specific format
    */
@@ -270,12 +644,14 @@ export class PrevcStatusManager {
         V: { status: 'pending' },
         C: { status: 'pending' },
       },
+      agents: {},
       roles: {},
     };
 
     let currentSection = '';
     let currentPhase = '';
     let currentRole = '';
+    let currentAgent = '';
 
     for (const line of lines) {
       const trimmed = line.trim();
@@ -285,8 +661,16 @@ export class PrevcStatusManager {
         currentSection = 'project';
       } else if (line.startsWith('phases:')) {
         currentSection = 'phases';
+      } else if (line.startsWith('agents:')) {
+        currentSection = 'agents';
       } else if (line.startsWith('roles:')) {
         currentSection = 'roles';
+      } else if (line.startsWith('settings:')) {
+        currentSection = 'settings';
+      } else if (line.startsWith('approval:')) {
+        currentSection = 'approval';
+      } else if (line.startsWith('execution:')) {
+        currentSection = 'execution';
       } else if (currentSection === 'project' && line.startsWith('  ')) {
         const [key, ...valueParts] = trimmed.split(':');
         const value = valueParts.join(':').trim().replace(/^["']|["']$/g, '');
@@ -297,7 +681,7 @@ export class PrevcStatusManager {
             SMALL: ProjectScale.SMALL,
             MEDIUM: ProjectScale.MEDIUM,
             LARGE: ProjectScale.LARGE,
-            ENTERPRISE: ProjectScale.ENTERPRISE,
+            ENTERPRISE: ProjectScale.LARGE, // Legacy migration - map to LARGE
           };
           result.project.scale = scaleMap[value] ?? ProjectScale.MEDIUM;
         }
@@ -327,6 +711,39 @@ export class PrevcStatusManager {
             result.phases[currentPhase as PrevcPhase].reason = value;
           }
         }
+      } else if (currentSection === 'agents') {
+        if (line.match(/^  [a-z-]+:/)) {
+          currentAgent = trimmed.replace(':', '');
+          result.agents[currentAgent] = { status: 'pending' };
+        } else if (currentAgent && line.startsWith('    ')) {
+          const [key, ...valueParts] = trimmed.split(':');
+          const value = valueParts.join(':').trim().replace(/^["']|["']$/g, '');
+          const agentStatus = result.agents[currentAgent] || { status: 'pending' };
+          if (key === 'status') {
+            agentStatus.status = value as
+              | 'pending'
+              | 'in_progress'
+              | 'completed'
+              | 'skipped';
+          }
+          if (key === 'started_at') {
+            agentStatus.started_at = value;
+          }
+          if (key === 'completed_at') {
+            agentStatus.completed_at = value;
+          }
+          // Parse outputs array (simplified - single line format: [a, b, c])
+          if (key === 'outputs') {
+            const outputsMatch = value.match(/^\[(.*)\]$/);
+            if (outputsMatch) {
+              agentStatus.outputs = outputsMatch[1]
+                .split(',')
+                .map(s => s.trim().replace(/^["']|["']$/g, ''))
+                .filter(s => s);
+            }
+          }
+          result.agents[currentAgent] = agentStatus;
+        }
       } else if (currentSection === 'roles') {
         if (line.match(/^  [a-z-]+:/)) {
           currentRole = trimmed.replace(':', '') as PrevcRole;
@@ -353,6 +770,67 @@ export class PrevcStatusManager {
           }
           result.roles[currentRole as PrevcRole] = roleStatus;
         }
+      } else if (currentSection === 'settings' && line.startsWith('  ')) {
+        if (!result.project.settings) {
+          result.project.settings = {
+            autonomous_mode: false,
+            require_plan: true,
+            require_approval: true,
+          };
+        }
+        const [key, ...valueParts] = trimmed.split(':');
+        const value = valueParts.join(':').trim().replace(/^["']|["']$/g, '');
+        if (key === 'autonomous_mode') {
+          result.project.settings.autonomous_mode = value === 'true';
+        }
+        if (key === 'require_plan') {
+          result.project.settings.require_plan = value === 'true';
+        }
+        if (key === 'require_approval') {
+          result.project.settings.require_approval = value === 'true';
+        }
+      } else if (currentSection === 'approval' && line.startsWith('  ')) {
+        if (!result.approval) {
+          result.approval = {
+            plan_created: false,
+            plan_approved: false,
+          };
+        }
+        const [key, ...valueParts] = trimmed.split(':');
+        const value = valueParts.join(':').trim().replace(/^["']|["']$/g, '');
+        if (key === 'plan_created') {
+          result.approval.plan_created = value === 'true';
+        }
+        if (key === 'plan_approved') {
+          result.approval.plan_approved = value === 'true';
+        }
+        if (key === 'approved_by') {
+          result.approval.approved_by = value || undefined;
+        }
+        if (key === 'approved_at') {
+          result.approval.approved_at = value || undefined;
+        }
+        if (key === 'approval_notes') {
+          result.approval.approval_notes = value || undefined;
+        }
+      } else if (currentSection === 'execution' && line.startsWith('  ')) {
+        if (!result.execution) {
+          result.execution = {
+            history: [],
+            last_activity: '',
+            resume_context: '',
+          };
+        }
+        const [key, ...valueParts] = trimmed.split(':');
+        const value = valueParts.join(':').trim().replace(/^["']|["']$/g, '');
+        if (key === 'last_activity') {
+          result.execution.last_activity = value;
+        }
+        if (key === 'resume_context') {
+          result.execution.resume_context = value;
+        }
+        // Note: history parsing is simplified - for complex arrays, use a YAML library
+        // History entries are primarily written by the system, not manually edited
       }
     }
 
@@ -408,10 +886,45 @@ export class PrevcStatusManager {
     }
     lines.push('');
 
-    // Roles section
-    lines.push('roles:');
-    for (const [role, roleStatus] of Object.entries(status.roles)) {
-      if (roleStatus) {
+    // Agents section (replaces roles as primary tracking)
+    const agentsWithData: Array<[string, AgentStatus]> = [];
+    if (status.agents) {
+      for (const [agentName, agentStatus] of Object.entries(status.agents)) {
+        if (agentStatus) {
+          agentsWithData.push([agentName, agentStatus]);
+        }
+      }
+    }
+    if (agentsWithData.length > 0) {
+      lines.push('agents:');
+      for (const [agentName, agentStatus] of agentsWithData) {
+        lines.push(`  ${agentName}:`);
+        lines.push(`    status: ${agentStatus.status}`);
+        if (agentStatus.started_at) {
+          lines.push(`    started_at: "${agentStatus.started_at}"`);
+        }
+        if (agentStatus.completed_at) {
+          lines.push(`    completed_at: "${agentStatus.completed_at}"`);
+        }
+        if (agentStatus.outputs && agentStatus.outputs.length > 0) {
+          lines.push(`    outputs: [${agentStatus.outputs.map((o) => `"${o}"`).join(', ')}]`);
+        }
+      }
+      lines.push('');
+    }
+
+    // Roles section (legacy - kept for backward compatibility)
+    const rolesWithData: Array<[string, RoleStatus]> = [];
+    if (status.roles) {
+      for (const [role, roleStatus] of Object.entries(status.roles)) {
+        if (roleStatus && Object.keys(roleStatus).length > 0) {
+          rolesWithData.push([role, roleStatus]);
+        }
+      }
+    }
+    if (rolesWithData.length > 0) {
+      lines.push('roles:');
+      for (const [role, roleStatus] of rolesWithData) {
         lines.push(`  ${role}:`);
         if (roleStatus.status) {
           lines.push(`    status: ${roleStatus.status}`);
@@ -429,6 +942,88 @@ export class PrevcStatusManager {
           lines.push(`    outputs: [${roleStatus.outputs.map((o) => `"${o}"`).join(', ')}]`);
         }
       }
+      lines.push('');
+    }
+
+    // Execution section (new - replaces roles as primary tracking)
+    if (status.execution && status.execution.history.length > 0) {
+      lines.push('execution:');
+      lines.push('  history:');
+      for (const entry of status.execution.history) {
+        lines.push(`    - timestamp: "${entry.timestamp}"`);
+        lines.push(`      phase: ${entry.phase}`);
+        lines.push(`      action: ${entry.action}`);
+        if (entry.plan) {
+          lines.push(`      plan: "${entry.plan}"`);
+        }
+        if (entry.approved_by) {
+          lines.push(`      approved_by: "${entry.approved_by}"`);
+        }
+        if (entry.description) {
+          lines.push(`      description: "${entry.description}"`);
+        }
+        // Step-level breadcrumb fields
+        if (entry.planPhase) {
+          lines.push(`      planPhase: "${entry.planPhase}"`);
+        }
+        if (entry.stepIndex !== undefined) {
+          lines.push(`      stepIndex: ${entry.stepIndex}`);
+        }
+        if (entry.stepDescription) {
+          lines.push(`      stepDescription: "${entry.stepDescription}"`);
+        }
+        if (entry.output) {
+          lines.push(`      output: "${entry.output}"`);
+        }
+        if (entry.notes) {
+          lines.push(`      notes: "${entry.notes}"`);
+        }
+      }
+      lines.push(`  last_activity: "${status.execution.last_activity}"`);
+      lines.push(`  resume_context: "${status.execution.resume_context}"`);
+      lines.push('');
+    }
+
+    // Settings section
+    const defaultSettings = getDefaultSettings(status.project.scale);
+    const settings = status.project.settings;
+    const shouldWriteSettings = settings
+      && (
+        settings.autonomous_mode !== defaultSettings.autonomous_mode ||
+        settings.require_plan !== defaultSettings.require_plan ||
+        settings.require_approval !== defaultSettings.require_approval
+      );
+    if (shouldWriteSettings && settings) {
+      lines.push('settings:');
+      lines.push(`  autonomous_mode: ${settings.autonomous_mode}`);
+      lines.push(`  require_plan: ${settings.require_plan}`);
+      lines.push(`  require_approval: ${settings.require_approval}`);
+      lines.push('');
+    }
+
+    // Approval section
+    const approval = status.approval;
+    const shouldWriteApproval = approval && (
+      approval.plan_created ||
+      approval.plan_approved ||
+      Boolean(approval.approved_by) ||
+      Boolean(approval.approved_at) ||
+      Boolean(approval.approval_notes)
+    );
+    if (shouldWriteApproval && approval) {
+      lines.push('approval:');
+      lines.push(`  plan_created: ${approval.plan_created}`);
+      lines.push(`  plan_approved: ${approval.plan_approved}`);
+      if (approval.approved_by) {
+        lines.push(`  approved_by: "${approval.approved_by}"`);
+      }
+      if (approval.approved_at) {
+        lines.push(`  approved_at: "${approval.approved_at}"`);
+      }
+      if (approval.approval_notes) {
+        lines.push(`  approval_notes: "${approval.approval_notes}"`);
+      }
+      lines.push('');
     }
 
     return lines.join('\n') + '\n';

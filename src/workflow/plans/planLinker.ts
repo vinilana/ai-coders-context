@@ -14,9 +14,14 @@ import {
   PlanDecision,
   WorkflowPlans,
   PLAN_PHASE_TO_PREVC,
+  StepExecution,
+  PlanPhaseTracking,
+  PlanExecutionTracking,
 } from './types';
 import { PrevcPhase, StatusType } from '../types';
 import { AgentRegistry, AgentMetadata, createAgentRegistry } from '../agents';
+import { PrevcStatusManager } from '../status/statusManager';
+import { GitService } from '../../utils/gitService';
 
 /**
  * Plan Linker class
@@ -35,13 +40,43 @@ export class PlanLinker {
   private readonly plansPath: string;
   private readonly workflowPath: string;
   private readonly agentRegistry: AgentRegistry;
+  private readonly statusManager?: PrevcStatusManager;
+  private readonly autoCommitOnPhaseComplete: boolean;
 
-  constructor(repoPath: string) {
+  constructor(repoPath: string, statusManager?: PrevcStatusManager, autoCommitOnPhaseComplete: boolean = true) {
     this.repoPath = repoPath;
     this.contextPath = path.join(repoPath, '.context');
     this.plansPath = path.join(this.contextPath, 'plans');
     this.workflowPath = path.join(this.contextPath, 'workflow');
     this.agentRegistry = createAgentRegistry(repoPath);
+    this.statusManager = statusManager;
+    this.autoCommitOnPhaseComplete = autoCommitOnPhaseComplete;
+  }
+
+  /**
+   * Create a PlanLinker with the given repository path
+   */
+  static async create(
+    repoPath: string = process.cwd(),
+    statusManager?: PrevcStatusManager,
+    autoCommitOnPhaseComplete: boolean = true
+  ): Promise<PlanLinker> {
+    return new PlanLinker(repoPath, statusManager, autoCommitOnPhaseComplete);
+  }
+
+  /**
+   * Ensure workflow plan index exists
+   */
+  async ensureWorkflowPlanIndex(): Promise<void> {
+    const plansFile = path.join(this.workflowPath, 'plans.json');
+
+    if (await fs.pathExists(plansFile)) {
+      return;
+    }
+
+    await fs.ensureDir(this.workflowPath);
+    const initialPlans: WorkflowPlans = { active: [], completed: [] };
+    await fs.writeFile(plansFile, JSON.stringify(initialPlans, null, 2), 'utf-8');
   }
 
   /**
@@ -194,6 +229,17 @@ export class PlanLinker {
     await fs.ensureDir(path.dirname(trackingFile));
     await fs.writeFile(trackingFile, JSON.stringify(tracking, null, 2), 'utf-8');
 
+    // Log phase update to workflow execution history
+    if (this.statusManager) {
+      const currentPhase = await this.statusManager.getCurrentPhase();
+      await this.statusManager.addHistoryEntry({
+        phase: currentPhase,
+        action: 'plan_phase_updated',
+        plan: planSlug,
+        description: `Plan phase ${phaseId} updated to ${status}`,
+      });
+    }
+
     return true;
   }
 
@@ -230,6 +276,17 @@ export class PlanLinker {
 
     await fs.ensureDir(path.dirname(trackingFile));
     await fs.writeFile(trackingFile, JSON.stringify(tracking, null, 2), 'utf-8');
+
+    // Log decision to workflow execution history
+    if (this.statusManager) {
+      const currentPhase = await this.statusManager.getCurrentPhase();
+      await this.statusManager.addHistoryEntry({
+        phase: decision.phase || currentPhase,
+        action: 'decision_recorded',
+        plan: planSlug,
+        description: `Decision recorded: ${decision.title}`,
+      });
+    }
 
     return fullDecision;
   }
@@ -286,6 +343,458 @@ export class PlanLinker {
       overall: plan.progress,
       byPhase,
     };
+  }
+
+  /**
+   * Update individual step status within a plan phase
+   */
+  async updatePlanStep(
+    planSlug: string,
+    phaseId: string,
+    stepIndex: number,
+    status: StatusType,
+    options?: {
+      output?: string;
+      notes?: string;
+    }
+  ): Promise<boolean> {
+    const trackingFile = path.join(this.workflowPath, 'plan-tracking', `${planSlug}.json`);
+    const now = new Date().toISOString();
+
+    // Load existing tracking or create new
+    let tracking = await this.loadPlanTracking(planSlug);
+    if (!tracking) {
+      tracking = {
+        planSlug,
+        progress: 0,
+        phases: {},
+        decisions: [],
+        lastUpdated: now,
+      };
+    }
+
+    // Ensure phase exists in tracking
+    if (!tracking.phases[phaseId]) {
+      tracking.phases[phaseId] = {
+        phaseId,
+        status: 'in_progress',
+        startedAt: now,
+        steps: [],
+      };
+    }
+
+    // Find or create step entry
+    let step = tracking.phases[phaseId].steps.find(s => s.stepIndex === stepIndex);
+    if (!step) {
+      // Get step description from the plan if possible
+      const plan = await this.getLinkedPlan(planSlug);
+      const planPhase = plan?.phases.find(p => p.id === phaseId);
+      const planStep = planPhase?.steps.find(s => s.order === stepIndex);
+
+      step = {
+        stepIndex,
+        description: planStep?.description || `Step ${stepIndex}`,
+        status: 'pending',
+      };
+      tracking.phases[phaseId].steps.push(step);
+    }
+
+    // Update step status and timestamps
+    step.status = status;
+    if (status === 'in_progress' && !step.startedAt) {
+      step.startedAt = now;
+    }
+    if (status === 'completed') {
+      step.completedAt = now;
+    }
+    if (options?.output) {
+      step.output = options.output;
+    }
+    if (options?.notes) {
+      step.notes = options.notes;
+    }
+
+    // Update phase status based on steps
+    const phaseSteps = tracking.phases[phaseId].steps;
+    const allStepsCompleted = phaseSteps.length > 0 && phaseSteps.every(s => s.status === 'completed');
+    const anyStepInProgress = phaseSteps.some(s => s.status === 'in_progress');
+
+    if (allStepsCompleted) {
+      tracking.phases[phaseId].status = 'completed';
+      tracking.phases[phaseId].completedAt = now;
+
+      // Auto-commit on phase completion
+      if (this.autoCommitOnPhaseComplete) {
+        await this.autoCommitPhase(planSlug, phaseId);
+      }
+    } else if (anyStepInProgress || phaseSteps.some(s => s.status === 'completed')) {
+      tracking.phases[phaseId].status = 'in_progress';
+    }
+
+    // Recalculate overall progress
+    tracking.progress = this.calculateStepProgress(tracking);
+    tracking.lastUpdated = now;
+
+    // Save tracking
+    await fs.ensureDir(path.dirname(trackingFile));
+    await fs.writeFile(trackingFile, JSON.stringify(tracking, null, 2), 'utf-8');
+
+    // Log step to workflow execution history (breadcrumb trail)
+    if (this.statusManager) {
+      const action = status === 'completed' ? 'step_completed' :
+                     status === 'in_progress' ? 'step_started' :
+                     status === 'skipped' ? 'step_skipped' : null;
+      if (action) {
+        await this.statusManager.addStepHistoryEntry({
+          action,
+          plan: planSlug,
+          planPhase: phaseId,
+          stepIndex,
+          stepDescription: step.description,
+          output: options?.output,
+          notes: options?.notes,
+        });
+      }
+    }
+
+    // Auto-sync to markdown
+    await this.syncPlanMarkdown(planSlug);
+
+    return true;
+  }
+
+  /**
+   * Get detailed execution status for a plan including all steps
+   */
+  async getPlanExecutionStatus(planSlug: string): Promise<PlanExecutionTracking | null> {
+    return this.loadPlanTracking(planSlug);
+  }
+
+  /**
+   * Sync tracking data back to the plan markdown file
+   * Updates checkboxes, timestamps, and adds execution history section
+   */
+  async syncPlanMarkdown(planSlug: string): Promise<boolean> {
+    const planPath = path.join(this.plansPath, `${planSlug}.md`);
+    const tracking = await this.loadPlanTracking(planSlug);
+
+    if (!tracking || !await fs.pathExists(planPath)) {
+      return false;
+    }
+
+    let content = await fs.readFile(planPath, 'utf-8');
+
+    // Update frontmatter with progress and phase statuses
+    content = this.updateFrontmatterProgress(content, tracking);
+
+    // Update step checkboxes in markdown body
+    content = this.updateStepCheckboxes(content, tracking);
+
+    // Add/update execution history section
+    content = this.updateExecutionHistorySection(content, tracking);
+
+    await fs.writeFile(planPath, content, 'utf-8');
+    return true;
+  }
+
+  /**
+   * Record commit information for a completed phase
+   */
+  async recordPhaseCommit(
+    planSlug: string,
+    phaseId: string,
+    commitInfo: {
+      hash: string;
+      shortHash: string;
+      committedBy?: string;
+    }
+  ): Promise<boolean> {
+    const trackingFile = path.join(this.workflowPath, 'plan-tracking', `${planSlug}.json`);
+    const now = new Date().toISOString();
+
+    // Load existing tracking
+    let tracking = await this.loadPlanTracking(planSlug);
+    if (!tracking) {
+      return false;
+    }
+
+    // Ensure phase exists in tracking
+    if (!tracking.phases[phaseId]) {
+      return false;
+    }
+
+    // Record commit info
+    tracking.phases[phaseId].commitHash = commitInfo.hash;
+    tracking.phases[phaseId].commitShortHash = commitInfo.shortHash;
+    tracking.phases[phaseId].committedAt = now;
+    if (commitInfo.committedBy) {
+      tracking.phases[phaseId].committedBy = commitInfo.committedBy;
+    }
+
+    tracking.lastUpdated = now;
+
+    // Save tracking
+    await fs.ensureDir(path.dirname(trackingFile));
+    await fs.writeFile(trackingFile, JSON.stringify(tracking, null, 2), 'utf-8');
+
+    // Sync to markdown
+    await this.syncPlanMarkdown(planSlug);
+
+    return true;
+  }
+
+  /**
+   * Load plan tracking from JSON file
+   */
+  private async loadPlanTracking(planSlug: string): Promise<PlanExecutionTracking | null> {
+    const trackingFile = path.join(this.workflowPath, 'plan-tracking', `${planSlug}.json`);
+
+    if (!await fs.pathExists(trackingFile)) {
+      return null;
+    }
+
+    try {
+      const content = await fs.readFile(trackingFile, 'utf-8');
+      const data = JSON.parse(content);
+
+      // Migrate old format to new format if needed
+      if (!data.phases || typeof data.phases !== 'object') {
+        // Old format had phases as simple status objects
+        const migratedPhases: Record<string, PlanPhaseTracking> = {};
+        if (data.phases) {
+          for (const [phaseId, phaseData] of Object.entries(data.phases as Record<string, { status: string; updatedAt?: string }>)) {
+            migratedPhases[phaseId] = {
+              phaseId,
+              status: phaseData.status as StatusType,
+              startedAt: phaseData.updatedAt,
+              completedAt: phaseData.status === 'completed' ? phaseData.updatedAt : undefined,
+              steps: [],
+            };
+          }
+        }
+        return {
+          planSlug,
+          progress: data.progress || 0,
+          phases: migratedPhases,
+          decisions: data.decisions || [],
+          lastUpdated: data.lastUpdated || new Date().toISOString(),
+        };
+      }
+
+      return data as PlanExecutionTracking;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Calculate progress based on completed steps across all phases
+   */
+  private calculateStepProgress(tracking: PlanExecutionTracking): number {
+    let totalSteps = 0;
+    let completedSteps = 0;
+
+    for (const phase of Object.values(tracking.phases)) {
+      totalSteps += phase.steps.length;
+      completedSteps += phase.steps.filter(s => s.status === 'completed').length;
+    }
+
+    return totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
+  }
+
+  /**
+   * Update frontmatter with progress percentage
+   */
+  private updateFrontmatterProgress(content: string, tracking: PlanExecutionTracking): string {
+    // Check if frontmatter exists
+    if (!content.startsWith('---')) {
+      return content;
+    }
+
+    const endIndex = content.indexOf('---', 3);
+    if (endIndex === -1) {
+      return content;
+    }
+
+    let frontmatter = content.slice(0, endIndex);
+    const body = content.slice(endIndex);
+
+    // Update or add progress field
+    if (frontmatter.includes('progress:')) {
+      frontmatter = frontmatter.replace(/progress:\s*\d+/, `progress: ${tracking.progress}`);
+    } else {
+      // Add progress after status line or at end of frontmatter
+      if (frontmatter.includes('status:')) {
+        frontmatter = frontmatter.replace(/(status:\s*\w+)/, `$1\nprogress: ${tracking.progress}`);
+      } else {
+        frontmatter = frontmatter.trimEnd() + `\nprogress: ${tracking.progress}\n`;
+      }
+    }
+
+    // Update or add lastUpdated field
+    if (frontmatter.includes('lastUpdated:')) {
+      frontmatter = frontmatter.replace(/lastUpdated:\s*"[^"]*"/, `lastUpdated: "${tracking.lastUpdated}"`);
+    } else {
+      frontmatter = frontmatter.trimEnd() + `\nlastUpdated: "${tracking.lastUpdated}"\n`;
+    }
+
+    return frontmatter + body;
+  }
+
+  /**
+   * Update step checkboxes in markdown body
+   */
+  private updateStepCheckboxes(content: string, tracking: PlanExecutionTracking): string {
+    // Match numbered steps with optional existing checkboxes
+    // Patterns like: "1. **Step text**" or "1. [ ] **Step text**" or "1. [x] **Step text**"
+    const stepPattern = /^(\d+)\.\s*(?:\[[ x]\]\s*)?(.+?)(?:\s*\*\([^)]*\)\*)?$/gm;
+
+    // Track which phase we're currently in by finding phase headers
+    let currentPhaseId: string | null = null;
+
+    // Split content into lines for processing
+    const lines = content.split('\n');
+    const updatedLines: string[] = [];
+
+    for (const line of lines) {
+      // Check for phase header
+      const phaseMatch = line.match(/^###\s+Phase\s+(\d+)/);
+      if (phaseMatch) {
+        currentPhaseId = `phase-${phaseMatch[1]}`;
+        updatedLines.push(line);
+        continue;
+      }
+
+      // Check for numbered step
+      const stepMatch = line.match(/^(\d+)\.\s*(?:\[[ x]\]\s*)?(.+?)(?:\s*\*\([^)]*\)\*)?$/);
+      if (stepMatch && currentPhaseId) {
+        const stepNum = parseInt(stepMatch[1], 10);
+        const stepText = stepMatch[2].trim();
+
+        // Find step in tracking
+        const phaseTracking = tracking.phases[currentPhaseId];
+        const stepTracking = phaseTracking?.steps.find(s => s.stepIndex === stepNum);
+
+        if (stepTracking) {
+          const checkMark = stepTracking.status === 'completed' ? '[x]' : '[ ]';
+          let timestamp = '';
+          if (stepTracking.completedAt) {
+            timestamp = ` *(completed: ${stepTracking.completedAt})*`;
+          } else if (stepTracking.startedAt && stepTracking.status === 'in_progress') {
+            timestamp = ` *(in progress since: ${stepTracking.startedAt})*`;
+          }
+          updatedLines.push(`${stepNum}. ${checkMark} ${stepText}${timestamp}`);
+          continue;
+        }
+      }
+
+      updatedLines.push(line);
+    }
+
+    return updatedLines.join('\n');
+  }
+
+  /**
+   * Add or update execution history section in markdown
+   */
+  private updateExecutionHistorySection(content: string, tracking: PlanExecutionTracking): string {
+    const historySection = this.generateExecutionHistoryMarkdown(tracking);
+
+    // Check if section exists
+    const historyMarker = '## Execution History';
+    const existingIndex = content.indexOf(historyMarker);
+
+    if (existingIndex > -1) {
+      // Find the end of the section (next ## header or end of file)
+      const afterHistory = content.slice(existingIndex);
+      const nextSectionMatch = afterHistory.match(/\n## [^E]/);
+      if (nextSectionMatch && nextSectionMatch.index) {
+        const endIndex = existingIndex + nextSectionMatch.index;
+        content = content.slice(0, existingIndex) + historySection + content.slice(endIndex);
+      } else {
+        // History is the last section
+        content = content.slice(0, existingIndex) + historySection;
+      }
+    } else {
+      // Add before "## Evidence" or "## Rollback" or at end
+      const insertPoints = ['## Evidence', '## Rollback'];
+      let insertIndex = -1;
+
+      for (const marker of insertPoints) {
+        const idx = content.indexOf(marker);
+        if (idx > -1) {
+          insertIndex = idx;
+          break;
+        }
+      }
+
+      if (insertIndex > -1) {
+        content = content.slice(0, insertIndex) + historySection + '\n\n' + content.slice(insertIndex);
+      } else {
+        content = content.trimEnd() + '\n\n' + historySection;
+      }
+    }
+
+    return content;
+  }
+
+  /**
+   * Generate execution history markdown section
+   */
+  private generateExecutionHistoryMarkdown(tracking: PlanExecutionTracking): string {
+    const lines = [
+      '## Execution History',
+      '',
+      `> Last updated: ${tracking.lastUpdated} | Progress: ${tracking.progress}%`,
+      '',
+    ];
+
+    // Sort phases by ID
+    const sortedPhases = Object.entries(tracking.phases).sort(([a], [b]) => a.localeCompare(b));
+
+    for (const [phaseId, phase] of sortedPhases) {
+      const statusIcon = phase.status === 'completed' ? '[DONE]' :
+                         phase.status === 'in_progress' ? '[IN PROGRESS]' :
+                         phase.status === 'skipped' ? '[SKIPPED]' :
+                         '[PENDING]';
+
+      lines.push(`### ${phaseId} ${statusIcon}`);
+
+      if (phase.startedAt) {
+        lines.push(`- Started: ${phase.startedAt}`);
+      }
+      if (phase.completedAt) {
+        lines.push(`- Completed: ${phase.completedAt}`);
+      }
+
+      if (phase.steps.length > 0) {
+        lines.push('');
+        const sortedSteps = [...phase.steps].sort((a, b) => a.stepIndex - b.stepIndex);
+        for (const step of sortedSteps) {
+          const check = step.status === 'completed' ? 'x' : ' ';
+          let line = `- [${check}] Step ${step.stepIndex}: ${step.description}`;
+
+          if (step.completedAt) {
+            line += ` *(${step.completedAt})*`;
+          } else if (step.startedAt && step.status === 'in_progress') {
+            line += ` *(in progress)*`;
+          }
+
+          lines.push(line);
+
+          if (step.output) {
+            lines.push(`  - Output: ${step.output}`);
+          }
+          if (step.notes) {
+            lines.push(`  - Notes: ${step.notes}`);
+          }
+        }
+      }
+
+      lines.push('');
+    }
+
+    return lines.join('\n');
   }
 
   /**
@@ -571,9 +1080,131 @@ export class PlanLinker {
     await fs.ensureDir(this.workflowPath);
     await fs.writeFile(plansFile, JSON.stringify(plans, null, 2), 'utf-8');
   }
+
+  /**
+   * Clear all plans and tracking data
+   * Used when deleting/resetting a workflow
+   */
+  async clearAllPlans(): Promise<void> {
+    const plansFile = path.join(this.workflowPath, 'plans.json');
+    const trackingDir = path.join(this.workflowPath, 'plan-tracking');
+
+    // Remove plans.json
+    if (await fs.pathExists(plansFile)) {
+      await fs.remove(plansFile);
+    }
+
+    // Remove plan-tracking directory
+    if (await fs.pathExists(trackingDir)) {
+      await fs.remove(trackingDir);
+    }
+  }
+
+  /**
+   * Archive all plans and tracking data
+   * Moves files to .context/workflow/archive/{timestamp}/
+   */
+  async archivePlans(): Promise<void> {
+    const plansFile = path.join(this.workflowPath, 'plans.json');
+    const trackingDir = path.join(this.workflowPath, 'plan-tracking');
+
+    // Check if there's anything to archive
+    const hasPlans = await fs.pathExists(plansFile);
+    const hasTracking = await fs.pathExists(trackingDir);
+
+    if (!hasPlans && !hasTracking) {
+      return;
+    }
+
+    // Create archive directory with timestamp
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const archiveDir = path.join(this.workflowPath, 'archive', `plans-${timestamp}`);
+
+    await fs.ensureDir(archiveDir);
+
+    // Move plans.json to archive
+    if (hasPlans) {
+      await fs.move(plansFile, path.join(archiveDir, 'plans.json'));
+    }
+
+    // Move plan-tracking directory to archive
+    if (hasTracking) {
+      await fs.move(trackingDir, path.join(archiveDir, 'plan-tracking'));
+    }
+  }
+
+  /**
+   * Automatically create a git commit when a phase completes
+   * @param planSlug Plan identifier
+   * @param phaseId Phase identifier
+   * @returns true if commit was created, false if skipped or failed
+   */
+  private async autoCommitPhase(planSlug: string, phaseId: string): Promise<boolean> {
+    try {
+      // Load plan to get phase details
+      const plan = await this.getLinkedPlan(planSlug);
+      if (!plan) {
+        console.warn(`[AutoCommit] Plan not found: ${planSlug}`);
+        return false;
+      }
+
+      const phase = plan.phases.find(p => p.id === phaseId);
+      if (!phase) {
+        console.warn(`[AutoCommit] Phase not found: ${phaseId} in plan ${planSlug}`);
+        return false;
+      }
+
+      // Initialize git service
+      const gitService = new GitService(this.repoPath);
+
+      // Check if this is a git repository
+      if (!gitService.isGitRepository()) {
+        console.warn('[AutoCommit] Not a git repository - skipping auto-commit');
+        return false;
+      }
+
+      // Default commit message from phase's commitCheckpoint or generate one
+      const commitMessage = phase.commitCheckpoint ||
+        `chore(plan): complete ${phase.name} for ${planSlug}`;
+
+      // Stage .context/** files (plan tracking and markdown updates)
+      const stagePatterns = ['.context/**'];
+
+      try {
+        const stagedFiles = gitService.stageFiles(stagePatterns);
+
+        if (stagedFiles.length === 0) {
+          console.info('[AutoCommit] No files to commit - skipping');
+          return false;
+        }
+
+        // Create the commit with AI Context Agent as co-author
+        const coAuthor = 'AI Context Agent';
+        const commitResult = gitService.commit(commitMessage, coAuthor);
+
+        // Record the commit in plan tracking
+        await this.recordPhaseCommit(planSlug, phaseId, {
+          hash: commitResult.hash,
+          shortHash: commitResult.shortHash,
+          committedBy: coAuthor,
+        });
+
+        console.info(`[AutoCommit] Created commit ${commitResult.shortHash} for phase ${phaseId}`);
+        return true;
+      } catch (error) {
+        // Non-critical failure - log but don't throw
+        console.warn(`[AutoCommit] Failed to create commit for phase ${phaseId}:`, error);
+        return false;
+      }
+    } catch (error) {
+      // Catch-all to prevent breaking the main updatePlanStep flow
+      console.error('[AutoCommit] Unexpected error in autoCommitPhase:', error);
+      return false;
+    }
+  }
 }
 
 // Export singleton factory
-export function createPlanLinker(repoPath: string): PlanLinker {
-  return new PlanLinker(repoPath);
+export function createPlanLinker(repoPath: string, statusManager?: PrevcStatusManager, autoCommitOnPhaseComplete: boolean = true): PlanLinker {
+  return new PlanLinker(repoPath, statusManager, autoCommitOnPhaseComplete);
 }

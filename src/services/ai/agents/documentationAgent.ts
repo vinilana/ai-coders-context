@@ -22,6 +22,8 @@ export interface DocumentationAgentOptions {
   useSemanticContext?: boolean;
   /** Enable LSP for deeper semantic analysis (type info, references, implementations) */
   useLSP?: boolean;
+  /** Scaffold structure context for AI generation (v2 scaffold system) */
+  scaffoldStructure?: string;
 }
 
 export interface DocumentationAgentResult {
@@ -48,18 +50,18 @@ export class DocumentationAgent {
    * Generate documentation using tools for context gathering
    */
   async generateDocumentation(options: DocumentationAgentOptions): Promise<DocumentationAgentResult> {
-    const { repoPath, targetFile, context, maxSteps = 15, maxOutputTokens = 8000, callbacks, useSemanticContext = true, useLSP = false } = options;
+    const { repoPath, targetFile, context, maxSteps = 15, maxOutputTokens = 8000, callbacks, useSemanticContext = true, useLSP = false, scaffoldStructure } = options;
 
     // Emit agent start event
     callbacks?.onAgentStart?.({ agent: 'documentation', target: targetFile });
 
     // Use semantic context mode for token efficiency
     if (useSemanticContext) {
-      return this.generateWithSemanticContext(repoPath, targetFile, context, maxOutputTokens, callbacks, useLSP);
+      return this.generateWithSemanticContext(repoPath, targetFile, context, maxOutputTokens, callbacks, useLSP, scaffoldStructure);
     }
 
     // Tool-based mode for thorough analysis
-    return this.generateWithTools(repoPath, targetFile, context, maxSteps, maxOutputTokens, callbacks);
+    return this.generateWithTools(repoPath, targetFile, context, maxSteps, maxOutputTokens, callbacks, scaffoldStructure);
   }
 
   /**
@@ -71,7 +73,8 @@ export class DocumentationAgent {
     context: string | undefined,
     maxOutputTokens: number,
     callbacks?: AgentEventCallbacks,
-    useLSP: boolean = false
+    useLSP: boolean = false,
+    scaffoldStructure?: string
   ): Promise<DocumentationAgentResult> {
     callbacks?.onToolCall?.({
       agent: 'documentation',
@@ -96,15 +99,28 @@ export class DocumentationAgent {
       summary: `Analyzed codebase${useLSP ? ' with LSP' : ''}: ${semanticContext.length} chars of context`
     });
 
+    // Build user prompt with optional scaffold structure context
+    const structureSection = scaffoldStructure
+      ? `\n## Document Structure Requirements\n${scaffoldStructure}\n`
+      : '';
+
     const userPrompt = `Generate comprehensive documentation for: ${targetFile}
 
 Repository root: ${repoPath}
-
+${structureSection}
+## Codebase Context
 ${semanticContext}
 
-${context ? `Additional context:\n${context}` : ''}
+${context ? `## Additional context:\n${context}` : ''}
 
-Generate clear, practical documentation that is helpful for developers.`;
+## Instructions
+${scaffoldStructure
+  ? `- Generate COMPLETE content following the structure requirements above
+- Do NOT include YAML frontmatter in the output
+- Follow the specified tone and target audience
+- Include all REQUIRED sections and optionally include optional sections where relevant`
+  : `- Generate clear, practical documentation that is helpful for developers
+- Do NOT include YAML frontmatter in the output`}`;
 
     const { provider, modelId } = this.providerResult;
 
@@ -134,14 +150,29 @@ Generate clear, practical documentation that is helpful for developers.`;
     context: string | undefined,
     maxSteps: number,
     maxOutputTokens: number,
-    callbacks?: AgentEventCallbacks
+    callbacks?: AgentEventCallbacks,
+    scaffoldStructure?: string
   ): Promise<DocumentationAgentResult> {
+    // Build user prompt with optional scaffold structure context
+    const structureSection = scaffoldStructure
+      ? `\n## Document Structure Requirements\n${scaffoldStructure}\n`
+      : '';
+
+    const instructions = scaffoldStructure
+      ? `First, use the available tools to analyze the file and gather context, then generate the documentation following the structure requirements above.
+- Generate COMPLETE content following the structure requirements
+- Do NOT include YAML frontmatter in the output
+- Follow the specified tone and target audience
+- Include all REQUIRED sections`
+      : `First, use the available tools to analyze the file and gather context, then generate the documentation.`;
+
     const userPrompt = `Generate comprehensive documentation for: ${targetFile}
 
 Repository root: ${repoPath}
+${structureSection}
 ${context ? `Additional context:\n${context}` : ''}
 
-First, use the available tools to analyze the file and gather context, then generate the documentation.`;
+${instructions}`;
 
     const { provider, modelId } = this.providerResult;
     let stepCount = 0;

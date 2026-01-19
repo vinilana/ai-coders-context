@@ -95,10 +95,12 @@ describe('AgentGenerator', () => {
     const files = (await fs.readdir(agentsDir)).sort();
     expect(files).toEqual(['README.md', 'code-reviewer.md', 'test-writer.md']);
 
+    // v2.0 scaffold system: files contain only frontmatter, content is AI-generated during fill
     const playbookContent = await fs.readFile(path.join(agentsDir, 'code-reviewer.md'), 'utf8');
-    expect(playbookContent).toContain('# Code Reviewer Agent Playbook');
-    expect(playbookContent).toContain('Documentation Touchpoints');
-    expect(playbookContent).toContain('[Project Overview](../docs/project-overview.md)');
+    expect(playbookContent).toContain('type: agent');
+    expect(playbookContent).toContain('agentType: code-reviewer');
+    expect(playbookContent).toContain('status: unfilled');
+    expect(playbookContent).toContain('scaffoldVersion: "2.0.0"');
 
     const indexContent = await fs.readFile(path.join(agentsDir, 'README.md'), 'utf8');
     expect(indexContent).toContain('[Code Reviewer](./code-reviewer.md)');

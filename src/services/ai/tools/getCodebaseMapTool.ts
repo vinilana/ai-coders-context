@@ -15,7 +15,11 @@ export const getCodebaseMapTool = tool({
   description: 'Get codebase map data (structure, symbols, architecture) from the pre-generated JSON. Use specific sections to reduce token usage.',
   inputSchema: GetCodebaseMapInputSchema,
   execute: async (input: GetCodebaseMapInput): Promise<GetCodebaseMapOutput> => {
-    const repoPath = input.repoPath || process.cwd();
+    if (!input.repoPath) {
+      throw new Error('repoPath is required for getCodebaseMap');
+    }
+    const repoPath = input.repoPath;
+
     const section = input.section || 'all';
 
     try {

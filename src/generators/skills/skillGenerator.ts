@@ -2,6 +2,7 @@
  * Skill Generator
  *
  * Scaffolds skill directories and SKILL.md files.
+ * Generates frontmatter-only files (scaffold v2) for AI to fill.
  */
 
 import * as fs from 'fs';
@@ -13,11 +14,14 @@ import {
   createSkillRegistry,
   getBuiltInSkillTemplates,
   SKILL_TO_PHASES,
-  wrapWithFrontmatter,
 } from '../../workflow/skills';
-import { generateSkillContent, getDefaultPhases } from './templates/skillTemplate';
+import { getDefaultPhases } from './templates/skillTemplate';
 import { generateSkillsIndex } from './templates/indexTemplate';
 import { PrevcPhase } from '../../workflow/types';
+import {
+  createSkillFrontmatter,
+  serializeFrontmatter,
+} from '../../types/scaffoldFrontmatter';
 
 export interface SkillGeneratorOptions {
   /** Repository path */
@@ -78,26 +82,29 @@ export class SkillGenerator {
       // Create skill directory
       fs.mkdirSync(skillDir, { recursive: true });
 
-      // Generate SKILL.md content
-      let content: string;
+      // Generate frontmatter-only content (scaffold v2)
+      let description: string;
+      let phases: PrevcPhase[];
 
       if (isBuiltInSkill(skillName)) {
-        // Use built-in template
+        // Use built-in template description
         const template = templates[skillName as BuiltInSkillType];
-        const phases = SKILL_TO_PHASES[skillName as BuiltInSkillType];
-
-        content = wrapWithFrontmatter(
-          { name: skillName, description: template.description, phases },
-          template.content
-        );
+        description = template.description;
+        phases = SKILL_TO_PHASES[skillName as BuiltInSkillType];
       } else {
-        // Generate empty template for custom skill
-        content = generateSkillContent({
-          name: skillName,
-          description: `TODO: Describe when to use ${skillName}`,
-          phases: getDefaultPhases(skillName),
-        });
+        // Default description for custom skill
+        description = `On-demand expertise for ${skillName}`;
+        phases = getDefaultPhases(skillName);
       }
+
+      // Create frontmatter-only content
+      const frontmatter = createSkillFrontmatter(
+        this.formatSkillTitle(skillName),
+        description,
+        skillName,
+        { phases }
+      );
+      const content = serializeFrontmatter(frontmatter) + '\n';
 
       // Write SKILL.md
       fs.writeFileSync(skillPath, content, 'utf-8');
@@ -113,6 +120,16 @@ export class SkillGenerator {
       skippedSkills,
       indexPath,
     };
+  }
+
+  /**
+   * Format skill name as display title
+   */
+  private formatSkillTitle(skillName: string): string {
+    return skillName
+      .split('-')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
   }
 
   /**
@@ -136,12 +153,14 @@ export class SkillGenerator {
     // Create skill directory
     fs.mkdirSync(skillDir, { recursive: true });
 
-    // Generate content
-    const content = generateSkillContent({
-      name,
+    // Generate frontmatter-only content (scaffold v2)
+    const frontmatter = createSkillFrontmatter(
+      this.formatSkillTitle(name),
       description,
-      phases,
-    });
+      name,
+      { phases }
+    );
+    const content = serializeFrontmatter(frontmatter) + '\n';
 
     // Write SKILL.md
     fs.writeFileSync(skillPath, content, 'utf-8');

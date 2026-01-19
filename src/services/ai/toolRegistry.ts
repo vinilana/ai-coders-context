@@ -71,27 +71,35 @@ The codebase map is generated during initialization with --semantic flag.`
     name: 'initializeContext',
     description: 'Initialize .context scaffolding and create template files.',
     extendedDescription: `Initialize .context scaffolding and create template files.
-IMPORTANT: After this tool completes, you MUST fill the generated files:
-1. Use buildSemanticContext to analyze the codebase
-2. Read each generated template file
-3. Write filled content to each file based on the analysis
 
-CRITICAL - Documentation Quality Requirements:
-After filling the files with semantic analysis content, you MUST apply reasoning to significantly IMPROVE the documentation:
+IMPORTANT CRITICAL: This tool returns status: "incomplete" with pending writes.
+You MUST complete ALL file writes BEFORE responding to the user.
 
-- Architecture docs: Reason about design patterns, identify why certain architectural decisions were made, explain trade-offs, and document implicit design principles that aren't obvious from code alone
-- Data flow docs: Think through edge cases, document error handling paths, explain the reasoning behind data transformations, and clarify complex interactions
-- Agent playbooks: Use your understanding to create actionable, context-aware instructions that go beyond generic templates
-- README files: Synthesize information to create clear, developer-friendly overviews that highlight what's most important
+RESPONSE HANDLING:
+1. status="incomplete" with pendingWrites[] → IMMEDIATELY fill each file
+2. status="success" → Done, report to user
+3. status="error" → Report error
 
-DO NOT simply copy the semantic analysis output. Use critical thinking to:
-1. Identify gaps in the auto-generated content
-2. Add explanations for "why" not just "what"
-3. Include practical examples where helpful
-4. Highlight important caveats or gotchas
-5. Ensure documentation tells a coherent story
+WORKFLOW:
+1. Call initializeContext - scaffolding is created
+2. Response has status: "incomplete" with pendingWrites[] array
+3. Read the fillInstructions field - it contains guidelines for HOW to fill
+4. For EACH file in pendingWrites:
+   - Call fillSingleFile({ repoPath, filePath }) to get AI-generated content
+   - Call Write({ file_path, content: suggestedContent }) to save
+5. ONLY after ALL writes succeed → report "initialization complete"
 
-The goal is documentation that a new developer would find genuinely helpful, not just technically accurate.`
+IMPORTANT:
+- status: "incomplete" means you MUST complete the pendingWrites
+- The response includes fillInstructions with quality guidelines
+- The checklist[] field shows pending tasks in human-readable format
+- DO NOT say "complete" or "done" until ALL writes succeed
+
+QUALITY REQUIREMENTS (from fillInstructions):
+- Replace TODO placeholders with accurate information
+- Verify cross-references between docs remain valid
+- Agent playbooks must list accurate responsibilities
+- Focus on accuracy and usefulness for developers`
   },
 
   scaffoldPlan: {

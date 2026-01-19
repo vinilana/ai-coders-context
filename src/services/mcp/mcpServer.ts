@@ -1,55 +1,53 @@
 /**
  * MCP Server - Model Context Protocol server for Claude Code integration
  *
- * Exposes code analysis tools and semantic context as MCP resources.
+ * Exposes 9 tools (5 consolidated gateways + 4 dedicated workflow tools) for
+ * reduced context and simpler tool selection for AI agents.
+ *
+ * Simplified workflow: context init → fillSingle → workflow-init
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import * as path from 'path';
+import * as fs from 'fs-extra';
 
-import {
-  readFileTool,
-  listFilesTool,
-  analyzeSymbolsTool,
-  getFileStructureTool,
-  searchCodeTool,
-  checkScaffoldingTool,
-  initializeContextTool,
-  scaffoldPlanTool,
-  fillScaffoldingTool,
-  listFilesToFillTool,
-  fillSingleFileTool,
-  getCodebaseMapTool,
-  getOrBuildContext
-} from '../ai/tools';
-import { getToolDescription } from '../ai/toolRegistry';
+import { readFileTool } from '../ai/tools';
 import { SemanticContextBuilder, type ContextFormat } from '../semantic/contextBuilder';
 import { VERSION } from '../../version';
-import { DEFAULT_MODELS } from '../ai/providerFactory';
 import { WorkflowService } from '../workflow';
-
-// Default model for MCP tools that require LLM
-const DEFAULT_MODEL = DEFAULT_MODELS.google || 'gemini-3-flash-preview';
-import { StartService } from '../start';
-import { ReportService } from '../report';
-import { ExportRulesService, EXPORT_PRESETS } from '../export';
-import { StackDetector } from '../stack';
+import { logMcpAction } from './actionLogger';
 import {
   PREVC_ROLES,
-  PHASE_NAMES_EN,
-  ROLE_DISPLAY_NAMES,
   getScaleName,
   ProjectScale,
-  PrevcPhase,
-  PrevcRole,
-  agentOrchestrator,
-  documentLinker,
-  AgentType,
   AGENT_TYPES,
-  createPlanLinker,
 } from '../../workflow';
+
+import {
+  handleExplore,
+  handleContext,
+  handleSync,
+  handlePlan,
+  handleAgent,
+  handleSkill,
+  handleWorkflowInit,
+  handleWorkflowStatus,
+  handleWorkflowAdvance,
+  handleWorkflowManage,
+  type ExploreParams,
+  type ContextParams,
+  type SyncParams,
+  type PlanParams,
+  type AgentParams,
+  type SkillParams,
+  type WorkflowInitParams,
+  type WorkflowStatusParams,
+  type WorkflowAdvanceParams,
+  type WorkflowManageParams,
+  type MCPToolResponse,
+} from './gatewayTools';
 
 export interface MCPServerOptions {
   /** Default repository path for tools */
@@ -58,6 +56,8 @@ export interface MCPServerOptions {
   name?: string;
   /** Enable verbose logging */
   verbose?: boolean;
+  /** Optional injected SemanticContextBuilder for testing */
+  contextBuilder?: SemanticContextBuilder;
 }
 
 export class AIContextMCPServer {
@@ -65,6 +65,8 @@ export class AIContextMCPServer {
   private contextBuilder: SemanticContextBuilder;
   private options: MCPServerOptions;
   private transport: StdioServerTransport | null = null;
+  private initialRepoPath: string | null = null;
+  private cachedRepoPath: string | null = null;
 
   constructor(options: MCPServerOptions = {}) {
     this.options = {
@@ -78,1300 +80,456 @@ export class AIContextMCPServer {
       version: VERSION
     });
 
-    this.contextBuilder = new SemanticContextBuilder();
+    // Support dependency injection for testing, with default fallback
+    this.contextBuilder = options.contextBuilder ?? new SemanticContextBuilder();
 
-    this.registerTools();
+    // Initialize and cache the correct repo path
+    void this.initializeRepoPath();
+
+    this.registerGatewayTools();
     this.registerResources();
   }
 
   /**
-   * Register code analysis tools
+   * Register tools: 5 consolidated gateways + 4 dedicated workflow tools
+   * Total: 9 tools for clear entry points and reduced AI cognitive load
+   *
+   * Project tools removed - use context({ action: "init" }) + workflow-init instead
+   *
+   * NOTE: repoPath is now determined dynamically via getRepoPath() at runtime,
+   * which uses smart initialization and client path caching.
    */
-  private registerTools(): void {
-    // readFile tool
-    this.server.registerTool('readFile', {
-      description: getToolDescription('readFile'),
+  private registerGatewayTools(): void {
+    const wrap = <TParams>(
+      toolName: string,
+      handler: (params: TParams) => Promise<MCPToolResponse>
+    ) => this.wrapWithActionLogging(toolName, handler);
+
+    // Gateway 1: explore - File and code exploration
+    this.server.registerTool('explore', {
+      description: `File and code exploration. Actions:
+- read: Read file contents (params: filePath, encoding?)
+- list: List files matching pattern (params: pattern, cwd?, ignore?)
+- analyze: Analyze symbols in a file (params: filePath, symbolTypes?)
+- search: Search code with regex (params: pattern, fileGlob?, maxResults?, cwd?)
+- getStructure: Get directory structure (params: rootPath?, maxDepth?, includePatterns?)`,
       inputSchema: {
-        filePath: z.string().describe('Absolute or relative path to the file to read'),
-        encoding: z.enum(['utf-8', 'ascii', 'binary']).default('utf-8').optional()
-      }
-    }, async ({ filePath, encoding }) => {
-      const result = await readFileTool.execute!(
-        { filePath, encoding },
-        { toolCallId: '', messages: [] }
-      );
-
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify(result, null, 2)
-        }]
-      };
-    });
-
-    // listFiles tool
-    this.server.registerTool('listFiles', {
-      description: getToolDescription('listFiles'),
-      inputSchema: {
-        pattern: z.string().describe('Glob pattern to match files (e.g., "**/*.ts")'),
-        cwd: z.string().optional().describe('Working directory for the glob pattern'),
-        ignore: z.array(z.string()).optional().describe('Patterns to ignore')
-      }
-    }, async ({ pattern, cwd, ignore }) => {
-      const result = await listFilesTool.execute!(
-        { pattern, cwd: cwd || this.options.repoPath, ignore },
-        { toolCallId: '', messages: [] }
-      );
-
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify(result, null, 2)
-        }]
-      };
-    });
-
-    // analyzeSymbols tool
-    this.server.registerTool('analyzeSymbols', {
-      description: getToolDescription('analyzeSymbols'),
-      inputSchema: {
-        filePath: z.string().describe('Path to the file to analyze'),
-        symbolTypes: z.array(z.enum(['class', 'interface', 'function', 'type', 'enum']))
-          .optional()
-          .describe('Types of symbols to extract')
-      }
-    }, async ({ filePath, symbolTypes }) => {
-      const result = await analyzeSymbolsTool.execute!(
-        { filePath, symbolTypes },
-        { toolCallId: '', messages: [] }
-      );
-
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify(result, null, 2)
-        }]
-      };
-    });
-
-    // getFileStructure tool
-    this.server.registerTool('getFileStructure', {
-      description: getToolDescription('getFileStructure'),
-      inputSchema: {
-        rootPath: z.string().describe('Root path of the repository'),
-        maxDepth: z.number().optional().default(3).describe('Maximum directory depth'),
+        action: z.enum(['read', 'list', 'analyze', 'search', 'getStructure'])
+          .describe('Action to perform'),
+        filePath: z.string().optional()
+          .describe('(read, analyze) File path to read or analyze'),
+        pattern: z.string().optional()
+          .describe('(list, search) Glob pattern for list, regex pattern for search'),
+        cwd: z.string().optional()
+          .describe('(list, search) Working directory'),
+        encoding: z.enum(['utf-8', 'ascii', 'binary']).optional()
+          .describe('(read) File encoding'),
+        ignore: z.array(z.string()).optional()
+          .describe('(list) Patterns to ignore'),
+        symbolTypes: z.array(z.enum(['class', 'interface', 'function', 'type', 'enum'])).optional()
+          .describe('(analyze) Types of symbols to extract'),
+        fileGlob: z.string().optional()
+          .describe('(search) Glob pattern to filter files'),
+        maxResults: z.number().optional()
+          .describe('(search) Maximum results to return'),
+        rootPath: z.string().optional()
+          .describe('(getStructure) Root path for structure'),
+        maxDepth: z.number().optional()
+          .describe('(getStructure) Maximum directory depth'),
         includePatterns: z.array(z.string()).optional()
+          .describe('(getStructure) Include patterns'),
       }
-    }, async ({ rootPath, maxDepth, includePatterns }) => {
-      const result = await getFileStructureTool.execute!(
-        { rootPath: rootPath || this.options.repoPath || '.', maxDepth, includePatterns },
-        { toolCallId: '', messages: [] }
-      );
+    }, wrap('explore', async (params): Promise<MCPToolResponse> => {
+      // explore uses cwd for file operations, not repoPath for context resolution
+      return handleExplore(params as ExploreParams, { repoPath: this.getRepoPath() });
+    }));
 
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify(result, null, 2)
-        }]
-      };
-    });
+    // Gateway 2: context - Context scaffolding and semantic context
+    this.server.registerTool('context', {
+      description: `Context scaffolding and semantic context. Actions:
+- check: Check if .context scaffolding exists (params: repoPath?)
+- init: Initialize .context scaffolding (params: repoPath?, type?, outputDir?, semantic?, autoFill?, skipContentGeneration?)
+- fill: Fill scaffolding with AI content (params: repoPath?, outputDir?, target?, offset?, limit?)
+- fillSingle: Fill a single scaffold file (params: repoPath?, filePath)
+- listToFill: List files that need filling (params: repoPath?, outputDir?, target?)
+- getMap: Get codebase map section (params: repoPath?, section?)
+- buildSemantic: Build semantic context (params: repoPath?, contextType?, targetFile?, options?)
+- scaffoldPlan: Create a plan template (params: planName, repoPath?, title?, summary?, autoFill?)
 
-    // searchCode tool
-    this.server.registerTool('searchCode', {
-      description: getToolDescription('searchCode'),
+**Important:** Agents should provide repoPath on the FIRST call, then it will be cached:
+1. First call: context({ action: "check", repoPath: "/path/to/project" })
+2. Subsequent calls can omit repoPath - it will use cached value from step 1
+3. After context init, call fillSingle for each pending file
+4. Call workflow-init to enable PREVC workflow (unless trivial change)`,
       inputSchema: {
-        pattern: z.string().describe('Regex pattern to search for'),
-        fileGlob: z.string().optional().describe('Glob pattern to filter files'),
-        maxResults: z.number().optional().default(50),
-        cwd: z.string().optional().describe('Working directory for the search')
-      }
-    }, async ({ pattern, fileGlob, maxResults, cwd }) => {
-      const result = await searchCodeTool.execute!(
-        {
-          pattern,
-          fileGlob,
-          maxResults,
-          cwd: cwd || this.options.repoPath
-        } as any,
-        { toolCallId: '', messages: [] }
-      );
-
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify(result, null, 2)
-        }]
-      };
-    });
-
-    // buildSemanticContext tool - higher-level context building
-    this.server.registerTool('buildSemanticContext', {
-      description: getToolDescription('buildSemanticContext'),
-      inputSchema: {
-        repoPath: z.string().describe('Path to the repository'),
-        contextType: z.enum(['documentation', 'playbook', 'plan', 'compact'])
-          .default('compact')
-          .describe('Type of context to build'),
-        targetFile: z.string().optional().describe('Optional target file for focused context'),
+        action: z.enum(['check', 'init', 'fill', 'fillSingle', 'listToFill', 'getMap', 'buildSemantic', 'scaffoldPlan'])
+          .describe('Action to perform'),
+        repoPath: z.string().optional()
+          .describe('Repository path (defaults to cwd)'),
+        outputDir: z.string().optional()
+          .describe('Output directory (default: ./.context)'),
+        type: z.enum(['docs', 'agents', 'both']).optional()
+          .describe('(init) Type of scaffolding to create'),
+        semantic: z.boolean().optional()
+          .describe('(init, scaffoldPlan) Enable semantic analysis'),
+        include: z.array(z.string()).optional()
+          .describe('(init) Include patterns'),
+        exclude: z.array(z.string()).optional()
+          .describe('(init) Exclude patterns'),
+        autoFill: z.boolean().optional()
+          .describe('(init, scaffoldPlan) Auto-fill with codebase content'),
+        skipContentGeneration: z.boolean().optional()
+          .describe('(init) Skip pre-generating content'),
+        target: z.enum(['docs', 'agents', 'plans', 'all']).optional()
+          .describe('(fill, listToFill) Which scaffolding to target'),
+        offset: z.number().optional()
+          .describe('(fill) Skip first N files'),
+        limit: z.number().optional()
+          .describe('(fill) Max files to return'),
+        filePath: z.string().optional()
+          .describe('(fillSingle) Absolute path to scaffold file'),
+        section: z.enum([
+          'all', 'stack', 'structure', 'architecture', 'symbols',
+          'symbols.classes', 'symbols.interfaces', 'symbols.functions',
+          'symbols.types', 'symbols.enums', 'publicAPI', 'dependencies', 'stats'
+        ]).optional()
+          .describe('(getMap) Section to retrieve'),
+        contextType: z.enum(['documentation', 'playbook', 'plan', 'compact']).optional()
+          .describe('(buildSemantic) Type of context to build'),
+        targetFile: z.string().optional()
+          .describe('(buildSemantic) Target file for focused context'),
         options: z.object({
           useLSP: z.boolean().optional(),
           maxContextLength: z.number().optional(),
           includeDocumentation: z.boolean().optional(),
           includeSignatures: z.boolean().optional()
         }).optional()
+          .describe('(buildSemantic) Builder options'),
+        planName: z.string().optional()
+          .describe('(scaffoldPlan) Name of the plan'),
+        title: z.string().optional()
+          .describe('(scaffoldPlan) Plan title'),
+        summary: z.string().optional()
+          .describe('(scaffoldPlan) Plan summary/goal'),
       }
-    }, async ({ repoPath, contextType, targetFile, options }) => {
-      const isLocalBuilder = !!options;
-      const builder = isLocalBuilder
-        ? new SemanticContextBuilder(options)
-        : this.contextBuilder;
+    }, wrap('context', async (params): Promise<MCPToolResponse> => {
+      return handleContext(params as ContextParams, { repoPath: this.getRepoPath((params as ContextParams).repoPath), contextBuilder: this.contextBuilder });
+    }));
 
-      try {
-        let context: string;
-        const resolvedPath = repoPath || this.options.repoPath || '.';
+    // Dedicated Workflow Tools (split from consolidated workflow gateway)
 
-        switch (contextType) {
-          case 'documentation':
-            context = await builder.buildDocumentationContext(resolvedPath, targetFile);
-            break;
-          case 'playbook':
-            context = await builder.buildPlaybookContext(resolvedPath, targetFile || 'generic');
-            break;
-          case 'plan':
-            context = await builder.buildPlanContext(resolvedPath, targetFile);
-            break;
-          case 'compact':
-          default:
-            context = await builder.buildCompactContext(resolvedPath);
-            break;
-        }
+    // Tool 3a: workflow-init - Initialize PREVC workflow
+    this.server.registerTool('workflow-init', {
+      description: `Initialize a PREVC workflow for structured development.
 
-        return {
-          content: [{
-            type: 'text' as const,
-            text: context
-          }]
-        };
-      } finally {
-        if (isLocalBuilder) {
-          await builder.shutdown();
-        }
-      }
-    });
+**What it does:**
+- Creates .context/workflow/ folder (automatically, if it doesn't exist)
+- Initializes workflow status file with phase tracking
+- Detects project scale and configures gates
+- Sets up PREVC phases (Plan → Review → Execute → Verify → Complete)
 
-    // checkScaffolding tool
-    this.server.registerTool('checkScaffolding', {
-      description: getToolDescription('checkScaffolding'),
+**Prerequisites:**
+- .context/ folder must exist (use context with action "init" first)
+- Scaffolding files should be filled (use context with action "fillSingle")
+
+**When to use:**
+- Starting a new feature or bug fix after scaffolding is set up
+- Need structured, phase-gated development
+- Working on non-trivial changes
+
+**Don't use if:**
+- Making trivial changes (typo fixes, single-line edits)
+- Just exploring/researching code
+- User explicitly wants to skip workflow`,
       inputSchema: {
-        repoPath: z.string().optional().describe('Repository path to check (defaults to cwd)')
+        name: z.string().describe('Workflow/feature name (required)'),
+        description: z.string().optional()
+          .describe('Task description for scale detection'),
+        scale: z.enum(['QUICK', 'SMALL', 'MEDIUM', 'LARGE']).optional()
+          .describe(`Project scale - AI should evaluate based on task characteristics:
+
+SCALE EVALUATION CRITERIA:
+• QUICK: Single file changes, bug fixes, typos (~5 min)
+  - Phases: E → V only
+  - Example: "Fix typo in button text"
+
+• SMALL: Simple features, no architecture changes (~15 min)
+  - Phases: P → E → V
+  - Example: "Add email validation to form"
+
+• MEDIUM: Regular features with design decisions (~30 min)
+  - Phases: P → R → E → V
+  - Example: "Implement user profile page"
+
+• LARGE: Complex features, systems, compliance (~1+ hour)
+  - Phases: P → R → E → V → C (full workflow)
+  - Examples: "Build OAuth system", "Add GDPR compliance"
+
+GUIDANCE:
+- Analyze task complexity, architectural impact, and review needs
+- Use LARGE for security/compliance requirements
+- When uncertain, prefer MEDIUM
+- Omit scale only if unable to evaluate (auto-detect fallback)`),
+        autonomous: z.boolean().optional()
+          .describe('Skip all workflow gates (default: scale-dependent)'),
+        require_plan: z.boolean().optional()
+          .describe('Require plan before P→R'),
+        require_approval: z.boolean().optional()
+          .describe('Require approval before R→E'),
+        archive_previous: z.boolean().optional()
+          .describe('Archive existing workflow'),
       }
-    }, async ({ repoPath }) => {
-      const result = await checkScaffoldingTool.execute!(
-        { repoPath: repoPath || this.options.repoPath },
-        { toolCallId: '', messages: [] }
-      );
+    }, wrap('workflow-init', async (params): Promise<MCPToolResponse> => {
+      return handleWorkflowInit(params as WorkflowInitParams, { repoPath: this.getRepoPath((params as WorkflowInitParams).repoPath) });
+    }));
 
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify(result, null, 2)
-        }]
-      };
-    });
+    // Tool 3b: workflow-status - Get current workflow status
+    this.server.registerTool('workflow-status', {
+      description: `Get current PREVC workflow status including phase, gates, and linked plans.
 
-    // initializeContext tool
-    this.server.registerTool('initializeContext', {
-      description: getToolDescription('initializeContext', true),
+Returns: Current phase, all phase statuses, gate settings, linked plans, agent activity.`,
       inputSchema: {
-        repoPath: z.string().describe('Repository path to initialize'),
-        type: z.enum(['docs', 'agents', 'both']).default('both').optional()
-          .describe('Type of scaffolding to create'),
-        outputDir: z.string().optional().describe('Output directory (default: ./.context)'),
-        semantic: z.boolean().default(true).optional()
-          .describe('Enable semantic analysis for richer templates'),
-        include: z.array(z.string()).optional().describe('Include patterns'),
-        exclude: z.array(z.string()).optional().describe('Exclude patterns'),
-        autoFill: z.boolean().default(true).optional()
-          .describe('Automatically fill scaffolding with codebase-aware content (default: true)')
+        // No required parameters
       }
-    }, async ({ repoPath, type, outputDir, semantic, include, exclude, autoFill }) => {
-      const result = await initializeContextTool.execute!(
-        {
-          repoPath: repoPath || this.options.repoPath || process.cwd(),
-          type,
-          outputDir,
-          semantic,
-          include,
-          exclude,
-          autoFill
-        },
-        { toolCallId: '', messages: [] }
-      );
+    }, wrap('workflow-status', async (params): Promise<MCPToolResponse> => {
+      return handleWorkflowStatus(params as WorkflowStatusParams, { repoPath: this.getRepoPath((params as WorkflowStatusParams).repoPath) });
+    }));
 
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify(result, null, 2)
-        }]
-      };
-    });
+    // Tool 3c: workflow-advance - Advance to next phase
+    this.server.registerTool('workflow-advance', {
+      description: `Advance workflow to the next PREVC phase (P→R→E→V→C).
 
-    // scaffoldPlan tool
-    this.server.registerTool('scaffoldPlan', {
-      description: getToolDescription('scaffoldPlan'),
-      inputSchema: {
-        planName: z.string().describe('Name of the plan (will be slugified)'),
-        repoPath: z.string().optional().describe('Repository path'),
-        outputDir: z.string().optional().describe('Output directory'),
-        title: z.string().optional().describe('Plan title (defaults to formatted planName)'),
-        summary: z.string().optional().describe('Plan summary/goal'),
-        semantic: z.boolean().default(true).optional().describe('Enable semantic analysis'),
-        autoFill: z.boolean().default(true).optional()
-          .describe('Automatically fill plan with codebase-aware content (default: true)')
-      }
-    }, async ({ planName, repoPath, outputDir, title, summary, semantic, autoFill }) => {
-      const result = await scaffoldPlanTool.execute!(
-        {
-          planName,
-          repoPath: repoPath || this.options.repoPath || process.cwd(),
-          outputDir,
-          title,
-          summary,
-          semantic,
-          autoFill
-        },
-        { toolCallId: '', messages: [] }
-      );
+Enforces gates:
+- P→R: Requires plan if require_plan=true
+- R→E: Requires approval if require_approval=true
 
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify(result, null, 2)
-        }]
-      };
-    });
-
-    // fillScaffolding tool (with pagination)
-    this.server.registerTool('fillScaffolding', {
-      description: getToolDescription('fillScaffolding', true),
-      inputSchema: {
-        repoPath: z.string().describe('Repository path'),
-        outputDir: z.string().optional().describe('Scaffold directory (default: ./.context)'),
-        target: z.enum(['docs', 'agents', 'plans', 'all']).default('all').optional()
-          .describe('Which scaffolding to fill'),
-        offset: z.number().optional().describe('Skip first N files (for pagination)'),
-        limit: z.number().optional().describe('Max files to return (default: 3, use 0 for all)')
-      }
-    }, async ({ repoPath, outputDir, target, offset, limit }) => {
-      const result = await fillScaffoldingTool.execute!(
-        {
-          repoPath: repoPath || this.options.repoPath || process.cwd(),
-          outputDir,
-          target,
-          offset,
-          limit
-        },
-        { toolCallId: '', messages: [] }
-      );
-
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify(result, null, 2)
-        }]
-      };
-    });
-
-    // listFilesToFill tool - lightweight listing without content
-    this.server.registerTool('listFilesToFill', {
-      description: getToolDescription('listFilesToFill', true),
-      inputSchema: {
-        repoPath: z.string().describe('Repository path'),
-        outputDir: z.string().optional().describe('Scaffold directory (default: ./.context)'),
-        target: z.enum(['docs', 'agents', 'plans', 'all']).default('all').optional()
-          .describe('Which scaffolding to list')
-      }
-    }, async ({ repoPath, outputDir, target }) => {
-      const result = await listFilesToFillTool.execute!(
-        {
-          repoPath: repoPath || this.options.repoPath || process.cwd(),
-          outputDir,
-          target
-        },
-        { toolCallId: '', messages: [] }
-      );
-
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify(result, null, 2)
-        }]
-      };
-    });
-
-    // fillSingleFile tool - process one file at a time
-    this.server.registerTool('fillSingleFile', {
-      description: getToolDescription('fillSingleFile', true),
-      inputSchema: {
-        repoPath: z.string().describe('Repository path'),
-        filePath: z.string().describe('Absolute path to the scaffold file to fill')
-      }
-    }, async ({ repoPath, filePath }) => {
-      const result = await fillSingleFileTool.execute!(
-        {
-          repoPath: repoPath || this.options.repoPath || process.cwd(),
-          filePath
-        },
-        { toolCallId: '', messages: [] }
-      );
-
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify(result, null, 2)
-        }]
-      };
-    });
-
-    // getCodebaseMap tool - retrieve sections of the codebase map JSON
-    this.server.registerTool('getCodebaseMap', {
-      description: getToolDescription('getCodebaseMap', true),
-      inputSchema: {
-        repoPath: z.string().optional().describe('Repository path (defaults to cwd)'),
-        section: z.enum([
-          'all',
-          'stack',
-          'structure',
-          'architecture',
-          'symbols',
-          'symbols.classes',
-          'symbols.interfaces',
-          'symbols.functions',
-          'symbols.types',
-          'symbols.enums',
-          'publicAPI',
-          'dependencies',
-          'stats'
-        ]).default('all').optional()
-          .describe('Section of the codebase map to retrieve. Use specific sections to reduce token usage.')
-      }
-    }, async ({ repoPath, section }) => {
-      const result = await getCodebaseMapTool.execute!(
-        {
-          repoPath: repoPath || this.options.repoPath || process.cwd(),
-          section
-        },
-        { toolCallId: '', messages: [] }
-      );
-
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify(result, null, 2)
-        }]
-      };
-    });
-
-    this.log('Registered 13 tools');
-
-    // Register PREVC workflow tools
-    this.registerWorkflowTools();
-  }
-
-  /**
-   * Register PREVC workflow tools
-   */
-  private registerWorkflowTools(): void {
-    const repoPath = this.options.repoPath || process.cwd();
-
-    // workflowInit - Initialize a PREVC workflow
-    this.server.registerTool('workflowInit', {
-      description: 'Initialize a PREVC workflow with automatic scale detection. PREVC = Planejamento, Revisão, Execução, Validação, Confirmação.',
-      inputSchema: {
-        name: z.string().describe('Name of the project/feature'),
-        description: z.string().optional().describe('Description for scale detection'),
-        scale: z.enum(['QUICK', 'SMALL', 'MEDIUM', 'LARGE', 'ENTERPRISE']).optional()
-          .describe('Project scale (auto-detected if not provided)')
-      }
-    }, async ({ name, description, scale }) => {
-      try {
-        const resolvedRepoPath = path.resolve(repoPath);
-        const service = new WorkflowService(resolvedRepoPath);
-        const status = await service.init({
-          name,
-          description,
-          scale: scale as string | undefined,
-        });
-
-        // Include file paths for visibility
-        const contextPath = path.join(resolvedRepoPath, '.context');
-        const statusFilePath = path.join(contextPath, 'workflow', 'status.yaml');
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              message: `Workflow initialized: ${name}`,
-              scale: getScaleName(status.project.scale as ProjectScale),
-              currentPhase: status.project.current_phase,
-              phases: Object.keys(status.phases).filter(
-                (p) => status.phases[p as PrevcPhase].status !== 'skipped'
-              ),
-              statusFilePath,
-              contextPath,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // workflowStatus - Get current workflow status
-    this.server.registerTool('workflowStatus', {
-      description: 'Get the current status of the PREVC workflow including phases, roles, and progress.',
-      inputSchema: {}
-    }, async () => {
-      try {
-        const resolvedRepoPath = path.resolve(repoPath);
-        const service = new WorkflowService(resolvedRepoPath);
-
-        if (!(await service.hasWorkflow())) {
-          return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: false,
-                error: 'No workflow found. Run workflowInit first.',
-                statusFilePath: path.join(resolvedRepoPath, '.context', 'workflow', 'status.yaml')
-              }, null, 2)
-            }]
-          };
-        }
-
-        const summary = await service.getSummary();
-        const status = await service.getStatus();
-        const statusFilePath = path.join(resolvedRepoPath, '.context', 'workflow', 'status.yaml');
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              name: summary.name,
-              scale: getScaleName(summary.scale as ProjectScale),
-              currentPhase: {
-                code: summary.currentPhase,
-                name: PHASE_NAMES_EN[summary.currentPhase],
-              },
-              progress: summary.progress,
-              isComplete: summary.isComplete,
-              phases: status.phases,
-              roles: status.roles,
-              statusFilePath,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // workflowAdvance - Advance to the next phase
-    this.server.registerTool('workflowAdvance', {
-      description: 'Complete the current phase and advance to the next phase in the PREVC workflow.',
+Use force=true to bypass gates, or use workflow-manage({ action: 'setAutonomous' }).`,
       inputSchema: {
         outputs: z.array(z.string()).optional()
-          .describe('List of artifact paths generated in the current phase')
+          .describe('Artifact paths produced in current phase'),
+        force: z.boolean().optional()
+          .describe('Force advancement even if gates block'),
       }
-    }, async ({ outputs }) => {
-      try {
-        const service = new WorkflowService(repoPath);
+    }, wrap('workflow-advance', async (params): Promise<MCPToolResponse> => {
+      return handleWorkflowAdvance(params as WorkflowAdvanceParams, { repoPath: this.getRepoPath((params as WorkflowAdvanceParams).repoPath) });
+    }));
 
-        if (!(await service.hasWorkflow())) {
-          return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: false,
-                error: 'No workflow found. Run workflowInit first.'
-              }, null, 2)
-            }]
-          };
-        }
+    // Tool 3d: workflow-manage - Manage workflow operations
+    this.server.registerTool('workflow-manage', {
+      description: `Manage workflow operations: handoffs, collaboration, documents, gates, approvals.
 
-        const nextPhase = await service.advance(outputs);
-
-        if (nextPhase) {
-          return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: true,
-                message: `Advanced to ${PHASE_NAMES_EN[nextPhase]} phase`,
-                nextPhase: {
-                  code: nextPhase,
-                  name: PHASE_NAMES_EN[nextPhase],
-                }
-              }, null, 2)
-            }]
-          };
-        } else {
-          return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: true,
-                message: 'Workflow completed!',
-                isComplete: true
-              }, null, 2)
-            }]
-          };
-        }
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // workflowHandoff - Handoff between roles
-    this.server.registerTool('workflowHandoff', {
-      description: 'Perform a handoff from one role to another within the PREVC workflow.',
+Actions:
+- handoff: Transfer work between agents (params: from, to, artifacts)
+- collaborate: Start collaboration session (params: topic, participants?)
+- createDoc: Create workflow document (params: type, docName)
+- getGates: Check gate status
+- approvePlan: Approve linked plan (params: planSlug?, approver?, notes?)
+- setAutonomous: Toggle autonomous mode (params: enabled, reason?)`,
       inputSchema: {
-        from: z.enum(PREVC_ROLES as unknown as [string, ...string[]])
-          .describe('Role handing off'),
-        to: z.enum(PREVC_ROLES as unknown as [string, ...string[]])
-          .describe('Role receiving handoff'),
-        artifacts: z.array(z.string()).describe('Artifacts being handed off')
+        action: z.enum(['handoff', 'collaborate', 'createDoc', 'getGates', 'approvePlan', 'setAutonomous'])
+          .describe('Action to perform'),
+        from: z.string().optional()
+          .describe('(handoff) Agent handing off (e.g., feature-developer)'),
+        to: z.string().optional()
+          .describe('(handoff) Agent receiving (e.g., code-reviewer)'),
+        artifacts: z.array(z.string()).optional()
+          .describe('(handoff) Artifacts to hand off'),
+        topic: z.string().optional()
+          .describe('(collaborate) Collaboration topic'),
+        participants: z.array(z.enum(PREVC_ROLES as unknown as [string, ...string[]])).optional()
+          .describe('(collaborate) Participating roles'),
+        type: z.enum(['prd', 'tech-spec', 'architecture', 'adr', 'test-plan', 'changelog']).optional()
+          .describe('(createDoc) Document type'),
+        docName: z.string().optional()
+          .describe('(createDoc) Document name'),
+        planSlug: z.string().optional()
+          .describe('(approvePlan) Plan to approve'),
+        approver: z.enum(PREVC_ROLES as unknown as [string, ...string[]]).optional()
+          .describe('(approvePlan) Approving role'),
+        notes: z.string().optional()
+          .describe('(approvePlan) Approval notes'),
+        enabled: z.boolean().optional()
+          .describe('(setAutonomous) Enable/disable'),
+        reason: z.string().optional()
+          .describe('(setAutonomous) Reason for change'),
       }
-    }, async ({ from, to, artifacts }) => {
-      try {
-        const service = new WorkflowService(repoPath);
+    }, wrap('workflow-manage', async (params): Promise<MCPToolResponse> => {
+      return handleWorkflowManage(params as WorkflowManageParams, { repoPath: this.getRepoPath((params as WorkflowManageParams).repoPath) });
+    }));
 
-        if (!(await service.hasWorkflow())) {
-          return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: false,
-                error: 'No workflow found. Run workflowInit first.'
-              }, null, 2)
-            }]
-          };
-        }
-
-        await service.handoff(from as PrevcRole, to as PrevcRole, artifacts);
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              message: `Handoff complete: ${ROLE_DISPLAY_NAMES[from as PrevcRole]} → ${ROLE_DISPLAY_NAMES[to as PrevcRole]}`,
-              from: { role: from, displayName: ROLE_DISPLAY_NAMES[from as PrevcRole] },
-              to: { role: to, displayName: ROLE_DISPLAY_NAMES[to as PrevcRole] },
-              artifacts
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // workflowCollaborate - Start a collaboration session
-    this.server.registerTool('workflowCollaborate', {
-      description: 'Start a multi-role collaboration session for complex decisions or brainstorming.',
+    // Gateway 5: sync - Import/export synchronization
+    this.server.registerTool('sync', {
+      description: `Import/export synchronization with AI tools. Actions:
+- exportRules: Export rules to AI tools (params: preset?, force?, dryRun?)
+- exportDocs: Export docs to AI tools (params: preset?, indexMode?, force?, dryRun?)
+- exportAgents: Export agents to AI tools (params: preset?, mode?, force?, dryRun?)
+- exportContext: Export all context (params: preset?, skipDocs?, skipAgents?, skipSkills?, docsIndexMode?, agentMode?, force?, dryRun?)
+- exportSkills: Export skills to AI tools (params: preset?, includeBuiltIn?, force?)
+- reverseSync: Import from AI tools to .context/ (params: skipRules?, skipAgents?, skipSkills?, mergeStrategy?, dryRun?, force?, addMetadata?)
+- importDocs: Import docs from AI tools (params: autoDetect?, force?, dryRun?)
+- importAgents: Import agents from AI tools (params: autoDetect?, force?, dryRun?)
+- importSkills: Import skills from AI tools (params: autoDetect?, mergeStrategy?, force?, dryRun?)`,
       inputSchema: {
-        topic: z.string().describe('Topic for the collaboration session'),
-        participants: z.array(z.enum(PREVC_ROLES as unknown as [string, ...string[]]))
-          .optional()
-          .describe('Roles to participate (auto-selected if not provided)')
+        action: z.enum(['exportRules', 'exportDocs', 'exportAgents', 'exportContext', 'exportSkills', 'reverseSync', 'importDocs', 'importAgents', 'importSkills'])
+          .describe('Action to perform'),
+        preset: z.string().optional()
+          .describe('Target AI tool preset'),
+        force: z.boolean().optional()
+          .describe('Overwrite existing files'),
+        dryRun: z.boolean().optional()
+          .describe('Preview without writing'),
+        indexMode: z.enum(['readme', 'all']).optional()
+          .describe('(exportDocs) Index mode'),
+        mode: z.enum(['symlink', 'markdown']).optional()
+          .describe('(exportAgents) Sync mode'),
+        skipDocs: z.boolean().optional()
+          .describe('(exportContext) Skip docs'),
+        skipAgents: z.boolean().optional()
+          .describe('(exportContext, reverseSync) Skip agents'),
+        skipSkills: z.boolean().optional()
+          .describe('(exportContext, reverseSync) Skip skills'),
+        skipRules: z.boolean().optional()
+          .describe('(reverseSync) Skip rules'),
+        docsIndexMode: z.enum(['readme', 'all']).optional()
+          .describe('(exportContext) Docs index mode'),
+        agentMode: z.enum(['symlink', 'markdown']).optional()
+          .describe('(exportContext) Agent sync mode'),
+        includeBuiltInSkills: z.boolean().optional()
+          .describe('(exportContext) Include built-in skills'),
+        includeBuiltIn: z.boolean().optional()
+          .describe('(exportSkills) Include built-in skills'),
+        mergeStrategy: z.enum(['skip', 'overwrite', 'merge', 'rename']).optional()
+          .describe('(reverseSync, importSkills) Conflict handling'),
+        autoDetect: z.boolean().optional()
+          .describe('(import*) Auto-detect files'),
+        addMetadata: z.boolean().optional()
+          .describe('(reverseSync) Add frontmatter metadata'),
+        repoPath: z.string().optional()
+          .describe('Repository path'),
       }
-    }, async ({ topic, participants }) => {
-      try {
-        const service = new WorkflowService(repoPath);
-        const session = await service.startCollaboration(
-          topic,
-          participants as PrevcRole[] | undefined
-        );
-        const status = session.getStatus();
+    }, wrap('sync', async (params): Promise<MCPToolResponse> => {
+      return handleSync(params as SyncParams, { repoPath: this.getRepoPath((params as SyncParams).repoPath) });
+    }));
 
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              message: `Collaboration session started: ${topic}`,
-              sessionId: status.id,
-              topic: status.topic,
-              participants: status.participants.map((p) => ({
-                role: p,
-                displayName: ROLE_DISPLAY_NAMES[p],
-              })),
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // workflowCreateDoc - Create a document for the current phase
-    this.server.registerTool('workflowCreateDoc', {
-      description: 'Create a document template for the current phase of the PREVC workflow.',
+    // Gateway 6: plan - Plan management and execution tracking
+    this.server.registerTool('plan', {
+      description: `Plan management and execution tracking. Actions:
+- link: Link plan to workflow (params: planSlug)
+- getLinked: Get all linked plans
+- getDetails: Get detailed plan info (params: planSlug)
+- getForPhase: Get plans for PREVC phase (params: phase)
+- updatePhase: Update plan phase status (params: planSlug, phaseId, status)
+- recordDecision: Record a decision (params: planSlug, title, description, phase?, alternatives?)
+- updateStep: Update step status (params: planSlug, phaseId, stepIndex, status, output?, notes?)
+- getStatus: Get plan execution status (params: planSlug)
+- syncMarkdown: Sync tracking to markdown (params: planSlug)
+- commitPhase: Create git commit for completed phase (params: planSlug, phaseId, coAuthor?, stagePatterns?, dryRun?)`,
       inputSchema: {
-        type: z.enum(['prd', 'tech-spec', 'architecture', 'adr', 'test-plan', 'changelog'])
-          .describe('Type of document to create'),
-        name: z.string().describe('Name/title for the document')
+        action: z.enum(['link', 'getLinked', 'getDetails', 'getForPhase', 'updatePhase', 'recordDecision', 'updateStep', 'getStatus', 'syncMarkdown', 'commitPhase'])
+          .describe('Action to perform'),
+        planSlug: z.string().optional()
+          .describe('Plan slug/identifier'),
+        phaseId: z.string().optional()
+          .describe('(updatePhase, updateStep, commitPhase) Phase ID'),
+        status: z.enum(['pending', 'in_progress', 'completed', 'skipped']).optional()
+          .describe('(updatePhase, updateStep) New status'),
+        phase: z.enum(['P', 'R', 'E', 'V', 'C']).optional()
+          .describe('(getForPhase, recordDecision) PREVC phase'),
+        title: z.string().optional()
+          .describe('(recordDecision) Decision title'),
+        description: z.string().optional()
+          .describe('(recordDecision) Decision description'),
+        alternatives: z.array(z.string()).optional()
+          .describe('(recordDecision) Considered alternatives'),
+        stepIndex: z.number().optional()
+          .describe('(updateStep) Step number (1-based)'),
+        output: z.string().optional()
+          .describe('(updateStep) Step output artifact'),
+        notes: z.string().optional()
+          .describe('(updateStep) Execution notes'),
+        coAuthor: z.string().optional()
+          .describe('(commitPhase) Agent name for Co-Authored-By footer'),
+        stagePatterns: z.array(z.string()).optional()
+          .describe('(commitPhase) Patterns for files to stage (default: [".context/**"])'),
+        dryRun: z.boolean().optional()
+          .describe('(commitPhase) Preview without committing'),
       }
-    }, async ({ type, name }) => {
-      try {
-        const service = new WorkflowService(repoPath);
+    }, wrap('plan', async (params): Promise<MCPToolResponse> => {
+      return handlePlan(params as PlanParams, { repoPath: this.getRepoPath() });
+    }));
 
-        if (!(await service.hasWorkflow())) {
-          return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: false,
-                error: 'No workflow found. Run workflowInit first.'
-              }, null, 2)
-            }]
-          };
-        }
-
-        // For now, return the document path that should be created
-        const docPath = `.context/workflow/docs/${type}-${name.toLowerCase().replace(/\s+/g, '-')}.md`;
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              message: `Document template ready: ${type}`,
-              documentType: type,
-              suggestedPath: docPath,
-              name,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    this.log('Registered 6 workflow tools');
-
-    // Register extended workflow tools (start, report, export, stack detection)
-    this.registerExtendedWorkflowTools();
-  }
-
-  /**
-   * Register extended workflow tools (start, report, export, stack detection)
-   */
-  private registerExtendedWorkflowTools(): void {
-    const repoPath = this.options.repoPath || process.cwd();
-
-    // projectStart - Unified start command
-    this.server.registerTool('projectStart', {
-      description: 'Start a new project with unified setup: scaffolding + context fill + workflow initialization. Supports workflow templates (hotfix, feature, mvp).',
+    // Gateway 7: agent - Agent orchestration and discovery
+    this.server.registerTool('agent', {
+      description: `Agent orchestration and discovery. Actions:
+- discover: Discover all agents (built-in + custom)
+- getInfo: Get agent details (params: agentType)
+- orchestrate: Select agents for task/phase/role (params: task?, phase?, role?)
+- getSequence: Get agent handoff sequence (params: task, includeReview?, phases?)
+- getDocs: Get agent documentation (params: agent)
+- getPhaseDocs: Get phase documentation (params: phase)
+- listTypes: List all agent types`,
       inputSchema: {
-        featureName: z.string().describe('Feature/project name'),
-        template: z.enum(['hotfix', 'feature', 'mvp', 'auto']).optional()
-          .describe('Workflow template (hotfix=quick fix, feature=standard, mvp=complete)'),
-        skipFill: z.boolean().optional().describe('Skip AI-assisted context filling'),
-        skipWorkflow: z.boolean().optional().describe('Skip workflow initialization'),
+        action: z.enum(['discover', 'getInfo', 'orchestrate', 'getSequence', 'getDocs', 'getPhaseDocs', 'listTypes'])
+          .describe('Action to perform'),
+        agentType: z.string().optional()
+          .describe('(getInfo) Agent type identifier'),
+        task: z.string().optional()
+          .describe('(orchestrate, getSequence) Task description'),
+        phase: z.enum(['P', 'R', 'E', 'V', 'C']).optional()
+          .describe('(orchestrate, getPhaseDocs) PREVC phase'),
+        role: z.enum(PREVC_ROLES as unknown as [string, ...string[]]).optional()
+          .describe('(orchestrate) PREVC role'),
+        includeReview: z.boolean().optional()
+          .describe('(getSequence) Include code review'),
+        phases: z.array(z.enum(['P', 'R', 'E', 'V', 'C'])).optional()
+          .describe('(getSequence) Phases to include'),
+        agent: z.enum(AGENT_TYPES as unknown as [string, ...string[]]).optional()
+          .describe('(getDocs) Agent type for docs'),
       }
-    }, async ({ featureName, template, skipFill, skipWorkflow }) => {
-      try {
-        const startService = new StartService({
-          ui: {
-            displayOutput: () => {},
-            displaySuccess: () => {},
-            displayError: () => {},
-            displayInfo: () => {},
-            displayWarning: () => {},
-            startSpinner: () => {},
-            stopSpinner: () => {},
-            updateSpinner: () => {},
-            prompt: async () => '',
-            confirm: async () => true,
-          } as any,
-          t: (key: string) => key,
-          version: VERSION,
-          defaultModel: 'claude-3-5-sonnet-20241022',
-        });
+    }, wrap('agent', async (params): Promise<MCPToolResponse> => {
+      return handleAgent(params as AgentParams, { repoPath: this.getRepoPath() });
+    }));
 
-        const result = await startService.run(repoPath, {
-          featureName,
-          template: template as any,
-          skipFill,
-          skipWorkflow,
-        });
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: result.workflowStarted || result.initialized,
-              initialized: result.initialized,
-              filled: result.filled,
-              workflowStarted: result.workflowStarted,
-              scale: result.scale ? getScaleName(result.scale) : null,
-              featureName: result.featureName,
-              stack: result.stackDetected ? {
-                primaryLanguage: result.stackDetected.primaryLanguage,
-                frameworks: result.stackDetected.frameworks,
-              } : null,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // projectReport - Generate visual reports
-    this.server.registerTool('projectReport', {
-      description: 'Generate a visual progress report for the current PREVC workflow. Shows phases, roles, deliverables, and a visual dashboard.',
+    // Gateway 8: skill - Skill management
+    this.server.registerTool('skill', {
+      description: `Skill management for on-demand expertise. Actions:
+- list: List all skills (params: includeContent?)
+- getContent: Get skill content (params: skillSlug)
+- getForPhase: Get skills for PREVC phase (params: phase)
+- scaffold: Generate skill files (params: skills?, force?)
+- export: Export skills to AI tools (params: preset?, includeBuiltIn?, force?)
+- fill: Fill skills with codebase content (params: skills?, force?)`,
       inputSchema: {
-        format: z.enum(['json', 'markdown', 'dashboard']).default('dashboard').optional()
-          .describe('Output format: json (raw data), markdown (formatted), dashboard (visual)'),
-        includeStack: z.boolean().optional().describe('Include technology stack info'),
+        action: z.enum(['list', 'getContent', 'getForPhase', 'scaffold', 'export', 'fill'])
+          .describe('Action to perform'),
+        skillSlug: z.string().optional()
+          .describe('(getContent) Skill identifier'),
+        phase: z.enum(['P', 'R', 'E', 'V', 'C']).optional()
+          .describe('(getForPhase) PREVC phase'),
+        skills: z.array(z.string()).optional()
+          .describe('(scaffold, fill) Specific skills to process'),
+        includeContent: z.boolean().optional()
+          .describe('(list) Include full content'),
+        includeBuiltIn: z.boolean().optional()
+          .describe('(export, fill) Include built-in skills'),
+        preset: z.enum(['claude', 'gemini', 'codex', 'antigravity', 'all']).optional()
+          .describe('(export) Target AI tool'),
+        force: z.boolean().optional()
+          .describe('(scaffold, export) Overwrite existing'),
       }
-    }, async ({ format, includeStack }) => {
-      try {
-        const reportService = new ReportService({
-          ui: {
-            displayOutput: () => {},
-            displaySuccess: () => {},
-            displayError: () => {},
-            displayInfo: () => {},
-            displayWarning: () => {},
-            startSpinner: () => {},
-            stopSpinner: () => {},
-            updateSpinner: () => {},
-          } as any,
-          t: (key: string) => key,
-          version: VERSION,
-        });
+    }, wrap('skill', async (params): Promise<MCPToolResponse> => {
+      return handleSkill(params as SkillParams, { repoPath: this.getRepoPath() });
+    }));
 
-        const report = await reportService.generate(repoPath, { includeStack });
-
-        let output: string;
-        if (format === 'json') {
-          output = JSON.stringify(report, null, 2);
-        } else if (format === 'dashboard') {
-          output = reportService.generateVisualDashboard(report);
-        } else {
-          // Markdown format - use visual dashboard as fallback
-          output = reportService.generateVisualDashboard(report);
-        }
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: output
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // exportRules - Export rules to AI tools
-    this.server.registerTool('exportRules', {
-      description: 'Export context rules to AI tool directories (Cursor, Claude, GitHub Copilot, Windsurf, Cline, Aider, Codex). Bidirectional rules sync.',
-      inputSchema: {
-        preset: z.enum(['cursor', 'claude', 'github', 'windsurf', 'cline', 'aider', 'codex', 'all']).default('all')
-          .describe('Target AI tool preset or "all" for all supported tools'),
-        force: z.boolean().optional().describe('Overwrite existing files'),
-        dryRun: z.boolean().optional().describe('Preview changes without writing'),
-      }
-    }, async ({ preset, force, dryRun }) => {
-      try {
-        const exportService = new ExportRulesService({
-          ui: {
-            displayOutput: () => {},
-            displaySuccess: () => {},
-            displayError: () => {},
-            displayInfo: () => {},
-            displayWarning: () => {},
-            startSpinner: () => {},
-            stopSpinner: () => {},
-            updateSpinner: () => {},
-          } as any,
-          t: (key: string) => key,
-          version: VERSION,
-        });
-
-        const result = await exportService.run(repoPath, { preset, force, dryRun });
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              filesCreated: result.filesCreated,
-              filesSkipped: result.filesSkipped,
-              filesFailed: result.filesFailed,
-              targets: result.targets,
-              errors: result.errors,
-              dryRun: dryRun || false,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // detectStack - Detect project technology stack
-    this.server.registerTool('detectStack', {
-      description: 'Detect the project technology stack including languages, frameworks, build tools, and test frameworks. Useful for intelligent defaults.',
-      inputSchema: {}
-    }, async () => {
-      try {
-        const detector = new StackDetector();
-        const stackInfo = await detector.detect(repoPath);
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              stack: stackInfo,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    this.log('Registered 4 extended workflow tools');
-
-    // Register plan-workflow integration tools
-    this.registerPlanTools();
-  }
-
-  /**
-   * Register plan-workflow integration tools
-   */
-  private registerPlanTools(): void {
-    const repoPath = this.options.repoPath || process.cwd();
-
-    // linkPlan - Link a plan to the current workflow
-    this.server.registerTool('linkPlan', {
-      description: 'Link an implementation plan to the current PREVC workflow. Plans provide detailed steps mapped to workflow phases.',
-      inputSchema: {
-        planSlug: z.string().describe('Plan slug/identifier (filename without .md)'),
-      }
-    }, async ({ planSlug }) => {
-      try {
-        const linker = createPlanLinker(repoPath);
-        const ref = await linker.linkPlan(planSlug);
-
-        if (!ref) {
-          return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: false,
-                error: `Plan not found: ${planSlug}`,
-              }, null, 2)
-            }]
-          };
-        }
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              plan: ref,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // getLinkedPlans - Get all plans linked to the workflow
-    this.server.registerTool('getLinkedPlans', {
-      description: 'Get all implementation plans linked to the current PREVC workflow.',
-      inputSchema: {}
-    }, async () => {
-      try {
-        const linker = createPlanLinker(repoPath);
-        const plans = await linker.getLinkedPlans();
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              plans,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // getPlanDetails - Get detailed plan with PREVC mapping
-    this.server.registerTool('getPlanDetails', {
-      description: 'Get detailed plan information including phases mapped to PREVC, agents, and documentation.',
-      inputSchema: {
-        planSlug: z.string().describe('Plan slug/identifier'),
-      }
-    }, async ({ planSlug }) => {
-      try {
-        const linker = createPlanLinker(repoPath);
-        const plan = await linker.getLinkedPlan(planSlug);
-
-        if (!plan) {
-          return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: false,
-                error: `Plan not found or not linked: ${planSlug}`,
-              }, null, 2)
-            }]
-          };
-        }
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              plan: {
-                ...plan,
-                phasesWithPrevc: plan.phases.map(p => ({
-                  ...p,
-                  prevcPhaseName: PHASE_NAMES_EN[p.prevcPhase],
-                })),
-              },
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // getPlansForPhase - Get plans relevant to current PREVC phase
-    this.server.registerTool('getPlansForPhase', {
-      description: 'Get all plans that have work items for a specific PREVC phase.',
-      inputSchema: {
-        phase: z.enum(['P', 'R', 'E', 'V', 'C']).describe('PREVC phase'),
-      }
-    }, async ({ phase }) => {
-      try {
-        const linker = createPlanLinker(repoPath);
-        const plans = await linker.getPlansForPhase(phase as PrevcPhase);
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              phase,
-              phaseName: PHASE_NAMES_EN[phase as PrevcPhase],
-              plans: plans.map(p => ({
-                slug: p.ref.slug,
-                title: p.ref.title,
-                phasesInThisPrevc: p.phases
-                  .filter(ph => ph.prevcPhase === phase)
-                  .map(ph => ({ id: ph.id, name: ph.name, status: ph.status })),
-                hasPendingWork: linker.hasPendingWorkForPhase(p, phase as PrevcPhase),
-              })),
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // updatePlanPhase - Update plan phase status
-    this.server.registerTool('updatePlanPhase', {
-      description: 'Update the status of a plan phase (syncs with PREVC workflow tracking).',
-      inputSchema: {
-        planSlug: z.string().describe('Plan slug/identifier'),
-        phaseId: z.string().describe('Phase ID within the plan (e.g., "phase-1")'),
-        status: z.enum(['pending', 'in_progress', 'completed', 'skipped']).describe('New status'),
-      }
-    }, async ({ planSlug, phaseId, status }) => {
-      try {
-        const linker = createPlanLinker(repoPath);
-        const success = await linker.updatePlanPhase(planSlug, phaseId, status as any);
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success,
-              planSlug,
-              phaseId,
-              status,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // recordDecision - Record a decision in a plan
-    this.server.registerTool('recordDecision', {
-      description: 'Record a decision made during plan execution. Decisions are tracked and can be referenced later.',
-      inputSchema: {
-        planSlug: z.string().describe('Plan slug/identifier'),
-        title: z.string().describe('Decision title'),
-        description: z.string().describe('Decision description and rationale'),
-        phase: z.enum(['P', 'R', 'E', 'V', 'C']).optional().describe('Related PREVC phase'),
-        alternatives: z.array(z.string()).optional().describe('Alternatives that were considered'),
-      }
-    }, async ({ planSlug, title, description, phase, alternatives }) => {
-      try {
-        const linker = createPlanLinker(repoPath);
-        const decision = await linker.recordDecision(planSlug, {
-          title,
-          description,
-          phase: phase as PrevcPhase | undefined,
-          alternatives,
-          status: 'accepted',
-        });
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              decision,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // discoverAgents - Discover all available agents (built-in + custom)
-    this.server.registerTool('discoverAgents', {
-      description: 'Discover all available agents including custom ones. Scans .context/agents/ for custom agent playbooks.',
-      inputSchema: {}
-    }, async () => {
-      try {
-        const linker = createPlanLinker(repoPath);
-        const agents = await linker.discoverAgents();
-
-        const builtIn = agents.filter(a => !a.isCustom);
-        const custom = agents.filter(a => a.isCustom);
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              totalAgents: agents.length,
-              builtInCount: builtIn.length,
-              customCount: custom.length,
-              agents: {
-                builtIn: builtIn.map(a => a.type),
-                custom: custom.map(a => ({ type: a.type, path: a.path })),
-              },
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // getAgentInfo - Get detailed info about a specific agent
-    this.server.registerTool('getAgentInfo', {
-      description: 'Get detailed information about a specific agent (built-in or custom). Returns path, existence status, title, and description.',
-      inputSchema: {
-        agentType: z.string().describe('Agent type/identifier (e.g., "code-reviewer" or "agente-de-marketing")'),
-      }
-    }, async ({ agentType }) => {
-      try {
-        const linker = createPlanLinker(repoPath);
-        const info = await linker.getAgentInfo(agentType);
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              agent: info,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    this.log('Registered 8 plan-workflow tools');
+    this.log('Registered 9 tools (5 consolidated gateways + 4 dedicated workflow tools)');
   }
 
   /**
    * Register semantic context resources
+   * Uses initialRepoPath if found, otherwise process.cwd()
    */
   private registerResources(): void {
-    const repoPath = this.options.repoPath || process.cwd();
+    const repoPath = this.initialRepoPath ?? process.cwd();
 
     // Register context resources as templates with URI patterns
     this.server.registerResource(
@@ -1446,16 +604,14 @@ export class AIContextMCPServer {
 
     // Register PREVC workflow resources
     this.registerWorkflowResources();
-
-    // Register orchestration tools
-    this.registerOrchestrationTools();
   }
 
   /**
    * Register PREVC workflow resources
+   * Uses initialRepoPath if found, otherwise process.cwd()
    */
   private registerWorkflowResources(): void {
-    const repoPath = this.options.repoPath || process.cwd();
+    const repoPath = this.initialRepoPath ?? process.cwd();
 
     // workflow://status - Current workflow status
     this.server.registerResource(
@@ -1515,582 +671,194 @@ export class AIContextMCPServer {
   }
 
   /**
-   * Register agent orchestration tools
+   * Initialize repo path with smart detection and caching
+   *
+   * Strategy:
+   * 1. If explicit options.repoPath provided, try to find project root from there
+   * 2. Otherwise search upward from process.cwd() for .context or .git
+   * 3. Set as initialRepoPath if found (for resources)
+   * 4. First valid repoPath from client gets cached for all subsequent tool calls
+   * 5. Fallback to process.cwd() if nothing found (allows flexible MCP usage)
    */
-  private registerOrchestrationTools(): void {
-    // orchestrateAgents - Select agents for a task, phase, or role
-    this.server.registerTool('orchestrateAgents', {
-      description: 'Select appropriate agents based on task description, PREVC phase, or role. Returns recommended agents with their descriptions and relevant documentation.',
-      inputSchema: {
-        task: z.string().optional().describe('Task description for intelligent agent selection'),
-        phase: z.enum(['P', 'R', 'E', 'V', 'C']).optional().describe('PREVC phase to get agents for'),
-        role: z.enum(PREVC_ROLES).optional().describe('PREVC role to get agents for'),
-      },
-    }, async ({ task, phase, role }) => {
-      try {
-        let agents: AgentType[] = [];
-        let source = '';
+  private async initializeRepoPath(): Promise<void> {
+    const startPath = this.options.repoPath || process.cwd();
+    const foundRoot = await this.findProjectRoot(startPath);
 
-        if (task) {
-          agents = agentOrchestrator.selectAgentsByTask(task);
-          source = `task: "${task}"`;
-        } else if (phase) {
-          agents = agentOrchestrator.getAgentsForPhase(phase as PrevcPhase);
-          source = `phase: ${phase} (${PHASE_NAMES_EN[phase as PrevcPhase]})`;
-        } else if (role) {
-          agents = agentOrchestrator.getAgentsForRole(role as PrevcRole);
-          source = `role: ${ROLE_DISPLAY_NAMES[role as PrevcRole]}`;
-        } else {
-          return {
-            content: [{ type: 'text', text: 'Error: Provide task, phase, or role parameter' }],
-          };
-        }
-
-        const agentDetails = agents.map((agent) => ({
-          type: agent,
-          description: agentOrchestrator.getAgentDescription(agent),
-          docs: documentLinker.getDocPathsForAgent(agent),
-        }));
-
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              source,
-              agents: agentDetails,
-              count: agents.length,
-            }, null, 2),
-          }],
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text',
-            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
-          }],
-        };
-      }
-    });
-
-    // getAgentSequence - Get recommended agent sequence for a task
-    this.server.registerTool('getAgentSequence', {
-      description: 'Get recommended sequence of agents for a task, including handoff order. Useful for planning multi-agent workflows.',
-      inputSchema: {
-        task: z.string().describe('Task description'),
-        includeReview: z.boolean().optional().describe('Include code review in sequence (default: true)'),
-        phases: z.array(z.enum(['P', 'R', 'E', 'V', 'C'])).optional().describe('PREVC phases to include (for phase-based sequencing)'),
-      },
-    }, async ({ task, includeReview, phases }) => {
-      try {
-        let sequence: AgentType[];
-
-        if (phases && phases.length > 0) {
-          sequence = agentOrchestrator.getAgentHandoffSequence(phases as PrevcPhase[]);
-        } else {
-          sequence = agentOrchestrator.getTaskAgentSequence(
-            task,
-            includeReview !== false
-          );
-        }
-
-        const sequenceDetails = sequence.map((agent, index) => ({
-          order: index + 1,
-          agent,
-          description: agentOrchestrator.getAgentDescription(agent),
-          primaryDoc: documentLinker.getPrimaryDocForAgent(agent)?.path || null,
-        }));
-
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              task,
-              sequence: sequenceDetails,
-              totalAgents: sequence.length,
-            }, null, 2),
-          }],
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text',
-            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
-          }],
-        };
-      }
-    });
-
-    // getAgentDocs - Get documentation relevant to an agent
-    this.server.registerTool('getAgentDocs', {
-      description: 'Get documentation guides relevant to a specific agent type. Helps agents find the right context.',
-      inputSchema: {
-        agent: z.enum(AGENT_TYPES).describe('Agent type to get documentation for'),
-      },
-    }, async ({ agent }) => {
-      try {
-        if (!agentOrchestrator.isValidAgentType(agent)) {
-          return {
-            content: [{
-              type: 'text',
-              text: `Error: Invalid agent type "${agent}". Valid types: ${AGENT_TYPES.join(', ')}`,
-            }],
-          };
-        }
-
-        const docs = documentLinker.getDocsForAgent(agent as AgentType);
-        const agentDesc = agentOrchestrator.getAgentDescription(agent as AgentType);
-
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              agent,
-              description: agentDesc,
-              documentation: docs.map((doc) => ({
-                type: doc.type,
-                title: doc.title,
-                path: doc.path,
-                description: doc.description,
-              })),
-            }, null, 2),
-          }],
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text',
-            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
-          }],
-        };
-      }
-    });
-
-    // getPhaseDocs - Get documentation for a PREVC phase
-    this.server.registerTool('getPhaseDocs', {
-      description: 'Get documentation relevant to a PREVC workflow phase. Helps understand what documentation is needed at each phase.',
-      inputSchema: {
-        phase: z.enum(['P', 'R', 'E', 'V', 'C']).describe('PREVC phase (P=Planning, R=Review, E=Execution, V=Validation, C=Confirmation)'),
-      },
-    }, async ({ phase }) => {
-      try {
-        const docs = documentLinker.getDocsForPhase(phase as PrevcPhase);
-        const agents = agentOrchestrator.getAgentsForPhase(phase as PrevcPhase);
-
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              phase,
-              phaseName: PHASE_NAMES_EN[phase as PrevcPhase],
-              documentation: docs.map((doc) => ({
-                type: doc.type,
-                title: doc.title,
-                path: doc.path,
-                description: doc.description,
-              })),
-              recommendedAgents: agents.map((agent) => ({
-                type: agent,
-                description: agentOrchestrator.getAgentDescription(agent),
-              })),
-            }, null, 2),
-          }],
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text',
-            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
-          }],
-        };
-      }
-    });
-
-    // listAgentTypes - List all available agent types
-    this.server.registerTool('listAgentTypes', {
-      description: 'List all available agent types with their descriptions. Use this to understand what agents are available.',
-      inputSchema: {},
-    }, async () => {
-      const agents = agentOrchestrator.getAllAgentTypes().map((agent) => ({
-        type: agent,
-        description: agentOrchestrator.getAgentDescription(agent),
-        primaryDoc: documentLinker.getPrimaryDocForAgent(agent)?.title || null,
-      }));
-
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify({
-            agents,
-            total: agents.length,
-          }, null, 2),
-        }],
-      };
-    });
-
-    this.log('Registered 5 orchestration tools');
-
-    // Register skill tools
-    this.registerSkillTools();
+    if (foundRoot) {
+      this.initialRepoPath = path.resolve(foundRoot);
+      this.log(`Server initialized with project root: ${this.initialRepoPath}`);
+    } else {
+      // No project found - will use process.cwd() as fallback
+      // This allows flexible MCP server usage without strict project detection
+      this.initialRepoPath = null;
+      this.log(`No project root found. Will use process.cwd() or first valid client-provided path.`);
+    }
   }
 
   /**
-   * Register skill tools for on-demand expertise
+   * Find project root by searching upward for .context or .git
    */
-  private registerSkillTools(): void {
-    const repoPath = this.options.repoPath || process.cwd();
+  private async findProjectRoot(startPath: string): Promise<string | null> {
+    let currentPath = path.resolve(startPath);
+    const root = path.parse(currentPath).root;
 
-    // Import skill registry
-    const { createSkillRegistry, BUILT_IN_SKILLS, SKILL_TO_PHASES } = require('../../workflow/skills');
-
-    // listSkills - List all available skills
-    this.server.registerTool('listSkills', {
-      description: 'List all available skills (built-in + custom). Skills are on-demand expertise for specific tasks.',
-      inputSchema: {
-        includeContent: z.boolean().optional().describe('Include full skill content in response'),
+    // Search upward for .context or .git
+    while (currentPath !== root) {
+      if (
+        await fs.pathExists(path.join(currentPath, '.context')) ||
+        await fs.pathExists(path.join(currentPath, '.git'))
+      ) {
+        return currentPath;
       }
-    }, async ({ includeContent }) => {
+      currentPath = path.dirname(currentPath);
+    }
+
+    // Not found
+    return null;
+  }
+
+  /**
+   * Cache a valid repoPath from client
+   * Only cache if it contains .context and we haven't cached yet
+   */
+  private cacheRepoPathIfValid(repoPath: string): void {
+    if (this.cachedRepoPath) {
+      return; // Already cached
+    }
+
+    const contextPath = path.join(repoPath, '.context');
+    if (fs.existsSync(contextPath)) {
+      this.cachedRepoPath = path.resolve(repoPath);
+      process.stderr.write(`[mcp] ✓ Cached repoPath for this session: ${this.cachedRepoPath}\n`);
+      this.log(`Cached valid repoPath: ${this.cachedRepoPath}`);
+    }
+  }
+
+  /**
+   * Get the effective repo path for a tool call
+   * Priority: 1) explicit param, 2) cached path, 3) initial path, 4) process.cwd()
+   */
+  private getRepoPath(paramsRepoPath?: string): string {
+    if (paramsRepoPath) {
+      const resolved = path.resolve(paramsRepoPath);
+      this.cacheRepoPathIfValid(resolved);
+      return resolved;
+    }
+
+    if (this.cachedRepoPath) {
+      this.log(`Using cached repoPath: ${this.cachedRepoPath}`);
+      return this.cachedRepoPath;
+    }
+
+    if (this.initialRepoPath) {
+      this.log(`Using initial repoPath: ${this.initialRepoPath}`);
+      return this.initialRepoPath;
+    }
+
+    // Fallback to current working directory
+    const cwd = process.cwd();
+    this.log(`Using fallback cwd: ${cwd}`);
+    return cwd;
+  }
+
+  private wrapWithActionLogging<TParams>(
+    toolName: string,
+    handler: (params: TParams) => Promise<MCPToolResponse>
+  ): (params: TParams) => Promise<MCPToolResponse> {
+    return async (params: TParams) => {
+      const resolvedRepoPath = this.getRepoPath((params as { repoPath?: string })?.repoPath);
+      const action = typeof (params as { action?: string })?.action === 'string'
+        ? (params as { action?: string }).action!
+        : toolName;
+
       try {
-        const registry = createSkillRegistry(repoPath);
-        const discovered = await registry.discoverAll();
-
-        const format = (skill: any) => ({
-          slug: skill.slug,
-          name: skill.metadata.name,
-          description: skill.metadata.description,
-          phases: skill.metadata.phases || [],
-          isBuiltIn: skill.isBuiltIn,
-          ...(includeContent ? { content: skill.content } : {}),
-        });
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              totalSkills: discovered.all.length,
-              builtInCount: discovered.builtIn.length,
-              customCount: discovered.custom.length,
-              skills: {
-                builtIn: discovered.builtIn.map(format),
-                custom: discovered.custom.map(format),
-              },
-            }, null, 2)
-          }]
-        };
+        const response = await handler(params);
+        await this.logToolResponse(resolvedRepoPath, toolName, action, params, response);
+        return response;
       } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
+        await this.logToolError(resolvedRepoPath, toolName, action, params, error);
+        throw error;
       }
+    };
+  }
+
+  private async logToolResponse<TParams>(
+    repoPath: string,
+    toolName: string,
+    action: string,
+    params: TParams,
+    response: MCPToolResponse
+  ): Promise<void> {
+    const payload = this.parseResponsePayload(response);
+    const success = typeof payload?.success === 'boolean'
+      ? payload.success
+      : !response.isError;
+    const errorMessage = typeof payload?.error === 'string' ? payload.error : undefined;
+    const resultSummary = payload ? this.buildResultSummary(payload) : undefined;
+
+    await logMcpAction(repoPath, {
+      tool: toolName,
+      action,
+      status: success ? 'success' : 'error',
+      details: {
+        params,
+        ...(resultSummary ? { result: resultSummary } : {}),
+      },
+      ...(success ? {} : { error: errorMessage || 'Tool reported failure' }),
     });
+  }
 
-    // getSkillContent - Get full content of a specific skill
-    this.server.registerTool('getSkillContent', {
-      description: 'Get the full content of a skill by slug. Returns the SKILL.md content with instructions.',
-      inputSchema: {
-        skillSlug: z.string().describe('Skill slug/identifier (e.g., "commit-message", "pr-review")'),
-      }
-    }, async ({ skillSlug }) => {
-      try {
-        const registry = createSkillRegistry(repoPath);
-        const content = await registry.getSkillContent(skillSlug);
+  private async logToolError<TParams>(
+    repoPath: string,
+    toolName: string,
+    action: string,
+    params: TParams,
+    error: unknown
+  ): Promise<void> {
+    const message = error instanceof Error ? error.message : String(error);
 
-        if (!content) {
-          return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: false,
-                error: `Skill not found: ${skillSlug}`,
-                availableSkills: BUILT_IN_SKILLS,
-              }, null, 2)
-            }]
-          };
-        }
-
-        const skill = await registry.getSkillMetadata(skillSlug);
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              skill: {
-                slug: skillSlug,
-                name: skill?.metadata.name,
-                description: skill?.metadata.description,
-                phases: skill?.metadata.phases,
-                isBuiltIn: skill?.isBuiltIn,
-              },
-              content,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
+    await logMcpAction(repoPath, {
+      tool: toolName,
+      action,
+      status: 'error',
+      details: { params },
+      error: message,
     });
+  }
 
-    // getSkillsForPhase - Get skills relevant to a PREVC phase
-    this.server.registerTool('getSkillsForPhase', {
-      description: 'Get all skills relevant to a specific PREVC phase. Useful for knowing which skills to activate during workflow execution.',
-      inputSchema: {
-        phase: z.enum(['P', 'R', 'E', 'V', 'C']).describe('PREVC phase'),
+  private parseResponsePayload(response: MCPToolResponse): Record<string, unknown> | null {
+    const text = response.content?.[0]?.text;
+    if (!text) return null;
+    try {
+      const parsed = JSON.parse(text);
+      return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private buildResultSummary(payload: Record<string, unknown>): Record<string, unknown> | null {
+    const summaryKeys = [
+      'success',
+      'message',
+      'currentPhase',
+      'nextPhase',
+      'phase',
+      'scale',
+      'planSlug',
+      'count',
+      'total',
+      'status',
+    ];
+    const summary: Record<string, unknown> = {};
+
+    for (const key of summaryKeys) {
+      if (key in payload) {
+        summary[key] = payload[key];
       }
-    }, async ({ phase }) => {
-      try {
-        const registry = createSkillRegistry(repoPath);
-        const skills = await registry.getSkillsForPhase(phase);
+    }
 
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              phase,
-              phaseName: PHASE_NAMES_EN[phase as PrevcPhase],
-              skills: skills.map((s: any) => ({
-                slug: s.slug,
-                name: s.metadata.name,
-                description: s.metadata.description,
-                isBuiltIn: s.isBuiltIn,
-              })),
-              count: skills.length,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // scaffoldSkills - Generate skill files
-    this.server.registerTool('scaffoldSkills', {
-      description: 'Scaffold skill files in .context/skills/. Creates SKILL.md files for built-in or custom skills.',
-      inputSchema: {
-        skills: z.array(z.string()).optional().describe('Specific skills to scaffold (default: all built-in)'),
-        force: z.boolean().optional().describe('Overwrite existing skill files'),
-      }
-    }, async ({ skills, force }) => {
-      try {
-        const { createSkillGenerator } = require('../../generators/skills');
-        const generator = createSkillGenerator({ repoPath });
-        const result = await generator.generate({ skills, force });
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              skillsDir: result.skillsDir,
-              generated: result.generatedSkills,
-              skipped: result.skippedSkills,
-              indexPath: result.indexPath,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // exportSkills - Export skills to AI tool directories
-    this.server.registerTool('exportSkills', {
-      description: 'Export skills to AI tool directories (Claude Code, Gemini CLI, Codex). Copies skills to .claude/skills/, .gemini/skills/, etc.',
-      inputSchema: {
-        preset: z.enum(['claude', 'gemini', 'codex', 'all']).default('all')
-          .describe('Target AI tool or "all" for all supported tools'),
-        includeBuiltIn: z.boolean().optional().describe('Include built-in skills even if not scaffolded'),
-        force: z.boolean().optional().describe('Overwrite existing files'),
-      }
-    }, async ({ preset, includeBuiltIn, force }) => {
-      try {
-        const { SkillExportService } = require('../export/skillExportService');
-        const exportService = new SkillExportService({
-          ui: {
-            displayOutput: () => {},
-            displaySuccess: () => {},
-            displayError: () => {},
-            displayWarning: () => {},
-            startSpinner: () => {},
-            stopSpinner: () => {},
-            updateSpinner: () => {},
-          },
-          t: (key: string) => key,
-          version: VERSION,
-        });
-
-        const result = await exportService.run(repoPath, {
-          preset,
-          includeBuiltIn,
-          force,
-        });
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: result.filesCreated > 0,
-              targets: result.targets,
-              skillsExported: result.skillsExported,
-              filesCreated: result.filesCreated,
-              filesSkipped: result.filesSkipped,
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    // fillSkills - Return fill instructions for skill files (NO API key required)
-    this.server.registerTool('fillSkills', {
-      description: `Fill/personalize skill files with codebase-aware content.
-Returns semantic context and fill instructions for the AI agent to process.
-The AI agent MUST then fill each skill file using the provided context and instructions.`,
-      inputSchema: {
-        skills: z.array(z.string()).optional().describe('Specific skills to fill (default: all scaffolded)'),
-        force: z.boolean().optional().describe('Include already-filled skills'),
-      }
-    }, async ({ skills, force }) => {
-      try {
-        const fs = require('fs-extra');
-        const registry = createSkillRegistry(repoPath);
-        const skillsDir = path.join(repoPath, '.context', 'skills');
-
-        // Check if skills directory exists
-        if (!await fs.pathExists(skillsDir)) {
-          return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: false,
-                error: 'Skills directory does not exist. Run scaffoldSkills first.',
-                skillsDir,
-              }, null, 2)
-            }]
-          };
-        }
-
-        // Discover skills to fill
-        const discovered = await registry.discoverAll();
-        let skillsToFill = discovered.all;
-
-        // Filter by specific skills if provided
-        if (skills && skills.length > 0) {
-          skillsToFill = skillsToFill.filter((s: { slug: string }) => skills.includes(s.slug));
-        }
-
-        // Filter out already-filled skills unless force is set
-        if (!force) {
-          skillsToFill = skillsToFill.filter((s: { path: string }) => {
-            // Check if skill file exists and has minimal content (likely a template)
-            if (!fs.existsSync(s.path)) return true;
-            const content = fs.readFileSync(s.path, 'utf-8');
-            // Consider it unfilled if it's a template (has placeholder markers)
-            return content.includes('<!-- TODO') || content.includes('[PLACEHOLDER]') || content.length < 500;
-          });
-        }
-
-        if (skillsToFill.length === 0) {
-          return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: true,
-                message: 'No skills need filling. Use force=true to refill existing skills.',
-                skillsDir,
-              }, null, 2)
-            }]
-          };
-        }
-
-        // Build semantic context
-        let semanticContext: string | undefined;
-        try {
-          semanticContext = await getOrBuildContext(repoPath);
-        } catch (contextError) {
-          // Continue without semantic context
-          semanticContext = undefined;
-        }
-
-        // Build fill instructions for each skill
-        const fillInstructions = skillsToFill.map((skill: { path: string; slug: string; metadata: { name?: string; description?: string }; isBuiltIn: boolean }) => ({
-          skillPath: skill.path,
-          skillSlug: skill.slug,
-          skillName: skill.metadata.name || skill.slug,
-          description: skill.metadata.description || '',
-          isBuiltIn: skill.isBuiltIn,
-          instructions: getSkillFillInstructions(skill.slug),
-        }));
-
-        // Build comprehensive fill prompt
-        const fillPrompt = buildSkillFillPrompt(fillInstructions, semanticContext);
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              skillsToFill: fillInstructions,
-              semanticContext,
-              fillPrompt,
-              instructions: 'IMPORTANT: You MUST now fill each skill file using the semantic context and fill instructions provided. Write the content to each skillPath.',
-            }, null, 2)
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            }, null, 2)
-          }]
-        };
-      }
-    });
-
-    this.log('Registered 6 skill tools');
+    return Object.keys(summary).length > 0 ? summary : null;
   }
 
   /**
@@ -2119,142 +887,6 @@ The AI agent MUST then fill each skill file using the provided context and instr
       process.stderr.write(`[mcp] ${message}\n`);
     }
   }
-}
-
-/**
- * Get fill instructions for a skill based on its type
- */
-function getSkillFillInstructions(skillSlug: string): string {
-  const instructions: Record<string, string> = {
-    'commit-message': `Fill this skill with:
-- Commit message format conventions for this project
-- Examples of good commit messages from the codebase
-- Branch naming conventions if applicable
-- Semantic versioning guidelines`,
-
-    'pr-review': `Fill this skill with:
-- PR review checklist specific to this codebase
-- Code quality standards to check
-- Testing requirements before merge
-- Documentation expectations`,
-
-    'code-review': `Fill this skill with:
-- Code review guidelines for this project
-- Common patterns to look for
-- Security and performance considerations
-- Style and convention checks`,
-
-    'test-generation': `Fill this skill with:
-- Testing framework and conventions used
-- Test file organization patterns
-- Mocking strategies for this codebase
-- Coverage requirements`,
-
-    'documentation': `Fill this skill with:
-- Documentation standards for this project
-- JSDoc/TSDoc conventions
-- README structure expectations
-- API documentation guidelines`,
-
-    'refactoring': `Fill this skill with:
-- Refactoring patterns common in this codebase
-- Code smell detection guidelines
-- Safe refactoring procedures
-- Testing requirements after refactoring`,
-
-    'bug-investigation': `Fill this skill with:
-- Debugging workflow for this codebase
-- Common bug patterns and their fixes
-- Logging and error handling conventions
-- Test verification steps`,
-
-    'feature-breakdown': `Fill this skill with:
-- Feature decomposition approach
-- Task estimation guidelines
-- Dependency identification process
-- Integration points to consider`,
-
-    'api-design': `Fill this skill with:
-- API design patterns used in this project
-- Endpoint naming conventions
-- Request/response format standards
-- Versioning and deprecation policies`,
-
-    'security-audit': `Fill this skill with:
-- Security checklist for this codebase
-- Common vulnerabilities to check
-- Authentication/authorization patterns
-- Data validation requirements`,
-  };
-
-  return instructions[skillSlug] || `Fill this skill with project-specific content for ${skillSlug}:
-- Identify relevant patterns from the codebase
-- Include specific examples from the project
-- Add conventions and best practices
-- Reference important files and components`;
-}
-
-/**
- * Build comprehensive fill prompt for skills
- */
-function buildSkillFillPrompt(
-  skills: Array<{
-    skillPath: string;
-    skillSlug: string;
-    skillName: string;
-    description: string;
-    instructions: string;
-  }>,
-  semanticContext?: string
-): string {
-  const lines: string[] = [];
-
-  lines.push('# Skill Fill Instructions');
-  lines.push('');
-  lines.push('You MUST fill each of the following skill files with codebase-specific content.');
-  lines.push('');
-
-  if (semanticContext) {
-    lines.push('## Codebase Context');
-    lines.push('');
-    lines.push('Use this semantic context to understand the codebase:');
-    lines.push('');
-    lines.push('```');
-    lines.push(semanticContext.length > 6000 ? semanticContext.substring(0, 6000) + '\n...(truncated)' : semanticContext);
-    lines.push('```');
-    lines.push('');
-  }
-
-  lines.push('## Skills to Fill');
-  lines.push('');
-
-  for (const skill of skills) {
-    lines.push(`### ${skill.skillName} (${skill.skillSlug})`);
-    lines.push(`**Path:** \`${skill.skillPath}\``);
-    if (skill.description) {
-      lines.push(`**Description:** ${skill.description}`);
-    }
-    lines.push('');
-    lines.push('**Fill Instructions:**');
-    lines.push(skill.instructions);
-    lines.push('');
-  }
-
-  lines.push('## Action Required');
-  lines.push('');
-  lines.push('For each skill listed above:');
-  lines.push('1. Read the current skill template');
-  lines.push('2. Generate codebase-specific content based on the instructions and context');
-  lines.push('3. Write the filled content to the skill file');
-  lines.push('');
-  lines.push('Each skill should be personalized with:');
-  lines.push('- Specific examples from this codebase');
-  lines.push('- Project-specific conventions and patterns');
-  lines.push('- References to relevant files and components');
-  lines.push('');
-  lines.push('DO NOT leave placeholder text. Each skill must have meaningful, project-specific content.');
-
-  return lines.join('\n');
 }
 
 /**

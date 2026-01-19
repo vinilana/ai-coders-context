@@ -7,6 +7,10 @@
 
 import * as path from 'path';
 import * as fs from 'fs-extra';
+import {
+  resolveContextRoot,
+  type ContextResolutionResult,
+} from './contextRootResolver';
 
 /**
  * Standard context paths for a repository
@@ -22,7 +26,16 @@ export interface ContextPaths {
 }
 
 /**
- * Resolve all context paths for a repository
+ * Extended context paths with resolution details
+ */
+export interface ContextPathsWithResolution extends ContextPaths {
+  resolution: ContextResolutionResult;
+}
+
+/**
+ * Resolve all context paths for a repository (synchronous version)
+ * Note: Uses a simple strategy without upward traversal or git root detection.
+ * For robust context resolution, use resolveContextPathsAsync instead.
  */
 export function resolveContextPaths(repoPath: string): ContextPaths {
   const absolutePath = path.resolve(repoPath);
@@ -37,6 +50,32 @@ export function resolveContextPaths(repoPath: string): ContextPaths {
     rulesPath: path.join(contextPath, 'rules'),
     workflowPath: path.join(contextPath, 'workflow'),
   };
+}
+
+/**
+ * Resolve all context paths for a repository (async version)
+ * Uses simple path resolution: direct subdirectory lookup without upward traversal.
+ */
+export async function resolveContextPathsAsync(
+  repoPath?: string
+): Promise<ContextPathsWithResolution> {
+  const startPath = repoPath || process.cwd();
+  const resolution = await resolveContextRoot({
+    startPath,
+  });
+
+  const paths: ContextPathsWithResolution = {
+    absolutePath: resolution.projectRoot,
+    contextPath: resolution.contextPath,
+    docsPath: path.join(resolution.contextPath, 'docs'),
+    agentsPath: path.join(resolution.contextPath, 'agents'),
+    plansPath: path.join(resolution.contextPath, 'plans'),
+    rulesPath: path.join(resolution.contextPath, 'rules'),
+    workflowPath: path.join(resolution.contextPath, 'workflow'),
+    resolution,
+  };
+
+  return paths;
 }
 
 /**
