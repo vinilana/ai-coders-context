@@ -20,6 +20,8 @@ export interface InitCommandFlags {
   agentsOnly?: boolean;
   semantic?: boolean;
   contentStubs?: boolean;
+  /** Fill scaffolds with semantic data (no LLM required) */
+  autoFill?: boolean;
 }
 
 export interface InitServiceDependencies {
@@ -42,6 +44,8 @@ interface InitOptions {
   scaffoldSkills: boolean;
   semantic: boolean;
   includeContentStubs: boolean;
+  /** Fill scaffolds with semantic data (no LLM required) */
+  autoFill: boolean;
 }
 
 export class InitService {
@@ -74,7 +78,8 @@ export class InitService {
       scaffoldAgents: resolvedType === 'agents' || resolvedType === 'both',
       scaffoldSkills: resolvedType === 'both',
       semantic: rawOptions.semantic !== false,
-      includeContentStubs: rawOptions.contentStubs !== false
+      includeContentStubs: rawOptions.contentStubs !== false,
+      autoFill: rawOptions.autoFill ?? false
     };
 
     if (!options.scaffoldDocs && !options.scaffoldAgents) {
@@ -180,7 +185,7 @@ export class InitService {
       docsGenerated = await this.documentationGenerator.generateDocumentation(
         repoStructure,
         options.outputDir,
-        { semantic: options.semantic, includeContentStubs: options.includeContentStubs },
+        { semantic: options.semantic, includeContentStubs: options.includeContentStubs, autoFill: options.autoFill },
         options.verbose
       );
       this.ui.updateSpinner(this.t('spinner.docs.created', { count: docsGenerated }), 'success');
@@ -196,7 +201,7 @@ export class InitService {
       agentsGenerated = await this.agentGenerator.generateAgentPrompts(
         repoStructure,
         options.outputDir,
-        { semantic: options.semantic, includeContentStubs: options.includeContentStubs },
+        { semantic: options.semantic, includeContentStubs: options.includeContentStubs, autoFill: options.autoFill },
         options.verbose
       );
       this.ui.updateSpinner(this.t('spinner.agents.created', { count: agentsGenerated }), 'success');
