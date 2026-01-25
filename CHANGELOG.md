@@ -5,6 +5,71 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1]
+
+### Added
+
+- **Project Type Filtering in InitService**: Scaffolds are now automatically filtered based on detected project type
+  - Uses `StackDetector` and `classifyProject` to determine project type (cli, web-frontend, web-backend, full-stack, mobile, library, monorepo, desktop)
+  - Passes `filteredDocs` and `filteredAgents` to generators based on project classification
+  - CLI projects get core scaffolds only; web projects get additional architecture, security, and specialist agents
+  - Graceful fallback to all scaffolds if classification fails
+
+- **Static Default Content for Scaffolds**: All scaffolds now include useful template content out-of-the-box
+  - New `defaultContent` field in `ScaffoldSection` type provides static content when not autoFilled
+  - Serialization uses `defaultContent` directly instead of placeholder text ("_Content to be added._")
+  - Works immediately without requiring LLM enhancement or semantic analysis
+
+- **Agent Playbook Default Content**: All 14 agent playbooks now include comprehensive static content
+  - **Mission** — Clear description of agent purpose and when to engage
+  - **Responsibilities** — Concrete list of tasks the agent handles
+  - **Best Practices** — Guidelines for effective agent operation
+  - **Collaboration Checklist** — Step-by-step workflow with checkboxes
+  - Agents: code-reviewer, bug-fixer, feature-developer, refactoring-specialist, test-writer, documentation-writer, performance-optimizer, security-auditor, backend-specialist, frontend-specialist, architect-specialist, devops-specialist, database-specialist, mobile-specialist
+
+- **Documentation Default Content**: 8 core documentation templates now include useful starter content
+  - **project-overview.md** — Quick facts, entry points, technology stack, getting started checklist
+  - **development-workflow.md** — Branching model, local development commands, code review expectations
+  - **testing-strategy.md** — Test types, running tests, quality gates, troubleshooting
+  - **architecture.md** — System overview, layers, patterns table, diagrams placeholder
+  - **tooling.md** — Required tools, automation commands, IDE setup recommendations
+  - **security.md** — Authentication, secrets management, compliance checklist
+  - **glossary.md** — Type definitions, enums, core terms, acronyms table
+  - **data-flow.md** — Module dependencies, service layer, high-level flow diagram
+
+- **Skill Default Content**: All 10 built-in skills now include comprehensive static content
+  - **When to Use** — Clear activation triggers for each skill
+  - **Instructions** — Step-by-step execution guide
+  - **Examples** — Concrete, copy-pasteable examples
+  - **Guidelines** — Best practices for effective use
+  - Skills: commit-message, pr-review, code-review, test-generation, documentation, refactoring, bug-investigation, feature-breakdown, api-design, security-audit
+
+### Changed
+
+- **Scaffold Generation**: Scaffolds now generate with useful content instead of empty placeholders
+  - Previously: `_Content to be added._` with guidance comments
+  - Now: Practical template content that works for any project type
+  - AutoFill still enhances with project-specific content when semantic analysis is available
+
+### Technical Details
+
+#### Modified Files
+- `src/services/init/initService.ts` — Added project type detection and scaffold filtering
+- `src/generators/shared/structures/types.ts` — Added `defaultContent` field to `ScaffoldSection`
+- `src/generators/shared/structures/serialization.ts` — Updated to use `defaultContent` when available
+- `src/generators/shared/structures/agents/factory.ts` — Added `AgentDefaultContent` interface and section mapping
+- `src/generators/shared/structures/agents/definitions.ts` — Added default content for all 14 agents
+- `src/generators/shared/structures/skills/factory.ts` — Added `SkillDefaultContent` interface and section mapping
+- `src/generators/shared/structures/skills/definitions.ts` — Added default content for all 10 skills
+- `src/generators/shared/structures/documentation/projectOverview.ts` — Added default content
+- `src/generators/shared/structures/documentation/workflow.ts` — Added default content
+- `src/generators/shared/structures/documentation/testing.ts` — Added default content
+- `src/generators/shared/structures/documentation/architecture.ts` — Added default content
+- `src/generators/shared/structures/documentation/tooling.ts` — Added default content
+- `src/generators/shared/structures/documentation/security.ts` — Added default content
+- `src/generators/shared/structures/documentation/glossary.ts` — Added default content
+- `src/generators/shared/structures/documentation/dataFlow.ts` — Added default content
+
 ## [0.7.0]
 
 ### Added

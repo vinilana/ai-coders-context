@@ -15,6 +15,9 @@ export const dataFlowStructure: ScaffoldStructure = {
       guidance: 'Explain how data enters, moves through, and exits the system, including interactions with external services.',
       required: true,
       headingLevel: 2,
+      defaultContent: `This document describes how data flows through the system, including internal processing and external integrations.
+
+Understanding data flow helps with debugging, performance optimization, and maintaining system reliability.`,
     },
     {
       heading: 'Module Dependencies',
@@ -24,6 +27,13 @@ export const dataFlowStructure: ScaffoldStructure = {
       exampleContent: '- **src/** → `utils`, `config`\n- **services/** → `utils`',
       required: true,
       headingLevel: 2,
+      defaultContent: `Module dependency overview:
+
+- **Entry Layer** → Services, Utils
+- **Services** → Data Access, External APIs
+- **Data Access** → Database, Cache
+
+*See [\`codebase-map.json\`](./codebase-map.json) for detailed dependency graphs.*`,
     },
     {
       heading: 'Service Layer',
@@ -32,6 +42,11 @@ export const dataFlowStructure: ScaffoldStructure = {
       guidance: 'List service classes with links to their implementations.',
       required: true,
       headingLevel: 2,
+      defaultContent: `Key services in the system:
+
+- **[ServiceName]** — [Purpose] (\`src/services/path.ts\`)
+
+*See [\`codebase-map.json\`](./codebase-map.json) for complete service listings.*`,
     },
     {
       heading: 'High-level Flow',
@@ -40,6 +55,19 @@ export const dataFlowStructure: ScaffoldStructure = {
       guidance: 'Summarize the primary pipeline from input to output. Reference diagrams or embed Mermaid definitions.',
       required: true,
       headingLevel: 2,
+      defaultContent: `\`\`\`mermaid
+flowchart LR
+    A[Input] --> B[Processing]
+    B --> C[Storage]
+    B --> D[Output]
+\`\`\`
+
+**Data Flow Steps**:
+1. Data enters through entry points (API, CLI, etc.)
+2. Services process and transform data
+3. Results are stored and/or returned to caller
+
+*Replace with actual system data flow.*`,
     },
     {
       heading: 'Internal Movement',
@@ -56,6 +84,13 @@ export const dataFlowStructure: ScaffoldStructure = {
       guidance: 'Document each integration with purpose, authentication, payload shapes, and retry strategy.',
       required: false,
       headingLevel: 2,
+      defaultContent: `**External Services**:
+
+| Service | Purpose | Auth Method |
+|---------|---------|-------------|
+| [Service] | [Purpose] | [API Key/OAuth/etc.] |
+
+*Document error handling and retry strategies for each integration.*`,
     },
     {
       heading: 'Observability & Failure Modes',

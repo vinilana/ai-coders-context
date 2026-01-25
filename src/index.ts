@@ -1068,7 +1068,7 @@ async function selectLocale(showWelcome: boolean): Promise<void> {
 }
 
 type InteractiveAction = 'scaffold' | 'fill' | 'plan' | 'syncAgents' | 'update' | 'workflow' | 'skills' | 'changeLanguage' | 'exit' | 'quickSync' | 'reverseSync' | 'agents' | 'settings';
-type StateAction = 'create' | 'fill' | 'menu' | 'exit' | 'scaffold';
+type StateAction = 'create' | 'enhance' | 'fill' | 'menu' | 'exit' | 'scaffold';
 
 async function runInteractive(): Promise<void> {
   await selectLocale(false); // Don't show welcome yet
@@ -1151,18 +1151,19 @@ async function runInteractive(): Promise<void> {
         message: t('prompts.main.action'),
         choices: [
           { name: t('prompts.main.choice.quickSetup'), value: 'create' },
-          { name: t('prompts.main.choice.scaffoldOnly'), value: 'scaffold' },
+          { name: t('prompts.main.choice.enhanceWithAI'), value: 'enhance' },
           { name: t('prompts.main.choice.exit'), value: 'exit' }
         ]
       }
     ]);
 
     if (action === 'create') {
-      // Run init + fill with AI + LSP automatically
+      // Quick Setup: scaffold with semantic autoFill (no AI required)
       await runQuickSetup(projectPath);
-    } else if (action === 'scaffold') {
-      // Scaffold only without AI fill
-      await runInteractiveScaffold();
+    } else if (action === 'enhance') {
+      // First scaffold, then enhance with AI
+      await runQuickSetup(projectPath);
+      await runEnhanceWithAI(projectPath);
     }
     return;
   }
@@ -1195,48 +1196,13 @@ async function runInteractive(): Promise<void> {
 }
 
 async function runQuickSetup(projectPath: string): Promise<void> {
-  // AI-first: Detect smart defaults automatically
-  const defaults = await detectSmartDefaults();
-
-  // If no API key found, prompt for one
-  let llmConfig: { provider: AIProvider; model: string; apiKey?: string; baseUrl?: string } | null = null;
-
-  if (defaults.apiKeyConfigured && defaults.provider) {
-    // Auto-detected config
-    llmConfig = {
-      provider: defaults.provider,
-      model: DEFAULT_MODEL,
-      apiKey: getApiKeyFromEnv(defaults.provider!),
-    };
-    console.log(colors.secondary(`  Auto-detected: ${defaults.provider} API key found`));
-  } else {
-    // Need to get API key from user
-    llmConfig = await promptLLMConfig(t);
-    if (!llmConfig) {
-      ui.displayInfo(t('info.setup.incomplete.title'), t('info.setup.incomplete.detail'));
-      return;
-    }
-  }
-
-  const { confirm } = await inquirer.prompt<{ confirm: boolean }>([
-    {
-      type: 'confirm',
-      name: 'confirm',
-      message: t('prompts.setup.confirmContinue'),
-      default: true
-    }
-  ]);
-
-  if (!confirm) {
-    return;
-  }
-
-  // Run init with semantic analysis
+  // Quick Setup: Always creates scaffolds with semantic autoFill (no AI required)
   ui.startSpinner(t('spinner.setup.creatingStructure'));
   try {
     const localInitService = new InitService({ ui, t, version: VERSION });
     await localInitService.run(projectPath, 'both', {
-      semantic: true
+      semantic: true,
+      autoFill: true  // Always use autoFill for semantic-based content
     });
     ui.stopSpinner();
   } catch (error) {
@@ -1245,7 +1211,7 @@ async function runQuickSetup(projectPath: string): Promise<void> {
     return;
   }
 
-  // Initialize skills too (AI-first)
+  // Initialize skills too
   try {
     const { createSkillGenerator } = await import('./generators/skills');
     const skillGenerator = createSkillGenerator({ repoPath: projectPath });
@@ -1254,25 +1220,67 @@ async function runQuickSetup(projectPath: string): Promise<void> {
     // Skills init failure is not critical
   }
 
-  // Fill with AI + LSP (default behavior)
-  ui.startSpinner(t('spinner.setup.fillingDocs'));
-  try {
-    const localFillService = new FillService({ ui, t, version: VERSION, defaultModel: DEFAULT_MODEL });
-    await localFillService.run(projectPath, {
-      model: llmConfig.model,
-      provider: llmConfig.provider,
-      apiKey: llmConfig.apiKey,
-      baseUrl: llmConfig.baseUrl,
-      verbose: false,
-      semantic: true,
-      useLsp: true  // LSP enabled by default
-    });
-    ui.stopSpinner();
-    ui.displaySuccess(t('success.setup.docsCreated'));
-    console.log(colors.secondaryDim(`  ${t('info.setup.reviewFiles')}`));
-  } catch (error) {
-    ui.stopSpinner();
-    ui.displayError('Failed to fill documentation', error as Error);
+  ui.displaySuccess(t('success.setup.scaffoldCreated'));
+  console.log(colors.secondaryDim(`  ${t('info.setup.enhanceWithAI')}`));
+}
+
+async function runEnhanceWithAI(projectPath: string): Promise<void> {
+  // Enhance existing scaffolds with AI
+  const defaults = await detectSmartDefaults();
+
+  if (!defaults.apiKeyConfigured || !defaults.provider) {
+    // Need to get API key from user
+    const llmConfig = await promptLLMConfig(t);
+    if (!llmConfig) {
+      ui.displayInfo(t('info.setup.incomplete.title'), t('info.setup.incomplete.detail'));
+      return;
+    }
+
+    ui.startSpinner(t('spinner.setup.fillingDocs'));
+    try {
+      const localFillService = new FillService({ ui, t, version: VERSION, defaultModel: DEFAULT_MODEL });
+      await localFillService.run(projectPath, {
+        model: llmConfig.model,
+        provider: llmConfig.provider,
+        apiKey: llmConfig.apiKey,
+        baseUrl: llmConfig.baseUrl,
+        verbose: false,
+        semantic: true,
+        useLsp: true
+      });
+      ui.stopSpinner();
+      ui.displaySuccess(t('success.setup.docsCreated'));
+    } catch (error) {
+      ui.stopSpinner();
+      ui.displayError('Failed to fill documentation', error as Error);
+    }
+  } else {
+    // Auto-detected API key
+    console.log(colors.secondary(`  Auto-detected: ${defaults.provider} API key found`));
+
+    const llmConfig = {
+      provider: defaults.provider,
+      model: DEFAULT_MODEL,
+      apiKey: getApiKeyFromEnv(defaults.provider),
+    };
+
+    ui.startSpinner(t('spinner.setup.fillingDocs'));
+    try {
+      const localFillService = new FillService({ ui, t, version: VERSION, defaultModel: DEFAULT_MODEL });
+      await localFillService.run(projectPath, {
+        model: llmConfig.model,
+        provider: llmConfig.provider,
+        apiKey: llmConfig.apiKey,
+        verbose: false,
+        semantic: true,
+        useLsp: true
+      });
+      ui.stopSpinner();
+      ui.displaySuccess(t('success.setup.docsCreated'));
+    } catch (error) {
+      ui.stopSpinner();
+      ui.displayError('Failed to fill documentation', error as Error);
+    }
   }
 }
 

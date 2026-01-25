@@ -7,6 +7,7 @@ import { FileMapper } from '../../utils/fileMapper';
 import { DocumentationGenerator } from '../../generators/documentation/documentationGenerator';
 import { AgentGenerator } from '../../generators/agents/agentGenerator';
 import { SkillGenerator } from '../../generators/skills/skillGenerator';
+import { StackDetector, classifyProject, getFilteredScaffolds } from '../stack';
 import type { CLIInterface } from '../../utils/cliUI';
 import type { TranslateFn, TranslationKey } from '../../utils/i18n';
 import type { RepoStructure } from '../../types';
@@ -20,6 +21,8 @@ export interface InitCommandFlags {
   agentsOnly?: boolean;
   semantic?: boolean;
   contentStubs?: boolean;
+  /** Fill scaffolds with semantic data (no LLM required) */
+  autoFill?: boolean;
 }
 
 export interface InitServiceDependencies {
@@ -42,6 +45,8 @@ interface InitOptions {
   scaffoldSkills: boolean;
   semantic: boolean;
   includeContentStubs: boolean;
+  /** Fill scaffolds with semantic data (no LLM required) */
+  autoFill: boolean;
 }
 
 export class InitService {
@@ -74,7 +79,8 @@ export class InitService {
       scaffoldAgents: resolvedType === 'agents' || resolvedType === 'both',
       scaffoldSkills: resolvedType === 'both',
       semantic: rawOptions.semantic !== false,
-      includeContentStubs: rawOptions.contentStubs !== false
+      includeContentStubs: rawOptions.contentStubs !== false,
+      autoFill: rawOptions.autoFill ?? false
     };
 
     if (!options.scaffoldDocs && !options.scaffoldAgents) {
@@ -171,6 +177,20 @@ export class InitService {
     let currentStep = 1;
     const totalSteps = (options.scaffoldDocs ? 1 : 0) + (options.scaffoldAgents ? 1 : 0) + (options.scaffoldSkills ? 1 : 0);
 
+    // Detect project type for filtering scaffolds
+    let filteredDocs: string[] | undefined;
+    let filteredAgents: string[] | undefined;
+    try {
+      const stackDetector = new StackDetector();
+      const stackInfo = await stackDetector.detect(options.repoPath);
+      const classification = classifyProject(stackInfo);
+      const filtered = getFilteredScaffolds(classification.primaryType);
+      filteredDocs = filtered.docs;
+      filteredAgents = filtered.agents;
+    } catch {
+      // If classification fails, use all scaffolds (no filtering)
+    }
+
     if (options.scaffoldDocs) {
       this.ui.displayStep(currentStep, totalSteps, this.t('steps.init.docs'));
       this.ui.startSpinner(options.semantic
@@ -180,7 +200,12 @@ export class InitService {
       docsGenerated = await this.documentationGenerator.generateDocumentation(
         repoStructure,
         options.outputDir,
-        { semantic: options.semantic, includeContentStubs: options.includeContentStubs },
+        {
+          semantic: options.semantic,
+          includeContentStubs: options.includeContentStubs,
+          autoFill: options.autoFill,
+          filteredDocs
+        },
         options.verbose
       );
       this.ui.updateSpinner(this.t('spinner.docs.created', { count: docsGenerated }), 'success');
@@ -196,7 +221,12 @@ export class InitService {
       agentsGenerated = await this.agentGenerator.generateAgentPrompts(
         repoStructure,
         options.outputDir,
-        { semantic: options.semantic, includeContentStubs: options.includeContentStubs },
+        {
+          semantic: options.semantic,
+          includeContentStubs: options.includeContentStubs,
+          autoFill: options.autoFill,
+          filteredAgents: filteredAgents as import('../../generators/agents/agentTypes').AgentType[] | undefined
+        },
         options.verbose
       );
       this.ui.updateSpinner(this.t('spinner.agents.created', { count: agentsGenerated }), 'success');
