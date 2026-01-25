@@ -21,6 +21,7 @@ import { createSkillRegistry, Skill, BUILT_IN_SKILLS, getBuiltInSkillTemplates, 
 export type SkillExportServiceDependencies = BaseDependencies;
 
 export interface SkillExportTarget {
+  toolId: string;
   name: string;
   path: string;
   description: string;
@@ -51,7 +52,7 @@ function buildSkillExportPresets(): Record<string, SkillExportTarget[]> {
   const presets: Record<string, SkillExportTarget[]> = {};
 
   for (const [toolId, targets] of Object.entries(registryPresets)) {
-    presets[toolId] = targets;
+    presets[toolId] = targets.map((t) => ({ toolId, ...t }));
   }
 
   // Build 'all' preset
@@ -181,7 +182,7 @@ export class SkillExportService {
     const targetPath = path.join(repoPath, target.path);
 
     try {
-      this.deps.ui.startSpinner(`Exporting skills to ${target.name}...`);
+      this.deps.ui.startSpinner(`Exporting skills to ${target.toolId}...`);
 
       if (options.dryRun) {
         this.deps.ui.updateSpinner(`[DRY-RUN] Would export to ${targetPath}`, 'success');
@@ -195,7 +196,7 @@ export class SkillExportService {
 
       // Export each skill
       for (const skill of skills) {
-        await this.exportSkill(targetPath, skill, options, result);
+        await this.exportSkill(target, targetPath, skill, options, result);
       }
 
       result.targets.push(targetPath);
@@ -212,11 +213,48 @@ export class SkillExportService {
    * Export a single skill to target directory
    */
   private async exportSkill(
+    target: SkillExportTarget,
     targetPath: string,
     skill: Skill,
     options: SkillExportOptions,
     result: SkillExportResult
   ): Promise<void> {
+    // Some tools don't have a first-class skill directory format; export as prompt/command files.
+    if (target.toolId === 'github') {
+      const filePath = path.join(targetPath, `${skill.slug}.prompt.md`);
+
+      if (await pathExists(filePath) && !options.force) {
+        result.filesSkipped++;
+        return;
+      }
+
+      const description = (skill.metadata?.description || `Skill: ${skill.slug}`).trim();
+      const body = `# ${skill.metadata?.name || skill.slug}\n\n${skill.content}\n`;
+      const normalized = `---\ndescription: ${description}\n---\n\n${body}`;
+
+      await fs.writeFile(filePath, normalized, 'utf-8');
+
+      result.filesCreated++;
+      if (!result.skillsExported.includes(skill.slug)) result.skillsExported.push(skill.slug);
+      return;
+    }
+
+    if (target.toolId === 'cursor') {
+      const filePath = path.join(targetPath, `${skill.slug}.md`);
+
+      if (await pathExists(filePath) && !options.force) {
+        result.filesSkipped++;
+        return;
+      }
+
+      const content = this.generateSkillContent(skill);
+      await fs.writeFile(filePath, content, 'utf-8');
+
+      result.filesCreated++;
+      if (!result.skillsExported.includes(skill.slug)) result.skillsExported.push(skill.slug);
+      return;
+    }
+
     const skillDir = path.join(targetPath, skill.slug);
     const skillFile = path.join(skillDir, 'SKILL.md');
 
@@ -284,6 +322,7 @@ export class SkillExportService {
         } else {
           // Treat as a direct path
           resolved.push({
+            toolId: 'custom',
             name: path.basename(t),
             path: t,
             description: 'Custom target',

@@ -89,6 +89,7 @@ export {
   getRulesExportPresets,
   getAgentsSyncPresets,
   getSkillsExportPresets,
+  getCommandsExportPresets,
   getRulesImportSources,
   getAgentsImportSources,
   getSkillsImportSources,
