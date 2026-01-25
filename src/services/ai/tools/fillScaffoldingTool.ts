@@ -50,7 +50,7 @@ export async function cleanupSharedContext(): Promise<void> {
 const ListFilesToFillInputSchema = z.object({
   repoPath: z.string().describe('Repository path'),
   outputDir: z.string().optional().describe('Scaffold directory (default: ./.context)'),
-  target: z.enum(['docs', 'agents', 'plans', 'all']).default('all').optional()
+  target: z.enum(['docs', 'agents', 'plans', 'skills', 'all']).default('all').optional()
     .describe('Which scaffolding to list')
 });
 
@@ -59,7 +59,7 @@ export type ListFilesToFillInput = z.infer<typeof ListFilesToFillInputSchema>;
 interface FileToFillInfo {
   path: string;
   relativePath: string;
-  type: 'doc' | 'agent' | 'plan';
+  type: 'doc' | 'agent' | 'plan' | 'skill';
 }
 
 export const listFilesToFillTool = tool({
@@ -132,6 +132,23 @@ Use this first to get the list, then call fillSingleFile for each file.`,
         }
       }
 
+      // Collect skills (skills/<slug>/SKILL.md)
+      if (target === 'all' || target === 'skills') {
+        const skillsDir = path.join(outputDir, 'skills');
+        if (await fs.pathExists(skillsDir)) {
+          const skillDirs = await fs.readdir(skillsDir);
+          for (const skillSlug of skillDirs) {
+            const skillFile = path.join(skillsDir, skillSlug, 'SKILL.md');
+            if (!await fs.pathExists(skillFile)) continue;
+            files.push({
+              path: skillFile,
+              relativePath: `skills/${skillSlug}/SKILL.md`,
+              type: 'skill'
+            });
+          }
+        }
+      }
+
       return {
         success: true,
         files,
@@ -183,27 +200,34 @@ Use this context to generate intelligent content, then write the content to the 
       // Read current content (frontmatter/template)
       const currentContent = await fs.readFile(resolvedFilePath, 'utf-8');
       const fileName = path.basename(resolvedFilePath);
-      const parentDir = path.basename(path.dirname(resolvedFilePath));
+      const fileNameLower = fileName.toLowerCase();
+      const pathParts = resolvedFilePath.split(path.sep);
 
       // Determine file type and get scaffold structure
       let fileType: 'doc' | 'agent' | 'plan' | 'skill';
       let documentName: string;
 
-      if (parentDir === 'docs') {
+      // Skills live under skills/<slug>/SKILL.md
+      const skillsIndex = pathParts.lastIndexOf('skills');
+      if (fileNameLower === 'skill.md' && skillsIndex !== -1 && skillsIndex + 1 < pathParts.length) {
+        fileType = 'skill';
+        documentName = pathParts[skillsIndex + 1];
+      } else {
+        const parentDir = path.basename(path.dirname(resolvedFilePath));
+
+        if (parentDir === 'docs') {
         fileType = 'doc';
         documentName = path.basename(fileName, '.md');
-      } else if (parentDir === 'agents') {
+        } else if (parentDir === 'agents') {
         fileType = 'agent';
         documentName = path.basename(fileName, '.md');
-      } else if (parentDir === 'plans') {
+        } else if (parentDir === 'plans') {
         fileType = 'plan';
         documentName = path.basename(fileName, '.md');
-      } else if (parentDir === 'skills') {
-        fileType = 'skill';
-        documentName = path.basename(fileName, '.md');
-      } else {
+        } else {
         fileType = 'doc';
         documentName = path.basename(fileName, '.md');
+        }
       }
 
       // Get scaffold structure and serialize for AI
@@ -238,7 +262,7 @@ Use this context to generate intelligent content, then write the content to the 
 const FillScaffoldingInputSchema = z.object({
   repoPath: z.string().describe('Repository path'),
   outputDir: z.string().optional().describe('Scaffold directory (default: ./.context)'),
-  target: z.enum(['docs', 'agents', 'plans', 'all']).default('all').optional()
+  target: z.enum(['docs', 'agents', 'plans', 'skills', 'all']).default('all').optional()
     .describe('Which scaffolding to fill'),
   offset: z.number().optional().describe('Skip first N files (for pagination)'),
   limit: z.number().optional().describe('Max files to return (default: 3, use 0 for all)')
@@ -294,7 +318,7 @@ Supports pagination with offset/limit. Generate content for each file using its 
       const semanticContext = await getOrBuildContext(resolvedRepoPath);
 
       // Collect all file paths first
-      const allFiles: { path: string; relativePath: string; type: 'doc' | 'agent' | 'plan' }[] = [];
+      const allFiles: { path: string; relativePath: string; type: 'doc' | 'agent' | 'plan' | 'skill' }[] = [];
 
       // Collect docs
       if (target === 'all' || target === 'docs') {
@@ -344,6 +368,23 @@ Supports pagination with offset/limit. Generate content for each file using its 
         }
       }
 
+      // Collect skills (skills/<slug>/SKILL.md)
+      if (target === 'all' || target === 'skills') {
+        const skillsDir = path.join(outputDir, 'skills');
+        if (await fs.pathExists(skillsDir)) {
+          const skillDirs = await fs.readdir(skillsDir);
+          for (const skillSlug of skillDirs) {
+            const skillFile = path.join(skillsDir, skillSlug, 'SKILL.md');
+            if (!await fs.pathExists(skillFile)) continue;
+            allFiles.push({
+              path: skillFile,
+              relativePath: path.relative(outputDir, skillFile),
+              type: 'skill'
+            });
+          }
+        }
+      }
+
       const totalCount = allFiles.length;
 
       // Apply pagination (limit=0 means all files)
@@ -354,7 +395,14 @@ Supports pagination with offset/limit. Generate content for each file using its 
       const filesToFill: FileToFill[] = [];
       for (const fileInfo of paginatedFiles) {
         const currentContent = await fs.readFile(fileInfo.path, 'utf-8');
-        const documentName = path.basename(fileInfo.path, '.md');
+        const fileName = path.basename(fileInfo.path);
+        const fileNameLower = fileName.toLowerCase();
+        const filePathParts = fileInfo.path.split(path.sep);
+        const skillsSegmentIndex = filePathParts.lastIndexOf('skills');
+
+        const documentName = (fileInfo.type === 'skill' && fileNameLower === 'skill.md' && skillsSegmentIndex !== -1 && skillsSegmentIndex + 1 < filePathParts.length)
+          ? filePathParts[skillsSegmentIndex + 1]
+          : path.basename(fileInfo.path, '.md');
 
         // Get scaffold structure for this file
         const structure = getScaffoldStructure(documentName);

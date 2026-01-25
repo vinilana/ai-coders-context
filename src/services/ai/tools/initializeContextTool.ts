@@ -6,6 +6,7 @@ import { FileMapper } from '../../../utils/fileMapper';
 import { DocumentationGenerator } from '../../../generators/documentation/documentationGenerator';
 import { AgentGenerator } from '../../../generators/agents/agentGenerator';
 import { SkillGenerator } from '../../../generators/skills/skillGenerator';
+import { CommandGenerator } from '../../../generators/commands';
 import {
   StackDetector,
   classifyProject,
@@ -31,7 +32,8 @@ The AI agent MUST then fill each generated file using the provided context and i
       include,
       exclude = [],
       projectType: overrideProjectType,
-      disableFiltering = false,
+      disableFiltering = true,
+      includeContentStubs = true,
       autoFill = true,
       skipContentGeneration = true, // Default true to reduce response size
       generateQA = true,
@@ -99,7 +101,7 @@ The AI agent MUST then fill each generated file using the provided context and i
         docsGenerated = await docGenerator.generateDocumentation(
           repoStructure,
           outputDir,
-          { semantic, filteredDocs },
+          { semantic, filteredDocs, includeContentStubs },
           false // verbose
         );
       }
@@ -110,7 +112,7 @@ The AI agent MUST then fill each generated file using the provided context and i
         agentsGenerated = await agentGenerator.generateAgentPrompts(
           repoStructure,
           outputDir,
-          { semantic, filteredAgents },
+          { semantic, filteredAgents, includeContentStubs },
           false // verbose
         );
       }
@@ -130,6 +132,16 @@ The AI agent MUST then fill each generated file using the provided context and i
         }
       }
 
+      // Generate MCP slash command templates (fully filled)
+      let commandsGenerated = 0;
+      try {
+        const commandGenerator = new CommandGenerator();
+        const commandResult = await commandGenerator.generate(outputDir, { force: false });
+        commandsGenerated = commandResult.generated.filter(p => p.endsWith('COMMAND.md')).length;
+      } catch {
+        // Commands generation is optional, continue if it fails
+      }
+
       // Generate Q&A files
       let qaGenerated = 0;
       if (generateQA) {
@@ -147,7 +159,7 @@ The AI agent MUST then fill each generated file using the provided context and i
       interface FileInfo {
         path: string;
         relativePath: string;
-        type: 'doc' | 'agent';
+        type: 'doc' | 'agent' | 'skill';
         fillInstructions: string;
       }
       const generatedFiles: FileInfo[] = [];
@@ -175,6 +187,25 @@ The AI agent MUST then fill each generated file using the provided context and i
             type: 'agent',
             fillInstructions: getAgentFillInstructions(agentType),
           });
+        }
+      }
+
+      if (generateSkills) {
+        const skillsDir = path.join(outputDir, 'skills');
+        if (await fs.pathExists(skillsDir)) {
+          const skillDirs = await fs.readdir(skillsDir);
+          for (const skillSlug of skillDirs) {
+            const skillFile = path.join(skillsDir, skillSlug, 'SKILL.md');
+            if (!await fs.pathExists(skillFile)) {
+              continue;
+            }
+            generatedFiles.push({
+              path: skillFile,
+              relativePath: `skills/${skillSlug}/SKILL.md`,
+              type: 'skill',
+              fillInstructions: getSkillFillInstructions(skillSlug),
+            });
+          }
         }
       }
 
@@ -258,6 +289,7 @@ DO NOT say "initialization complete" until ALL files are filled.`
             docsGenerated,
             agentsGenerated,
             skillsGenerated,
+            commandsGenerated,
             qaGenerated,
             outputDir,
             classification: classification ? {
@@ -271,6 +303,7 @@ DO NOT say "initialization complete" until ALL files are filled.`
           docsGenerated,
           agentsGenerated,
           skillsGenerated,
+          commandsGenerated,
           qaGenerated,
           outputDir,
           classification: classification ? {
@@ -338,6 +371,7 @@ DO NOT say "initialization complete" until ALL files are filled.`
           docsGenerated,
           agentsGenerated,
           skillsGenerated,
+          commandsGenerated,
           qaGenerated,
           outputDir,
           classification: classification ? {
@@ -351,6 +385,7 @@ DO NOT say "initialization complete" until ALL files are filled.`
         docsGenerated,
         agentsGenerated,
         skillsGenerated,
+        commandsGenerated,
         qaGenerated,
         outputDir,
         classification: classification ? {
@@ -462,5 +497,78 @@ function getAgentFillInstructions(agentType: string): string {
 - Workflow steps for common tasks
 - Best practices and conventions to follow
 - Common pitfalls to avoid`;
+}
+
+/**
+ * Get fill instructions for a skill based on its slug.
+ */
+function getSkillFillInstructions(skillSlug: string): string {
+  const instructions: Record<string, string> = {
+    'commit-message': `Fill this skill with:
+- Commit message format conventions for this project
+- Examples of good commit messages from the codebase
+- Branch naming conventions if applicable
+- Semantic versioning guidelines`,
+
+    'pr-review': `Fill this skill with:
+- PR review checklist specific to this codebase
+- Code quality standards to check
+- Testing requirements before merge
+- Documentation expectations`,
+
+    'code-review': `Fill this skill with:
+- Code review guidelines for this project
+- Common patterns to look for
+- Security and performance considerations
+- Style and convention checks`,
+
+    'test-generation': `Fill this skill with:
+- Testing framework and conventions used
+- Test file organization patterns
+- Mocking strategies for this codebase
+- Coverage requirements`,
+
+    'documentation': `Fill this skill with:
+- Documentation standards for this project
+- JSDoc/TSDoc conventions
+- README structure expectations
+- API documentation guidelines`,
+
+    'refactoring': `Fill this skill with:
+- Refactoring patterns common in this codebase
+- Code smell detection guidelines
+- Safe refactoring procedures
+- Testing requirements after refactoring`,
+
+    'bug-investigation': `Fill this skill with:
+- Debugging workflow for this codebase
+- Common bug patterns and their fixes
+- Logging and error handling conventions
+- Test verification steps`,
+
+    'feature-breakdown': `Fill this skill with:
+- Feature decomposition approach
+- Task estimation guidelines
+- Dependency identification process
+- Integration points to consider`,
+
+    'api-design': `Fill this skill with:
+- API design patterns used in this project
+- Endpoint naming conventions
+- Request/response format standards
+- Versioning and deprecation policies`,
+
+    'security-audit': `Fill this skill with:
+- Security checklist for this codebase
+- Common vulnerabilities to check
+- Authentication/authorization patterns
+- Data validation requirements`,
+  };
+
+  return instructions[skillSlug] || `Fill this skill with project-specific content for ${skillSlug}:
+- Identify relevant patterns from the codebase
+- Include specific examples from the project
+- Add conventions and best practices
+- Reference important files and components`;
 }
 

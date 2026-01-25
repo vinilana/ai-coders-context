@@ -7,6 +7,7 @@ import { FileMapper } from '../../utils/fileMapper';
 import { DocumentationGenerator } from '../../generators/documentation/documentationGenerator';
 import { AgentGenerator } from '../../generators/agents/agentGenerator';
 import { SkillGenerator } from '../../generators/skills/skillGenerator';
+import { CommandGenerator } from '../../generators/commands';
 import type { CLIInterface } from '../../utils/cliUI';
 import type { TranslateFn, TranslationKey } from '../../utils/i18n';
 import type { RepoStructure } from '../../types';
@@ -218,6 +219,14 @@ export class InitService {
         // Skills generation is optional, continue if it fails
       }
       this.ui.updateSpinner(this.t('spinner.skills.created', { count: skillsGenerated }), 'success');
+    }
+
+    // Always generate MCP slash command templates (fully filled) if missing
+    try {
+      const commandGenerator = new CommandGenerator();
+      await commandGenerator.generate(options.outputDir, { force: false });
+    } catch {
+      // Commands generation is optional, continue if it fails
     }
 
     return { docsGenerated, agentsGenerated, skillsGenerated };

@@ -22,11 +22,11 @@ export const checkScaffoldingTool = tool({
     if (!input.repoPath) {
       throw new Error('repoPath is required for checkScaffolding');
     }
-    const repoPath = input.repoPath;
-    const outputDir = path.resolve(repoPath, '.context');
+      const repoPath = input.repoPath;
+      const outputDir = path.resolve(repoPath, '.context');
 
     try {
-      const [initialized, docs, agents, plans] = await Promise.all([
+      const [initialized, docs, agents, plans, skills, commands] = await Promise.all([
         fs.pathExists(outputDir),
         fs.pathExists(path.join(outputDir, 'docs')).then(exists =>
           exists ? hasContent(path.join(outputDir, 'docs')) : false
@@ -36,6 +36,12 @@ export const checkScaffoldingTool = tool({
         ),
         fs.pathExists(path.join(outputDir, 'plans')).then(exists =>
           exists ? hasContent(path.join(outputDir, 'plans')) : false
+        ),
+        fs.pathExists(path.join(outputDir, 'skills')).then(exists =>
+          exists ? hasContent(path.join(outputDir, 'skills')) : false
+        ),
+        fs.pathExists(path.join(outputDir, 'commands')).then(exists =>
+          exists ? hasContent(path.join(outputDir, 'commands')) : false
         )
       ]);
 
@@ -44,6 +50,8 @@ export const checkScaffoldingTool = tool({
         docs,
         agents,
         plans,
+        skills,
+        commands,
         outputDir
       };
     } catch (error) {
@@ -52,6 +60,8 @@ export const checkScaffoldingTool = tool({
         docs: false,
         agents: false,
         plans: false,
+        skills: false,
+        commands: false,
         outputDir,
         error: error instanceof Error ? error.message : String(error)
       };
