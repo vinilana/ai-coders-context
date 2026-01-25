@@ -81,9 +81,9 @@ export class ContextExportService {
     if (preset === 'default' || preset === 'all') return options;
 
     const policy: Record<string, Required<Pick<ContextExportOptions, 'skipDocs' | 'skipAgents' | 'skipSkills' | 'skipCommands'>>> = {
-      // codex: only commands + skills
-      codex: { skipDocs: true, skipAgents: true, skipSkills: false, skipCommands: false },
-      // antigravity: only commands + skills
+      // codex: skills only
+      codex: { skipDocs: true, skipAgents: true, skipSkills: false, skipCommands: true },
+      // antigravity: workflows (skills + commands), no agents
       antigravity: { skipDocs: true, skipAgents: true, skipSkills: false, skipCommands: false },
       // github copilot: only agents + skills
       github: { skipDocs: true, skipAgents: false, skipSkills: false, skipCommands: true },
@@ -113,7 +113,7 @@ export class ContextExportService {
     // skills (from .context/skills)
     skills: ['codex', 'antigravity', 'github', 'claude', 'cursor'],
     // slash commands/prompts (from .context/commands)
-    commands: ['codex', 'antigravity', 'claude', 'cursor'],
+    commands: ['antigravity', 'claude', 'cursor'],
   } as const;
 
   /**
@@ -216,9 +216,8 @@ export class ContextExportService {
       // Skills directory doesn't exist - skip silently
     }
 
-    // Export commands - only if .context/commands exists
-    const commandsPath = path.join(absolutePath, '.context/commands');
-    if (!options.skipCommands && await fs.pathExists(commandsPath)) {
+    // Export commands
+    if (!options.skipCommands) {
       try {
         this.deps.ui.startSpinner('Exporting commands...');
         const commandsService = new CommandExportService(this.deps);
@@ -236,8 +235,6 @@ export class ContextExportService {
         errors.push({ type: 'commands', error: error instanceof Error ? error.message : String(error) });
         this.deps.ui.stopSpinner();
       }
-    } else if (!options.skipCommands) {
-      // Commands directory doesn't exist - skip silently
     }
 
     // Update error count

@@ -83,7 +83,7 @@ export class QuickSyncService {
     const defaultTargets = {
       agents: ['github', 'claude', 'cursor'],
       skills: ['codex', 'antigravity', 'github', 'claude', 'cursor'],
-      commands: ['codex', 'antigravity', 'claude', 'cursor'],
+      commands: ['antigravity', 'claude', 'cursor'],
       rules: ['claude'],
     } as const;
 

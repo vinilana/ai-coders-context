@@ -36,8 +36,8 @@ Then list the pending files returned by the tool (if any) and suggest next steps
 \`npx @ai-coders/context export-context\`
 
 Use the default policy (do not pass \`--preset all\`) so the sync matches these defaults:
-- codex: commands + skills
-- antigravity: commands + skills
+- codex: skills only
+- antigravity: skills + commands (workflows)
 - github copilot: skills + agents
 - claude code: rules + agents + skills + commands
 - cursor: skills + agents + commands

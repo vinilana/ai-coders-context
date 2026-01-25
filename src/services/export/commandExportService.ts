@@ -91,6 +91,15 @@ export class CommandExportService {
 
     const commands = await this.readSourceCommands(sourcePath);
     if (commands.length === 0) {
+      // Still create target directories so tools have a stable place to look for commands.
+      if (!options.dryRun) {
+        for (const target of targets) {
+          const targetPath = path.join(absolutePath, target.path);
+          await ensureDirectory(targetPath);
+          result.targets.push(targetPath);
+        }
+      }
+
       this.deps.ui.displayWarning('No commands found to export');
       return result;
     }

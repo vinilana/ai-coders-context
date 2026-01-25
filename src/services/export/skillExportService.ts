@@ -239,22 +239,6 @@ export class SkillExportService {
       return;
     }
 
-    if (target.toolId === 'cursor') {
-      const filePath = path.join(targetPath, `${skill.slug}.md`);
-
-      if (await pathExists(filePath) && !options.force) {
-        result.filesSkipped++;
-        return;
-      }
-
-      const content = this.generateSkillContent(skill);
-      await fs.writeFile(filePath, content, 'utf-8');
-
-      result.filesCreated++;
-      if (!result.skillsExported.includes(skill.slug)) result.skillsExported.push(skill.slug);
-      return;
-    }
-
     const skillDir = path.join(targetPath, skill.slug);
     const skillFile = path.join(skillDir, 'SKILL.md');
 

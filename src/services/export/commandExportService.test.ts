@@ -45,7 +45,7 @@ describe('CommandExportService', () => {
     const service = new CommandExportService(mockDeps as any);
     await service.run(repoDir, { preset: 'github', force: true });
 
-    const promptFile = path.join(repoDir, '.github', 'prompts', 'context-sync.prompt.md');
+    const promptFile = path.join(repoDir, '.github', 'skills', 'context-sync.prompt.md');
     expect(await fs.pathExists(promptFile)).toBe(true);
 
     const content = await fs.readFile(promptFile, 'utf-8');

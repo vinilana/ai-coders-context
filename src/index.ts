@@ -2451,9 +2451,9 @@ async function runQuickSync(): Promise<void> {
         message: t('prompts.quickSync.selectSkillTargets'),
         choices: [
           { name: '.claude/skills (Claude Code)', value: 'claude', checked: true },
-          { name: '.cursor/commands (Cursor AI)', value: 'cursor', checked: true },
-          { name: '.github/prompts (GitHub Copilot)', value: 'github', checked: true },
-          { name: '.agent/workflows (Google Antigravity)', value: 'antigravity', checked: true },
+          { name: '.cursor/skills (Cursor AI)', value: 'cursor', checked: true },
+          { name: '.github/skills (GitHub Copilot)', value: 'github', checked: true },
+          { name: '.agent/skills (Google Antigravity)', value: 'antigravity', checked: true },
           { name: '.codex/skills (Codex CLI)', value: 'codex', checked: true },
           { name: '.gemini/skills (Gemini CLI)', value: 'gemini', checked: false },
         ],
@@ -2472,10 +2472,9 @@ async function runQuickSync(): Promise<void> {
         choices: [
           { name: '.claude/commands (Claude Code)', value: 'claude', checked: true },
           { name: '.cursor/commands (Cursor AI)', value: 'cursor', checked: true },
-          { name: '.github/prompts (GitHub Copilot)', value: 'github', checked: false },
+          { name: '.github/skills (GitHub Copilot)', value: 'github', checked: false },
           { name: '.windsurf/commands (Windsurf/Codeium)', value: 'windsurf', checked: false },
           { name: '.agent/workflows (Google Antigravity)', value: 'antigravity', checked: true },
-          { name: '.codex/commands (Codex CLI)', value: 'codex', checked: true },
         ],
       },
     ]);

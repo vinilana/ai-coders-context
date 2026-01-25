@@ -324,12 +324,13 @@ Different AI tools store context in different locations:
 | Tool | Agents | Skills | Commands | Rules |
 |------|--------|--------|----------|-------|
 | Claude | `.claude/agents/` | `.claude/skills/` | `.claude/commands/` | `CLAUDE.md` |
-| Cursor | `.cursor/agents/` | - | `.cursor/commands/` | `.cursorrules` |
+| Cursor | `.cursor/agents/` | `.cursor/skills/` | `.cursor/commands/` | `.cursorrules` |
+| GitHub Copilot | `.github/agents/` | `.github/skills/` | `.github/skills/` | `.github/copilot-instructions.md` |
 | Windsurf | `.windsurf/agents/` | - | `.windsurf/commands/` | `.windsurf/rules/` |
 | Cline | `.cline/agents/` | - | - | `.clinerules` |
-| Antigravity | `.agent/agents/` | `.agent/workflows/` | `.agent/workflows/` | `.agent/rules/` |
+| Antigravity | - | `.agent/skills/` | `.agent/workflows/` | `.agent/rules/` |
 | Trae | `.trae/agents/` | - | - | `.trae/rules/` |
-| Codex | - | `.codex/skills/` | `.codex/commands/` | - |
+| Codex | - | `.codex/skills/` | - | - |
 | Gemini | - | `.gemini/skills/` | - | - |
 | Aider | - | - | - | `CONVENTIONS.md` |
 | Universal | - | - | - | `AGENTS.md` |
