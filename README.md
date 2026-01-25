@@ -35,7 +35,8 @@ One `.context/` directory. Works everywhere.
 ├── docs/           # Your documentation (architecture, patterns, decisions)
 ├── agents/         # Agent playbooks (code-reviewer, feature-developer, etc.)
 ├── plans/          # Work plans linked to PREVC workflow
-└── skills/         # On-demand expertise (commit-message, pr-review, etc.)
+├── skills/         # On-demand expertise (commit-message, pr-review, etc.)
+└── commands/       # Slash command prompt templates (MCP helpers, workflows)
 ```
 
 Export to any tool.
@@ -395,7 +396,7 @@ Once configured, your AI assistant will have access to 9 gateway tools with acti
 | **plan** | Plan management and execution tracking | `link`, `getLinked`, `getDetails`, `getForPhase`, `updatePhase`, `recordDecision`, `updateStep`, `getStatus`, `syncMarkdown`, `commitPhase` |
 | **agent** | Agent orchestration and discovery | `discover`, `getInfo`, `orchestrate`, `getSequence`, `getDocs`, `getPhaseDocs`, `listTypes` |
 | **skill** | Skill management for on-demand expertise | `list`, `getContent`, `getForPhase`, `scaffold`, `export`, `fill` |
-| **sync** | Import/export synchronization with AI tools | `exportRules`, `exportDocs`, `exportAgents`, `exportContext`, `exportSkills`, `reverseSync`, `importDocs`, `importAgents`, `importSkills` |
+| **sync** | Import/export synchronization with AI tools | `exportRules`, `exportDocs`, `exportAgents`, `exportContext`, `exportSkills`, `exportCommands`, `reverseSync`, `importDocs`, `importAgents`, `importSkills` |
 
 #### Dedicated Workflow Tools
 

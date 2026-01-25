@@ -102,6 +102,14 @@ your-project/
 │   │   ├── code-reviewer.md    # Code review guidelines
 │   │   ├── feature-developer.md # Feature development guide
 │   │   └── ...                 # Other agent playbooks
+│   ├── commands/
+│   │   ├── README.md           # Slash command index
+│   │   ├── mcp-context-init.md # MCP init slash command template
+│   │   ├── context-sync.md     # CLI sync/export slash command template
+│   │   └── ...                 # (You can add more templates as needed)
+│   ├── skills/                 # Optional (if initialized)
+│   │   └── <skill>/
+│   │       └── SKILL.md
 │   └── workflow/
 │       └── status.yaml         # PREVC workflow status
 └── ...
@@ -117,6 +125,12 @@ Creates the `.context/` structure with templates:
 
 ```bash
 npx @ai-coders/context init .
+```
+
+If you already have `.context/` and want only commands:
+
+```bash
+npx @ai-coders/context init-commands .
 ```
 
 **Options:**
@@ -301,24 +315,24 @@ docs:
 
 ## Quick Sync
 
-Quick Sync provides a unified way to export agents, skills, and documentation to all your AI tools at once.
+Quick Sync provides a unified way to export agents, skills, commands, and documentation to all your AI tools at once.
 
 ### Why Quick Sync?
 
 Different AI tools store context in different locations:
 
-| Tool | Agents | Skills | Rules |
-|------|--------|--------|-------|
-| Claude | `.claude/agents/` | `.claude/skills/` | `CLAUDE.md` |
-| Cursor | `.cursor/agents/` | - | `.cursorrules` |
-| Windsurf | `.windsurf/agents/` | - | `.windsurf/rules/` |
-| Cline | `.cline/agents/` | - | `.clinerules` |
-| Antigravity | `.agent/agents/` | `.agent/workflows/` | `.agent/rules/` |
-| Trae | `.trae/agents/` | - | `.trae/rules/` |
-| Codex | - | `.codex/skills/` | - |
-| Gemini | - | `.gemini/skills/` | - |
-| Aider | - | - | `CONVENTIONS.md` |
-| Universal | - | - | `AGENTS.md` |
+| Tool | Agents | Skills | Commands | Rules |
+|------|--------|--------|----------|-------|
+| Claude | `.claude/agents/` | `.claude/skills/` | `.claude/commands/` | `CLAUDE.md` |
+| Cursor | `.cursor/agents/` | - | `.cursor/commands/` | `.cursorrules` |
+| Windsurf | `.windsurf/agents/` | - | `.windsurf/commands/` | `.windsurf/rules/` |
+| Cline | `.cline/agents/` | - | - | `.clinerules` |
+| Antigravity | `.agent/agents/` | `.agent/workflows/` | `.agent/workflows/` | `.agent/rules/` |
+| Trae | `.trae/agents/` | - | - | `.trae/rules/` |
+| Codex | - | `.codex/skills/` | `.codex/commands/` | - |
+| Gemini | - | `.gemini/skills/` | - | - |
+| Aider | - | - | - | `CONVENTIONS.md` |
+| Universal | - | - | - | `AGENTS.md` |
 
 Quick Sync handles all of this automatically.
 
@@ -331,8 +345,9 @@ npx @ai-coders/context quick-sync
 # Sync specific components
 npx @ai-coders/context quick-sync --components agents
 npx @ai-coders/context quick-sync --components skills
+npx @ai-coders/context quick-sync --components commands
 npx @ai-coders/context quick-sync --components docs
-npx @ai-coders/context quick-sync --components agents,skills
+npx @ai-coders/context quick-sync --components agents,skills,commands
 
 # Sync to specific tools
 npx @ai-coders/context quick-sync --targets claude
@@ -367,6 +382,7 @@ When running interactively, Quick Sync offers:
 |-----------|--------|-------------|
 | `agents` | `.context/agents/` | Agent playbooks |
 | `skills` | `.context/skills/` | Skill definitions |
+| `commands` | `.context/commands/` | Slash command prompt templates |
 | `docs` | `.context/docs/` | Documentation rules |
 
 ### Targets
