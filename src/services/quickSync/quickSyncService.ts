@@ -10,7 +10,7 @@ import * as fs from 'fs-extra';
 import type { CLIInterface } from '../../utils/cliUI';
 import type { TranslateFn } from '../../utils/i18n';
 import { SyncService } from '../sync';
-import { SkillExportService, ExportRulesService } from '../export';
+import { SkillExportService, ExportRulesService, CommandExportService } from '../export';
 import { StateDetector } from '../state';
 import { createSkillRegistry } from '../../workflow/skills';
 
@@ -26,6 +26,8 @@ export interface QuickSyncOptions {
   skipAgents?: boolean;
   /** Skip skills export */
   skipSkills?: boolean;
+  /** Skip commands export */
+  skipCommands?: boolean;
   /** Skip docs update prompt */
   skipDocs?: boolean;
   /** Force overwrite */
@@ -40,6 +42,8 @@ export interface QuickSyncOptions {
   skillTargets?: string[];
   /** Selected doc export targets (e.g., ['cursor', 'claude']). If not set, exports to all. */
   docTargets?: string[];
+  /** Selected command export targets (e.g., ['claude', 'cursor']). If not set, exports to all. */
+  commandTargets?: string[];
   /** LLM config for docs update */
   llmConfig?: {
     provider?: string;
@@ -52,6 +56,7 @@ export interface QuickSyncOptions {
 export interface QuickSyncResult {
   agentsSynced: number;
   skillsExported: number;
+  commandsExported: number;
   docsUpdated: boolean;
   errors: string[];
 }
@@ -75,9 +80,17 @@ export class QuickSyncService {
   async run(repoPath: string, options: QuickSyncOptions = {}): Promise<QuickSyncResult> {
     const absolutePath = path.resolve(repoPath);
 
+    const defaultTargets = {
+      agents: ['github', 'claude', 'cursor'],
+      skills: ['codex', 'antigravity', 'github', 'claude', 'cursor'],
+      commands: ['codex', 'antigravity', 'claude', 'cursor'],
+      rules: ['claude'],
+    } as const;
+
     const result: QuickSyncResult = {
       agentsSynced: 0,
       skillsExported: 0,
+      commandsExported: 0,
       docsUpdated: false,
       errors: [],
     };
@@ -101,8 +114,8 @@ export class QuickSyncService {
 
           await syncService.run({
             source: agentsPath,
-            preset: hasCustomTargets ? undefined : 'all',
-            target: hasCustomTargets ? options.agentTargets : undefined,
+            preset: undefined,
+            target: hasCustomTargets ? options.agentTargets : [...defaultTargets.agents],
             force: options.force,
             dryRun: options.dryRun,
             verbose: false,
@@ -145,8 +158,8 @@ export class QuickSyncService {
           const hasCustomTargets = options.skillTargets && options.skillTargets.length > 0;
 
           const exportResult = await skillExportService.run(absolutePath, {
-            preset: hasCustomTargets ? undefined : 'all',
-            targets: hasCustomTargets ? options.skillTargets : undefined,
+            preset: undefined,
+            targets: hasCustomTargets ? options.skillTargets : [...defaultTargets.skills],
             force: options.force,
             dryRun: options.dryRun,
             verbose: false,
@@ -163,6 +176,45 @@ export class QuickSyncService {
         }
       } catch (error) {
         this.ui.updateSpinner('Failed to export skills', 'fail');
+        result.errors.push(error instanceof Error ? error.message : String(error));
+      } finally {
+        this.ui.stopSpinner();
+      }
+    }
+
+    // Step 3: Export commands
+    if (!options.skipCommands) {
+      try {
+        this.ui.startSpinner(this.t('prompts.quickSync.syncing.commands'));
+
+        const commandsPath = path.join(absolutePath, '.context', 'commands');
+        if (await fs.pathExists(commandsPath)) {
+          const commandExportService = new CommandExportService({
+            ui: this.ui,
+            t: this.t,
+            version: this.version,
+          });
+
+          const hasCustomTargets = options.commandTargets && options.commandTargets.length > 0;
+
+          const exportResult = await commandExportService.run(absolutePath, {
+            preset: undefined,
+            targets: hasCustomTargets ? options.commandTargets : [...defaultTargets.commands],
+            force: options.force,
+            dryRun: options.dryRun,
+            verbose: false,
+          });
+
+          result.commandsExported = exportResult.commandsExported.length;
+          const targetInfo = hasCustomTargets
+            ? `to ${options.commandTargets!.join(', ')}`
+            : 'to all targets';
+          this.ui.updateSpinner(`${result.commandsExported} commands exported ${targetInfo}`, 'success');
+        } else {
+          this.ui.updateSpinner('No commands to export', 'info');
+        }
+      } catch (error) {
+        this.ui.updateSpinner('Failed to export commands', 'fail');
         result.errors.push(error instanceof Error ? error.message : String(error));
       } finally {
         this.ui.stopSpinner();
@@ -186,8 +238,8 @@ export class QuickSyncService {
 
           await exportRulesService.run(absolutePath, {
             source: docsPath,
-            preset: hasCustomTargets ? undefined : 'all',
-            targets: hasCustomTargets ? options.docTargets : undefined,
+            preset: undefined,
+            targets: hasCustomTargets ? options.docTargets : [...defaultTargets.rules],
             force: options.force,
             dryRun: options.dryRun,
           });
@@ -246,6 +298,7 @@ export class QuickSyncService {
     docs: number;
     agents: number;
     skills: number;
+    commands: number;
     daysOld?: number;
   }> {
     const absolutePath = path.resolve(repoPath);
@@ -253,6 +306,7 @@ export class QuickSyncService {
     let docs = 0;
     let agents = 0;
     let skills = 0;
+    let commands = 0;
     let daysOld: number | undefined;
 
     // Count docs
@@ -283,6 +337,14 @@ export class QuickSyncService {
       }
     }
 
+    // Count commands
+    const commandsPath = path.join(absolutePath, '.context', 'commands');
+    if (await fs.pathExists(commandsPath)) {
+      const entries = await fs.readdir(commandsPath);
+      // directories represent commands (README.md is ignored)
+      commands = entries.filter((e) => e !== 'README.md').length;
+    }
+
     // Get days old
     const detector = new StateDetector({ projectPath: absolutePath });
     const state = await detector.detect();
@@ -290,7 +352,7 @@ export class QuickSyncService {
       daysOld = state.details.daysBehind;
     }
 
-    return { docs, agents, skills, daysOld };
+    return { docs, agents, skills, commands, daysOld };
   }
 }
 

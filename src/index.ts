@@ -23,7 +23,7 @@ import { StateDetector } from './services/state';
 import { UpdateService } from './services/update';
 import { WorkflowService, WorkflowServiceDependencies } from './services/workflow';
 import { StartService } from './services/start';
-import { ExportRulesService, EXPORT_PRESETS } from './services/export';
+import { ExportRulesService, EXPORT_PRESETS, ContextExportService } from './services/export';
 import { ReportService } from './services/report';
 import { StackDetector } from './services/stack';
 import { QuickSyncService, QuickSyncOptions } from './services/quickSync';
@@ -160,6 +160,34 @@ program
       await initService.run(repoPath, type, options);
     } catch (error) {
       ui.displayError(t('errors.init.scaffoldFailed'), error as Error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('init-commands')
+  .description('Initialize .context/commands (slash command templates)')
+  .argument('[repo-path]', 'Repository path', process.cwd())
+  .option('-o, --output <dir>', 'Output directory', './.context')
+  .option('-f, --force', 'Overwrite existing command templates')
+  .action(async (repoPath: string, options: any) => {
+    try {
+      const resolvedRepo = path.resolve(repoPath);
+      const outputDir = path.resolve(options.output || './.context');
+
+      const fs = await import('fs-extra');
+      if (!await fs.pathExists(resolvedRepo)) {
+        ui.displayError(t('errors.common.repoMissing', { path: resolvedRepo }));
+        process.exit(1);
+      }
+
+      const { CommandGenerator } = await import('./generators/commands');
+      const generator = new CommandGenerator();
+      const result = await generator.generate(outputDir, { force: Boolean(options.force) });
+
+      ui.displaySuccess(`Commands ready in ${result.commandsDir}`);
+    } catch (error) {
+      ui.displayError('Failed to initialize commands', error as Error);
       process.exit(1);
     }
   });
@@ -604,6 +632,83 @@ program
   .action(async (repoPath: string, options: any) => {
     try {
       const exportService = new ExportRulesService({
+        ui,
+        t,
+        version: VERSION,
+      });
+
+      await exportService.run(repoPath, {
+        source: options.source,
+        targets: options.targets,
+        preset: options.preset,
+        force: options.force,
+        dryRun: options.dryRun,
+        verbose: options.verbose,
+      });
+    } catch (error) {
+      ui.displayError(t('errors.cli.executionFailed'), error as Error);
+      process.exit(1);
+    }
+  });
+
+// Export Context Command (docs/rules + agents + skills + commands)
+program
+  .command('export-context')
+  .description('Export/sync .context (rules, agents, skills, commands) into supported AI tool folders')
+  .argument('[repo-path]', 'Repository path', process.cwd())
+  .option('--preset <name>', 'Target preset (default: "default"; use "all" for everything)')
+  .option('--skip-docs', 'Skip exporting .context/docs (rules)')
+  .option('--skip-agents', 'Skip exporting .context/agents')
+  .option('--skip-skills', 'Skip exporting .context/skills')
+  .option('--skip-commands', 'Skip exporting .context/commands')
+  .option('--docs-index-mode <mode>', 'Docs index mode: readme|all', 'readme')
+  .option('--agent-mode <mode>', 'Agent sync mode: symlink|markdown', 'symlink')
+  .option('--include-builtin-skills', 'Include built-in skills in export')
+  .option('--force', 'Overwrite existing files')
+  .option('--dry-run', 'Preview changes without writing')
+  .option('-v, --verbose', 'Verbose output')
+  .action(async (repoPath: string, options: any) => {
+    try {
+      const exportService = new ContextExportService({
+        ui,
+        t,
+        version: VERSION,
+      });
+
+      await exportService.run(repoPath, {
+        preset: options.preset,
+        skipDocs: options.skipDocs,
+        skipAgents: options.skipAgents,
+        skipSkills: options.skipSkills,
+        skipCommands: options.skipCommands,
+        docsIndexMode: options.docsIndexMode,
+        agentMode: options.agentMode,
+        includeBuiltInSkills: options.includeBuiltinSkills,
+        force: options.force,
+        dryRun: options.dryRun,
+        verbose: options.verbose,
+      });
+    } catch (error) {
+      ui.displayError(t('errors.cli.executionFailed'), error as Error);
+      process.exit(1);
+    }
+  });
+
+// Export Commands Command
+program
+  .command('export-commands')
+  .description('Export slash commands from .context/commands to AI tool directories')
+  .argument('[repo-path]', 'Repository path', process.cwd())
+  .option('-s, --source <dir>', 'Source directory (default: .context/commands)', '.context/commands')
+  .option('-t, --targets <paths...>', 'Target presets or paths (e.g., claude, cursor, github)')
+  .option('--preset <name>', 'Export preset (e.g., all, claude, cursor, github)', 'all')
+  .option('--force', 'Overwrite existing files')
+  .option('--dry-run', 'Preview changes without writing')
+  .option('-v, --verbose', 'Verbose output')
+  .action(async (repoPath: string, options: any) => {
+    try {
+      const { CommandExportService } = await import('./services/export/commandExportService');
+      const exportService = new CommandExportService({
         ui,
         t,
         version: VERSION,
@@ -2301,6 +2406,7 @@ async function runQuickSync(): Promise<void> {
       choices: [
         { name: t('prompts.quickSync.components.agents'), value: 'agents', checked: true },
         { name: t('prompts.quickSync.components.skills'), value: 'skills', checked: true },
+        { name: t('prompts.quickSync.components.commands'), value: 'commands', checked: true },
         { name: t('prompts.quickSync.components.docs'), value: 'docs', checked: true },
       ],
     },
@@ -2313,6 +2419,7 @@ async function runQuickSync(): Promise<void> {
 
   let agentTargets: string[] | undefined;
   let skillTargets: string[] | undefined;
+  let commandTargets: string[] | undefined;
   let docTargets: string[] | undefined;
 
   // Step 2: If agents selected, choose targets
@@ -2325,7 +2432,7 @@ async function runQuickSync(): Promise<void> {
         choices: [
           { name: '.claude/agents (Claude Code)', value: 'claude', checked: true },
           { name: '.github/agents (GitHub Copilot)', value: 'github', checked: true },
-          { name: '.cursor/agents (Cursor AI)', value: 'cursor', checked: false },
+          { name: '.cursor/agents (Cursor AI)', value: 'cursor', checked: true },
           { name: '.windsurf/agents (Windsurf/Codeium)', value: 'windsurf', checked: false },
           { name: '.cline/agents (Cline)', value: 'cline', checked: false },
           { name: '.continue/agents (Continue.dev)', value: 'continue', checked: false },
@@ -2344,12 +2451,35 @@ async function runQuickSync(): Promise<void> {
         message: t('prompts.quickSync.selectSkillTargets'),
         choices: [
           { name: '.claude/skills (Claude Code)', value: 'claude', checked: true },
-          { name: '.gemini/skills (Gemini CLI)', value: 'gemini', checked: true },
+          { name: '.cursor/commands (Cursor AI)', value: 'cursor', checked: true },
+          { name: '.github/prompts (GitHub Copilot)', value: 'github', checked: true },
+          { name: '.agent/workflows (Google Antigravity)', value: 'antigravity', checked: true },
           { name: '.codex/skills (Codex CLI)', value: 'codex', checked: true },
+          { name: '.gemini/skills (Gemini CLI)', value: 'gemini', checked: false },
         ],
       },
     ]);
     skillTargets = targets.length > 0 ? targets : undefined;
+  }
+
+  // Step 4: If commands selected, choose targets
+  if (components.includes('commands')) {
+    const { targets } = await inquirer.prompt<{ targets: string[] }>([
+      {
+        type: 'checkbox',
+        name: 'targets',
+        message: t('prompts.quickSync.selectCommandTargets'),
+        choices: [
+          { name: '.claude/commands (Claude Code)', value: 'claude', checked: true },
+          { name: '.cursor/commands (Cursor AI)', value: 'cursor', checked: true },
+          { name: '.github/prompts (GitHub Copilot)', value: 'github', checked: false },
+          { name: '.windsurf/commands (Windsurf/Codeium)', value: 'windsurf', checked: false },
+          { name: '.agent/workflows (Google Antigravity)', value: 'antigravity', checked: true },
+          { name: '.codex/commands (Codex CLI)', value: 'codex', checked: true },
+        ],
+      },
+    ]);
+    commandTargets = targets.length > 0 ? targets : undefined;
   }
 
   // Step 4: If docs selected, choose targets
@@ -2360,9 +2490,9 @@ async function runQuickSync(): Promise<void> {
         name: 'targets',
         message: t('prompts.quickSync.selectDocTargets'),
         choices: [
-          { name: '.cursorrules (Cursor AI)', value: 'cursor', checked: true },
+          { name: '.cursorrules (Cursor AI)', value: 'cursor', checked: false },
           { name: 'CLAUDE.md (Claude Code)', value: 'claude', checked: true },
-          { name: 'AGENTS.md (Universal)', value: 'agents', checked: true },
+          { name: 'AGENTS.md (Universal)', value: 'agents', checked: false },
           { name: '.windsurfrules (Windsurf)', value: 'windsurf', checked: false },
           { name: '.clinerules (Cline)', value: 'cline', checked: false },
           { name: 'CONVENTIONS.md (Aider)', value: 'aider', checked: false },
@@ -2376,9 +2506,11 @@ async function runQuickSync(): Promise<void> {
   const options: QuickSyncOptions = {
     skipAgents: !components.includes('agents'),
     skipSkills: !components.includes('skills'),
+    skipCommands: !components.includes('commands'),
     skipDocs: !components.includes('docs'),
     agentTargets,
     skillTargets,
+    commandTargets,
     docTargets,
     force: false,
     dryRun: false,
