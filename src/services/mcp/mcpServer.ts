@@ -148,13 +148,17 @@ export class AIContextMCPServer {
     this.server.registerTool('context', {
       description: `Context scaffolding and semantic context. Actions:
 - check: Check if .context scaffolding exists (params: repoPath?)
-- init: Initialize .context scaffolding (params: repoPath?, type?, outputDir?, semantic?, autoFill?, skipContentGeneration?)
+- init: Initialize .context scaffolding (params: repoPath?, type?, outputDir?, semantic?, include?, exclude?, projectType?, disableFiltering?, includeContentStubs?, autoFill?, skipContentGeneration?, generateQA?, generateSkills?)
 - fill: Fill scaffolding with AI content (params: repoPath?, outputDir?, target?, offset?, limit?)
 - fillSingle: Fill a single scaffold file (params: repoPath?, filePath)
 - listToFill: List files that need filling (params: repoPath?, outputDir?, target?)
 - getMap: Get codebase map section (params: repoPath?, section?)
 - buildSemantic: Build semantic context (params: repoPath?, contextType?, targetFile?, options?)
 - scaffoldPlan: Create a plan template (params: planName, repoPath?, title?, summary?, autoFill?)
+- searchQA: Search Q&A knowledge base (params: repoPath?, query?)
+- generateQA: Generate Q&A files (params: repoPath?)
+- getFlow: Get flow analysis (params: repoPath?, entryFile?, entryFunction?)
+- detectPatterns: Detect patterns in codebase (params: repoPath?)
 
 **Important:** Agents should provide repoPath on the FIRST call, then it will be cached:
 1. First call: context({ action: "check", repoPath: "/path/to/project" })
@@ -162,7 +166,7 @@ export class AIContextMCPServer {
 3. After context init, call fillSingle for each pending file
 4. Call workflow-init to enable PREVC workflow (unless trivial change)`,
       inputSchema: {
-        action: z.enum(['check', 'init', 'fill', 'fillSingle', 'listToFill', 'getMap', 'buildSemantic', 'scaffoldPlan'])
+        action: z.enum(['check', 'init', 'fill', 'fillSingle', 'listToFill', 'getMap', 'buildSemantic', 'scaffoldPlan', 'searchQA', 'generateQA', 'getFlow', 'detectPatterns'])
           .describe('Action to perform'),
         repoPath: z.string().optional()
           .describe('Repository path (defaults to cwd)'),
@@ -176,11 +180,21 @@ export class AIContextMCPServer {
           .describe('(init) Include patterns'),
         exclude: z.array(z.string()).optional()
           .describe('(init) Exclude patterns'),
+        projectType: z.enum(['cli', 'web-frontend', 'web-backend', 'full-stack', 'mobile', 'library', 'monorepo', 'desktop', 'unknown']).optional()
+          .describe('(init) Override auto-detected project type (controls filtering)'),
+        disableFiltering: z.boolean().optional()
+          .describe('(init) Generate all agents/docs regardless of project type'),
+        includeContentStubs: z.boolean().optional()
+          .describe('(init) Include section headings and guidance stubs in generated files'),
         autoFill: z.boolean().optional()
           .describe('(init, scaffoldPlan) Auto-fill with codebase content'),
         skipContentGeneration: z.boolean().optional()
           .describe('(init) Skip pre-generating content'),
-        target: z.enum(['docs', 'agents', 'plans', 'all']).optional()
+        generateQA: z.boolean().optional()
+          .describe('(init) Generate Q&A files (default: true)'),
+        generateSkills: z.boolean().optional()
+          .describe('(init) Generate skills scaffolding (default: true)'),
+        target: z.enum(['docs', 'agents', 'plans', 'skills', 'all']).optional()
           .describe('(fill, listToFill) Which scaffolding to target'),
         offset: z.number().optional()
           .describe('(fill) Skip first N files'),
@@ -211,6 +225,12 @@ export class AIContextMCPServer {
           .describe('(scaffoldPlan) Plan title'),
         summary: z.string().optional()
           .describe('(scaffoldPlan) Plan summary/goal'),
+        query: z.string().optional()
+          .describe('(searchQA) Query to search in Q&A knowledge base'),
+        entryFile: z.string().optional()
+          .describe('(getFlow) Entry file path (relative to repo root)'),
+        entryFunction: z.string().optional()
+          .describe('(getFlow) Entry function name'),
       }
     }, wrap('context', async (params): Promise<MCPToolResponse> => {
       return handleContext(params as ContextParams, { repoPath: this.getRepoPath((params as ContextParams).repoPath), contextBuilder: this.contextBuilder });
@@ -363,14 +383,15 @@ Actions:
 - exportRules: Export rules to AI tools (params: preset?, force?, dryRun?)
 - exportDocs: Export docs to AI tools (params: preset?, indexMode?, force?, dryRun?)
 - exportAgents: Export agents to AI tools (params: preset?, mode?, force?, dryRun?)
-- exportContext: Export all context (params: preset?, skipDocs?, skipAgents?, skipSkills?, docsIndexMode?, agentMode?, force?, dryRun?)
+- exportContext: Export all context (params: preset?, skipDocs?, skipAgents?, skipSkills?, skipCommands?, docsIndexMode?, agentMode?, force?, dryRun?)
 - exportSkills: Export skills to AI tools (params: preset?, includeBuiltIn?, force?)
+- exportCommands: Export commands to AI tools (params: preset?, force?, dryRun?)
 - reverseSync: Import from AI tools to .context/ (params: skipRules?, skipAgents?, skipSkills?, mergeStrategy?, dryRun?, force?, addMetadata?)
 - importDocs: Import docs from AI tools (params: autoDetect?, force?, dryRun?)
 - importAgents: Import agents from AI tools (params: autoDetect?, force?, dryRun?)
 - importSkills: Import skills from AI tools (params: autoDetect?, mergeStrategy?, force?, dryRun?)`,
       inputSchema: {
-        action: z.enum(['exportRules', 'exportDocs', 'exportAgents', 'exportContext', 'exportSkills', 'reverseSync', 'importDocs', 'importAgents', 'importSkills'])
+        action: z.enum(['exportRules', 'exportDocs', 'exportAgents', 'exportContext', 'exportSkills', 'exportCommands', 'reverseSync', 'importDocs', 'importAgents', 'importSkills'])
           .describe('Action to perform'),
         preset: z.string().optional()
           .describe('Target AI tool preset'),
@@ -388,6 +409,8 @@ Actions:
           .describe('(exportContext, reverseSync) Skip agents'),
         skipSkills: z.boolean().optional()
           .describe('(exportContext, reverseSync) Skip skills'),
+        skipCommands: z.boolean().optional()
+          .describe('(exportContext) Skip commands'),
         skipRules: z.boolean().optional()
           .describe('(reverseSync) Skip rules'),
         docsIndexMode: z.enum(['readme', 'all']).optional()

@@ -119,6 +119,7 @@ export async function handleSync(
           skipDocs: params.skipDocs,
           skipAgents: params.skipAgents,
           skipSkills: params.skipSkills,
+          skipCommands: params.skipCommands,
           docsIndexMode: params.docsIndexMode,
           agentMode: params.agentMode,
           includeBuiltInSkills: params.includeBuiltInSkills,
@@ -131,6 +132,7 @@ export async function handleSync(
           docsExported: result.docsExported,
           agentsExported: result.agentsExported,
           skillsExported: result.skillsExported,
+          commandsExported: result.commandsExported,
           targets: result.targets,
           errors: result.errors,
           dryRun: params.dryRun || false,
@@ -157,6 +159,30 @@ export async function handleSync(
           skillsExported: result.skillsExported,
           filesCreated: result.filesCreated,
           filesSkipped: result.filesSkipped,
+        });
+      }
+
+      case 'exportCommands': {
+        const { CommandExportService } = require('../../export/commandExportService');
+        const exportService = new CommandExportService({
+          ui: minimalUI,
+          t: mockTranslate,
+          version: VERSION,
+        });
+
+        const result = await exportService.run(repoPath, {
+          preset: params.preset,
+          force: params.force,
+          dryRun: params.dryRun,
+        });
+
+        return createJsonResponse({
+          success: result.filesCreated > 0,
+          targets: result.targets,
+          commandsExported: result.commandsExported,
+          filesCreated: result.filesCreated,
+          filesSkipped: result.filesSkipped,
+          dryRun: params.dryRun || false,
         });
       }
 

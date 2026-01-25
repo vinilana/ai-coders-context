@@ -59,8 +59,13 @@ export async function handleContext(
             semantic: params.semantic,
             include: params.include,
             exclude: params.exclude,
+            projectType: params.projectType,
+            disableFiltering: params.disableFiltering,
+            includeContentStubs: params.includeContentStubs,
             autoFill: params.autoFill,
-            skipContentGeneration: params.skipContentGeneration
+            skipContentGeneration: params.skipContentGeneration,
+            generateQA: params.generateQA,
+            generateSkills: params.generateSkills,
           },
           toolContext
         );

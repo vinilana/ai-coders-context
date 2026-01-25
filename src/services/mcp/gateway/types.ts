@@ -15,7 +15,7 @@ import type { PrevcPhase, PrevcRole, AgentType } from '../../../workflow';
 // Note: Project tools removed - use context init + workflow-init instead
 export type ExploreAction = 'read' | 'list' | 'analyze' | 'search' | 'getStructure';
 export type ContextAction = 'check' | 'init' | 'fill' | 'fillSingle' | 'listToFill' | 'getMap' | 'buildSemantic' | 'scaffoldPlan' | 'searchQA' | 'generateQA' | 'getFlow' | 'detectPatterns';
-export type SyncAction = 'exportRules' | 'exportDocs' | 'exportAgents' | 'exportContext' | 'exportSkills' | 'reverseSync' | 'importDocs' | 'importAgents' | 'importSkills';
+export type SyncAction = 'exportRules' | 'exportDocs' | 'exportAgents' | 'exportContext' | 'exportSkills' | 'exportCommands' | 'reverseSync' | 'importDocs' | 'importAgents' | 'importSkills';
 export type PlanAction = 'link' | 'getLinked' | 'getDetails' | 'getForPhase' | 'updatePhase' | 'recordDecision' | 'updateStep' | 'getStatus' | 'syncMarkdown' | 'commitPhase';
 export type AgentAction = 'discover' | 'getInfo' | 'orchestrate' | 'getSequence' | 'getDocs' | 'getPhaseDocs' | 'listTypes';
 export type SkillAction = 'list' | 'getContent' | 'getForPhase' | 'scaffold' | 'export' | 'fill';
@@ -44,9 +44,14 @@ export interface ContextParams {
   semantic?: boolean;
   include?: string[];
   exclude?: string[];
+  projectType?: 'cli' | 'web-frontend' | 'web-backend' | 'full-stack' | 'mobile' | 'library' | 'monorepo' | 'desktop' | 'unknown';
+  disableFiltering?: boolean;
+  includeContentStubs?: boolean;
   autoFill?: boolean;
   skipContentGeneration?: boolean;
-  target?: 'docs' | 'agents' | 'plans' | 'all';
+  generateQA?: boolean;
+  generateSkills?: boolean;
+  target?: 'docs' | 'agents' | 'plans' | 'skills' | 'all';
   offset?: number;
   limit?: number;
   filePath?: string;
@@ -81,6 +86,7 @@ export interface SyncParams {
   skipDocs?: boolean;
   skipAgents?: boolean;
   skipSkills?: boolean;
+  skipCommands?: boolean;
   skipRules?: boolean;
   docsIndexMode?: 'readme' | 'all';
   agentMode?: 'symlink' | 'markdown';
