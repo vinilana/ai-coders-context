@@ -17,6 +17,7 @@ import {
   DocScaffoldFrontmatter,
 } from '../../types/scaffoldFrontmatter';
 import { getScaffoldStructure, ScaffoldStructure, serializeStructureAsMarkdown } from '../shared/scaffoldStructures';
+import { AutoFillService, AutoFillContext } from '../../services/autoFill';
 
 /**
  * Category mapping from document name to frontmatter category.
@@ -55,6 +56,8 @@ interface DocumentationGenerationConfig {
   filteredDocs?: string[];
   /** Include section headings and guidance in scaffolds (CLI mode) */
   includeContentStubs?: boolean;
+  /** Fill scaffolds with semantic data (no LLM required) */
+  autoFill?: boolean;
 }
 
 export class DocumentationGenerator {
@@ -87,15 +90,24 @@ export class DocumentationGenerator {
       }
     }
 
+    // Detect stack info for codebase map and autoFill
+    let stackInfo;
+    if (semantics || config.autoFill) {
+      try {
+        const stackDetector = new StackDetector();
+        stackInfo = await stackDetector.detect(repoStructure.rootPath);
+      } catch (error) {
+        GeneratorUtils.logError('Stack detection failed, continuing without it', error, verbose);
+      }
+    }
+
     // Generate codebase map JSON if semantic analysis succeeded
     if (semantics) {
       try {
         GeneratorUtils.logProgress('Generating codebase map...', verbose);
-        const stackDetector = new StackDetector();
-        const stackInfo = await stackDetector.detect(repoStructure.rootPath);
 
         const mapGenerator = new CodebaseMapGenerator();
-        const codebaseMap = mapGenerator.generate(repoStructure, semantics, stackInfo);
+        const codebaseMap = mapGenerator.generate(repoStructure, semantics, stackInfo!);
 
         const mapPath = path.join(docsDir, 'codebase-map.json');
         await GeneratorUtils.writeFileWithLogging(
@@ -138,10 +150,21 @@ export class DocumentationGenerator {
       );
       let content = serializeFrontmatter(frontmatter) + '\n';
 
-      // Add content stubs when requested (CLI mode)
-      if (config.includeContentStubs) {
-        const structure = getScaffoldStructure(guide.key);
-        if (structure) {
+      // Add content based on mode
+      const structure = getScaffoldStructure(guide.key);
+      if (structure) {
+        if (config.autoFill && semantics) {
+          // AutoFill: generate content from semantic analysis (no LLM needed)
+          const autoFillService = new AutoFillService();
+          const autoFillContext: AutoFillContext = {
+            semantics,
+            stackInfo,
+            repoPath: repoStructure.rootPath,
+            topLevelDirectories: context.topLevelDirectories
+          };
+          content += autoFillService.fillDocumentation(guide.key, structure, autoFillContext);
+        } else if (config.includeContentStubs) {
+          // Content stubs: section headings with guidance comments
           content += serializeStructureAsMarkdown(structure);
         }
       }

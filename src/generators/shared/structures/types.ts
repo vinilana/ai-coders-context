@@ -51,6 +51,8 @@ export interface ScaffoldSection {
   required: boolean;
   /** Heading level (2 = H2, 3 = H3) */
   headingLevel?: 2 | 3;
+  /** Static default content when not autoFilled. Provides useful template content that works for any project. */
+  defaultContent?: string;
 }
 
 /**

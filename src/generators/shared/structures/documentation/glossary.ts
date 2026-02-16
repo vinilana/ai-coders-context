@@ -15,6 +15,9 @@ export const glossaryStructure: ScaffoldStructure = {
       guidance: 'List project-specific terminology, acronyms, domain entities, and user personas.',
       required: true,
       headingLevel: 2,
+      defaultContent: `This document defines project-specific terminology, concepts, and domain knowledge.
+
+Use this as a reference when encountering unfamiliar terms in the codebase or documentation.`,
     },
     {
       heading: 'Type Definitions',
@@ -23,6 +26,11 @@ export const glossaryStructure: ScaffoldStructure = {
       guidance: 'List exported type definitions and interfaces with links to their locations.',
       required: true,
       headingLevel: 2,
+      defaultContent: `Key type definitions in this project:
+
+- **[TypeName]** — [Description] (\`src/types/path.ts\`)
+
+*See [\`codebase-map.json\`](./codebase-map.json) for complete type listings.*`,
     },
     {
       heading: 'Enumerations',
@@ -31,6 +39,11 @@ export const glossaryStructure: ScaffoldStructure = {
       guidance: 'List exported enums with links to their locations.',
       required: true,
       headingLevel: 2,
+      defaultContent: `Enums defined in this project:
+
+- **[EnumName]** — [Description] (\`src/types/path.ts\`)
+
+*See [\`codebase-map.json\`](./codebase-map.json) for complete enum listings.*`,
     },
     {
       heading: 'Core Terms',
@@ -39,6 +52,9 @@ export const glossaryStructure: ScaffoldStructure = {
       guidance: 'Define key terms, their relevance, and where they surface in the codebase.',
       required: true,
       headingLevel: 2,
+      defaultContent: `**[Term]**: [Definition and context]
+
+Add project-specific terminology here as the codebase evolves.`,
     },
     {
       heading: 'Acronyms & Abbreviations',
@@ -47,6 +63,10 @@ export const glossaryStructure: ScaffoldStructure = {
       guidance: 'Expand abbreviations and note associated services or APIs.',
       required: false,
       headingLevel: 2,
+      defaultContent: `| Acronym | Expansion | Context |
+|---------|-----------|---------|
+| API | Application Programming Interface | External/internal interfaces |
+| CLI | Command Line Interface | User interaction |`,
     },
     {
       heading: 'Personas / Actors',

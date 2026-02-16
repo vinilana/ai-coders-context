@@ -80,11 +80,13 @@ https://www.youtube.com/watch?v=5BPrfZAModk
 
 1. **Creates documentation** — Structured docs from your codebase (architecture, data flow, decisions)
 2. **Generates agent playbooks** — 14 specialized AI agents (code-reviewer, bug-fixer, architect, etc.)
-3. **Manages workflows** — PREVC process with scale detection, gates, and execution history
-4. **Provides skills** — On-demand expertise (commit messages, PR reviews, security audits)
-5. **Syncs everywhere** — Export to Cursor, Claude, Copilot, Windsurf, Cline, Codex, Antigravity, Trae, and more
-6. **Tracks execution** — Step-level tracking with git integration for workflow phases
-7. **Keeps it updated** — Detects code changes and suggests documentation updates
+3. **Smart scaffold filtering** — Automatically detects project type and generates only relevant content
+4. **Useful out-of-the-box** — Scaffolds include practical template content, not empty placeholders
+5. **Manages workflows** — PREVC process with scale detection, gates, and execution history
+6. **Provides skills** — On-demand expertise (commit messages, PR reviews, security audits)
+7. **Syncs everywhere** — Export to Cursor, Claude, Copilot, Windsurf, Cline, Codex, Antigravity, Trae, and more
+8. **Tracks execution** — Step-level tracking with git integration for workflow phases
+9. **Keeps it updated** — Detects code changes and suggests documentation updates
 
 ## Quick Start
 
@@ -138,6 +140,24 @@ C: Deployed. Docs updated. Ready for review.
 
 - [User Guide](./docs/GUIDE.md) — Complete usage guide
 
+
+### Smart Project Detection
+
+The system automatically detects your project type and generates only relevant scaffolds:
+
+| Project Type | Detected By | Docs | Agents |
+|--------------|-------------|------|--------|
+| **CLI** | `bin` field, commander/yargs | Core docs | Core agents |
+| **Web Frontend** | React, Vue, Angular, Svelte | + architecture, security | + frontend, devops |
+| **Web Backend** | Express, NestJS, FastAPI | + architecture, data-flow, security | + backend, database, devops |
+| **Full Stack** | Both frontend + backend | All docs | All agents |
+| **Mobile** | React Native, Flutter | + architecture, security | + mobile, devops |
+| **Library** | `main`/`exports` without `bin` | Core docs | Core agents |
+| **Monorepo** | Lerna, Nx, Turborepo | All docs | All agents |
+
+**Core scaffolds** (always included):
+- Docs: project-overview, development-workflow, testing-strategy, tooling
+- Agents: code-reviewer, bug-fixer, feature-developer, refactoring-specialist, test-writer, documentation-writer, performance-optimizer
 
 ### Scale-Adaptive Routing
 

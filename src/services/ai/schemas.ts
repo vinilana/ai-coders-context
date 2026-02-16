@@ -50,7 +50,9 @@ export const GetCodebaseMapInputSchema = z.object({
     'symbols.enums',
     'publicAPI',
     'dependencies',
-    'stats'
+    'stats',
+    'keyFiles',
+    'navigation'
   ]).default('all').optional()
     .describe('Section of the codebase map to retrieve. Use specific sections to reduce token usage.')
 });

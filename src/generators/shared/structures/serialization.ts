@@ -46,6 +46,12 @@ function formatSectionAsMarkdown(section: ScaffoldSection): string {
   lines.push(`${headingPrefix} ${section.heading}`);
   lines.push('');
 
+  // Prefer defaultContent (static useful content) over guidance + placeholder
+  if (section.defaultContent) {
+    lines.push(section.defaultContent);
+    return lines.join('\n');
+  }
+
   // Add guidance as HTML comment
   lines.push(`<!-- ${section.guidance} -->`);
   lines.push('');
