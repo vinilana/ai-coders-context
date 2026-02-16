@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs-extra';
 import { z } from 'zod';
 import { SemanticContextBuilder } from '../../semantic/contextBuilder';
+import { DEFAULT_EXCLUDE_PATTERNS } from '../../semantic/types';
 import { getScaffoldStructure, serializeStructureForAI } from '../../../generators/shared/scaffoldStructures';
 
 // Shared context builder instance for efficiency
@@ -12,6 +13,7 @@ let cachedContext: { repoPath: string; context: string } | null = null;
 /**
  * Get or build semantic context for a repository.
  * Caches the context for efficiency when processing multiple files.
+ * Loads user-provided exclude patterns from .context/config.json if available.
  */
 export async function getOrBuildContext(repoPath: string): Promise<string> {
   if (cachedContext && cachedContext.repoPath === repoPath) {
@@ -25,7 +27,23 @@ export async function getOrBuildContext(repoPath: string): Promise<string> {
     sharedContextBuilder = null;
   }
 
-  sharedContextBuilder = new SemanticContextBuilder();
+  // Load user-provided exclude patterns persisted during init
+  let options: { exclude?: string[] } = {};
+  const configPath = path.join(repoPath, '.context', 'config.json');
+  if (await fs.pathExists(configPath)) {
+    try {
+      const config = await fs.readJson(configPath);
+      if (Array.isArray(config.exclude) && config.exclude.length > 0) {
+        // Merge user excludes with defaults — the spread in SemanticContextBuilder
+        // replaces rather than merges, so we combine them here
+        options = { exclude: [...new Set([...DEFAULT_EXCLUDE_PATTERNS, ...config.exclude])] };
+      }
+    } catch {
+      // Ignore config read errors — fall back to defaults
+    }
+  }
+
+  sharedContextBuilder = new SemanticContextBuilder(options);
   const context = await sharedContextBuilder.buildDocumentationContext(repoPath);
   cachedContext = { repoPath, context };
   return context;

@@ -14,6 +14,7 @@ import type {
   DetectedPattern,
   AnalyzerOptions,
 } from './types';
+import { DEFAULT_EXCLUDE_PATTERNS } from './types';
 
 export interface ContextBuilderOptions extends AnalyzerOptions {
   /** Maximum symbols to include per category */
@@ -31,7 +32,7 @@ export type ContextFormat = 'documentation' | 'playbook' | 'plan' | 'compact';
 const DEFAULT_OPTIONS: Required<ContextBuilderOptions> = {
   useLSP: false,
   languages: ['typescript', 'javascript', 'python', 'go'],
-  exclude: ['node_modules', 'dist', 'build', '.git', 'coverage'],
+  exclude: DEFAULT_EXCLUDE_PATTERNS,
   include: [],
   maxFiles: 5000,
   cacheEnabled: true,
