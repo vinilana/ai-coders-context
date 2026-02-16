@@ -228,4 +228,6 @@ export const DEFAULT_EXCLUDE_PATTERNS = [
   'coverage',
   '.cache',
   'target',
+  'venv',
+  '.venv',
 ];

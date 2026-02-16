@@ -59,6 +59,17 @@ The AI agent MUST then fill each generated file using the provided context and i
       // Ensure output directory exists
       await fs.ensureDir(outputDir);
 
+      // Persist user-provided exclude patterns for later use by fillSingle
+      if (exclude.length > 0) {
+        const configPath = path.join(outputDir, 'config.json');
+        let existingConfig: Record<string, unknown> = {};
+        if (await fs.pathExists(configPath)) {
+          try { existingConfig = await fs.readJson(configPath); } catch { /* ignore */ }
+        }
+        existingConfig.exclude = exclude;
+        await fs.writeJson(configPath, existingConfig, { spaces: 2 });
+      }
+
       // Map repository structure
       const fileMapper = new FileMapper(exclude);
       const repoStructure = await fileMapper.mapRepository(resolvedRepoPath, include);
