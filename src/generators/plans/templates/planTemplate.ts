@@ -21,7 +21,7 @@ function wrapWithPlanFrontMatter(
   options: {
     agents: Array<{ type: string; role?: string }>;
     docs: string[];
-    phases: Array<{ id: string; name: string; prevcPhase: string }>;
+    phases: Array<{ id: string; name: string; prevcPhase: string; agent?: string }>;
   }
 ): string {
   const date = new Date().toISOString().split('T')[0];
@@ -36,9 +36,9 @@ function wrapWithPlanFrontMatter(
     ? options.docs.map(d => `  - "${d}"`).join('\n')
     : '  - "README.md"';
 
-  // Format phases as YAML array
+  // Format phases as YAML array (includes agent placeholder)
   const phasesYaml = options.phases.map(p =>
-    `  - id: "${p.id}"\n    name: "${p.name}"\n    prevc: "${p.prevcPhase}"`
+    `  - id: "${p.id}"\n    name: "${p.name}"\n    prevc: "${p.prevcPhase}"\n    agent: "${p.agent || 'TODO: assign-agent'}"`
   ).join('\n');
 
   return `---
@@ -160,10 +160,10 @@ ${docsTableRows}
 Identify potential blockers, dependencies, and mitigation strategies before beginning work.
 
 ### Identified Risks
-| Risk | Probability | Impact | Mitigation Strategy | Owner |
+| Risk | Probability | Impact | Mitigation Strategy | Owner (Agent) |
 | --- | --- | --- | --- | --- |
-| TODO: Dependency on external team | Medium | High | Early coordination meeting, clear requirements | TODO: Name |
-| TODO: Insufficient test coverage | Low | Medium | Allocate time for test writing in Phase 2 | TODO: Name |
+| TODO: Dependency on external team | Medium | High | Early coordination meeting, clear requirements | \`TODO: agent\` |
+| TODO: Insufficient test coverage | Low | Medium | Allocate time for test writing in Phase 2 | \`test-writer\` |
 
 ### Dependencies
 - **Internal:** TODO: List dependencies on other teams, services, or infrastructure
@@ -194,26 +194,53 @@ Identify potential blockers, dependencies, and mitigation strategies before begi
 - **Escalation:** TODO: Name of person to contact if resources are insufficient
 
 ## Working Phases
+
 ### Phase 1 — Discovery & Alignment
-**Steps**
-1. TODO: Outline discovery tasks and assign the accountable owner.
-2. TODO: Capture open questions that require clarification.
+> **Primary Agent:** \`TODO: assign-agent\` - [Playbook](../agents/TODO-agent.md)
+
+**Objective:** TODO: Define the goal for this phase.
+
+**Tasks**
+
+| # | Task | Agent | Status | Deliverable |
+|---|------|-------|--------|-------------|
+| 1.1 | TODO: Outline discovery task | \`TODO: agent\` | pending | TODO: Expected output |
+| 1.2 | TODO: Capture open questions | \`TODO: agent\` | pending | TODO: Expected output |
 
 **Commit Checkpoint**
 - After completing this phase, capture the agreed context and create a commit (for example, \`git commit -m "chore(plan): complete phase 1 discovery"\`).
 
+---
+
 ### Phase 2 — Implementation & Iteration
-**Steps**
-1. TODO: Note build tasks, pairing expectations, and review cadence.
-2. TODO: Reference docs or playbooks to keep changes aligned.
+> **Primary Agent:** \`TODO: assign-agent\` - [Playbook](../agents/TODO-agent.md)
+
+**Objective:** TODO: Define the goal for this phase.
+
+**Tasks**
+
+| # | Task | Agent | Status | Deliverable |
+|---|------|-------|--------|-------------|
+| 2.1 | TODO: Build task description | \`TODO: agent\` | pending | TODO: Expected output |
+| 2.2 | TODO: Reference docs or playbooks | \`TODO: agent\` | pending | TODO: Expected output |
 
 **Commit Checkpoint**
 - Summarize progress, update cross-links, and create a commit documenting the outcomes of this phase (for example, \`git commit -m "chore(plan): complete phase 2 implementation"\`).
 
+---
+
 ### Phase 3 — Validation & Handoff
-**Steps**
-1. TODO: Detail testing, verification, and documentation updates.
-2. TODO: Document evidence the team must capture for maintainers.
+> **Primary Agent:** \`TODO: assign-agent\` - [Playbook](../agents/TODO-agent.md)
+
+**Objective:** TODO: Define the goal for this phase.
+
+**Tasks**
+
+| # | Task | Agent | Status | Deliverable |
+|---|------|-------|--------|-------------|
+| 3.1 | TODO: Testing and verification | \`TODO: agent\` | pending | TODO: Expected output |
+| 3.2 | TODO: Documentation updates | \`TODO: agent\` | pending | TODO: Expected output |
+| 3.3 | TODO: Capture evidence for maintainers | \`TODO: agent\` | pending | TODO: Expected output |
 
 **Commit Checkpoint**
 - Record the validation evidence and create a commit signalling the handoff completion (for example, \`git commit -m "chore(plan): complete phase 3 validation"\`).
@@ -253,7 +280,16 @@ When to initiate rollback:
 
 ## Evidence & Follow-up
 
-List artifacts to collect (logs, PR links, test runs, design notes). Record follow-up actions or owners.
+### Artifacts to Collect
+- TODO: List artifacts (logs, PR links, test runs, design notes)
+
+### Success Metrics
+- TODO: Define measurable success criteria
+
+### Follow-up Actions
+| Action | Owner (Agent) | Due |
+|--------|---------------|-----|
+| TODO: Action description | \`TODO: agent\` | TODO: Date/milestone |
 `;
 
   // Build frontmatter data
@@ -266,9 +302,9 @@ List artifacts to collect (logs, PR links, test runs, design notes). Record foll
     : ['README.md'];
 
   const frontMatterPhases = [
-    { id: 'phase-1', name: 'Discovery & Alignment', prevcPhase: 'P' },
-    { id: 'phase-2', name: 'Implementation & Iteration', prevcPhase: 'E' },
-    { id: 'phase-3', name: 'Validation & Handoff', prevcPhase: 'V' },
+    { id: 'phase-1', name: 'Discovery & Alignment', prevcPhase: 'P', agent: 'TODO: assign-agent' },
+    { id: 'phase-2', name: 'Implementation & Iteration', prevcPhase: 'E', agent: 'TODO: assign-agent' },
+    { id: 'phase-3', name: 'Validation & Handoff', prevcPhase: 'V', agent: 'TODO: assign-agent' },
   ];
 
   return wrapWithPlanFrontMatter(content, {

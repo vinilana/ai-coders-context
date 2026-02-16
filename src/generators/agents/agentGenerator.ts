@@ -13,6 +13,8 @@ import {
 } from '../../types/scaffoldFrontmatter';
 import { PrevcPhase } from '../../workflow/types';
 import { getScaffoldStructure, serializeStructureAsMarkdown } from '../shared/scaffoldStructures';
+import { AutoFillService, AutoFillContext } from '../../services/autoFill';
+import { StackDetector, StackInfo } from '../../services/stack';
 
 interface AgentContext {
   topLevelDirectories: string[];
@@ -26,6 +28,8 @@ interface AgentGenerationConfig {
   filteredAgents?: AgentType[];
   /** Include section headings and guidance in scaffolds (CLI mode) */
   includeContentStubs?: boolean;
+  /** Fill scaffolds with semantic data (no LLM required) */
+  autoFill?: boolean;
 }
 
 /**
@@ -104,6 +108,17 @@ export class AgentGenerator {
       }
     }
 
+    // Detect stack info for autoFill
+    let stackInfo: StackInfo | undefined;
+    if (normalizedConfig.autoFill) {
+      try {
+        const stackDetector = new StackDetector();
+        stackInfo = await stackDetector.detect(repoStructure.rootPath);
+      } catch (error) {
+        GeneratorUtils.logError('Stack detection failed, continuing without it', error, verbose);
+      }
+    }
+
     const context = this.buildContext(repoStructure, semantics);
     const agentTypes = this.resolveAgentSelection(
       normalizedConfig.selectedAgents,
@@ -127,10 +142,21 @@ export class AgentGenerator {
       );
       let content = serializeFrontmatter(frontmatter) + '\n';
 
-      // Add content stubs when requested (CLI mode)
-      if (normalizedConfig.includeContentStubs) {
-        const structure = getScaffoldStructure(agentType);
-        if (structure) {
+      // Add content based on mode
+      const structure = getScaffoldStructure(agentType);
+      if (structure) {
+        if (normalizedConfig.autoFill && semantics) {
+          // AutoFill: generate content from semantic analysis (no LLM needed)
+          const autoFillService = new AutoFillService();
+          const autoFillContext: AutoFillContext = {
+            semantics,
+            stackInfo,
+            repoPath: repoStructure.rootPath,
+            topLevelDirectories: context.topLevelDirectories
+          };
+          content += autoFillService.fillAgent(agentType, structure, autoFillContext);
+        } else if (normalizedConfig.includeContentStubs) {
+          // Content stubs: section headings with guidance comments
           content += serializeStructureAsMarkdown(structure);
         }
       }
