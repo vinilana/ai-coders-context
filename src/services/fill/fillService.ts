@@ -53,6 +53,7 @@ interface ResolvedFillOptions {
   repoPath: string;
   outputDir: string;
   docsDir: string;
+  skillsDir: string;
   agentsDir: string;
   include?: string[];
   exclude?: string[];
@@ -110,13 +111,15 @@ export class FillService {
     const resolvedRepo = path.resolve(repoPath);
     const outputDir = path.resolve(rawOptions.output || './.context');
     const docsDir = path.join(outputDir, 'docs');
+    const skillsDir = path.join(outputDir, 'skills');
     const agentsDir = path.join(outputDir, 'agents');
 
-    // At least one of docs or agents must exist
+    // At least one fillable scaffold directory must exist
     const docsExists = await fs.pathExists(docsDir);
+    const skillsExists = await fs.pathExists(skillsDir);
     const agentsExists = await fs.pathExists(agentsDir);
 
-    if (!docsExists && !agentsExists) {
+    if (!docsExists && !skillsExists && !agentsExists) {
       throw new Error(this.t('errors.fill.missingScaffold'));
     }
 
@@ -144,6 +147,7 @@ export class FillService {
       repoPath: resolvedRepo,
       outputDir,
       docsDir,
+      skillsDir,
       agentsDir,
       include: rawOptions.include,
       exclude: rawOptions.exclude,
@@ -350,10 +354,13 @@ export class FillService {
     const docFiles = (await fs.pathExists(options.docsDir))
       ? await glob('**/*.md', { cwd: options.docsDir, absolute: true })
       : [];
+    const skillFiles = (await fs.pathExists(options.skillsDir))
+      ? await glob('**/*.md', { cwd: options.skillsDir, absolute: true })
+      : [];
     const agentFiles = (await fs.pathExists(options.agentsDir))
       ? await glob('**/*.md', { cwd: options.agentsDir, absolute: true })
       : [];
-    const candidates = [...docFiles, ...agentFiles];
+    const candidates = [...docFiles, ...skillFiles, ...agentFiles];
 
     const targets: TargetFile[] = [];
 
