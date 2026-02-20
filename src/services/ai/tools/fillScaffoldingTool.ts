@@ -1,6 +1,7 @@
 import { tool } from 'ai';
 import * as path from 'path';
 import * as fs from 'fs-extra';
+import { glob } from 'glob';
 import { z } from 'zod';
 import { SemanticContextBuilder } from '../../semantic/contextBuilder';
 import { DEFAULT_EXCLUDE_PATTERNS } from '../../semantic/types';
@@ -68,7 +69,7 @@ export async function cleanupSharedContext(): Promise<void> {
 const ListFilesToFillInputSchema = z.object({
   repoPath: z.string().describe('Repository path'),
   outputDir: z.string().optional().describe('Scaffold directory (default: ./.context)'),
-  target: z.enum(['docs', 'agents', 'plans', 'all']).default('all').optional()
+  target: z.enum(['docs', 'skills', 'agents', 'plans', 'all']).default('all').optional()
     .describe('Which scaffolding to list')
 });
 
@@ -77,7 +78,7 @@ export type ListFilesToFillInput = z.infer<typeof ListFilesToFillInputSchema>;
 interface FileToFillInfo {
   path: string;
   relativePath: string;
-  type: 'doc' | 'agent' | 'plan';
+  type: 'doc' | 'skill' | 'agent' | 'plan';
 }
 
 export const listFilesToFillTool = tool({
@@ -113,6 +114,23 @@ Use this first to get the list, then call fillSingleFile for each file.`,
               path: path.join(docsDir, file),
               relativePath: `docs/${file}`,
               type: 'doc'
+            });
+          }
+        }
+      }
+
+      // Collect skills
+      if (target === 'all' || target === 'skills') {
+        const skillsDir = path.join(outputDir, 'skills');
+        if (await fs.pathExists(skillsDir)) {
+          const skillFiles = await glob('**/*.md', { cwd: skillsDir, absolute: true });
+          for (const skillFile of skillFiles) {
+            if (path.basename(skillFile).toLowerCase() === 'readme.md') continue;
+            const skillRelativePath = path.relative(skillsDir, skillFile).replace(/\\/g, '/');
+            files.push({
+              path: skillFile,
+              relativePath: `skills/${skillRelativePath}`,
+              type: 'skill'
             });
           }
         }
@@ -256,7 +274,7 @@ Use this context to generate intelligent content, then write the content to the 
 const FillScaffoldingInputSchema = z.object({
   repoPath: z.string().describe('Repository path'),
   outputDir: z.string().optional().describe('Scaffold directory (default: ./.context)'),
-  target: z.enum(['docs', 'agents', 'plans', 'all']).default('all').optional()
+  target: z.enum(['docs', 'skills', 'agents', 'plans', 'all']).default('all').optional()
     .describe('Which scaffolding to fill'),
   offset: z.number().optional().describe('Skip first N files (for pagination)'),
   limit: z.number().optional().describe('Max files to return (default: 3, use 0 for all)')
@@ -312,7 +330,7 @@ Supports pagination with offset/limit. Generate content for each file using its 
       const semanticContext = await getOrBuildContext(resolvedRepoPath);
 
       // Collect all file paths first
-      const allFiles: { path: string; relativePath: string; type: 'doc' | 'agent' | 'plan' }[] = [];
+      const allFiles: { path: string; relativePath: string; type: 'doc' | 'skill' | 'agent' | 'plan' }[] = [];
 
       // Collect docs
       if (target === 'all' || target === 'docs') {
@@ -325,6 +343,22 @@ Supports pagination with offset/limit. Generate content for each file using its 
               path: path.join(docsDir, file),
               relativePath: path.relative(outputDir, path.join(docsDir, file)),
               type: 'doc'
+            });
+          }
+        }
+      }
+
+      // Collect skills
+      if (target === 'all' || target === 'skills') {
+        const skillsDir = path.join(outputDir, 'skills');
+        if (await fs.pathExists(skillsDir)) {
+          const skillFiles = await glob('**/*.md', { cwd: skillsDir, absolute: true });
+          for (const skillFile of skillFiles) {
+            if (path.basename(skillFile).toLowerCase() === 'readme.md') continue;
+            allFiles.push({
+              path: skillFile,
+              relativePath: path.relative(outputDir, skillFile),
+              type: 'skill'
             });
           }
         }

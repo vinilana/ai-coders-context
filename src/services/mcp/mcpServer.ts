@@ -180,7 +180,7 @@ export class AIContextMCPServer {
           .describe('(init, scaffoldPlan) Auto-fill with codebase content'),
         skipContentGeneration: z.boolean().optional()
           .describe('(init) Skip pre-generating content'),
-        target: z.enum(['docs', 'agents', 'plans', 'all']).optional()
+        target: z.enum(['docs', 'skills', 'agents', 'plans', 'all']).optional()
           .describe('(fill, listToFill) Which scaffolding to target'),
         offset: z.number().optional()
           .describe('(fill) Skip first N files'),
