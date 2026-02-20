@@ -158,6 +158,18 @@ describe('FillService', () => {
       expect(mockUI.displaySuccess).toHaveBeenCalled();
     });
 
+    it('should work when only skills directory exists', async () => {
+      await fs.ensureDir(path.join(outputDir, 'skills'));
+      await fs.writeFile(
+        path.join(outputDir, 'skills', 'commit-message.md'),
+        '# Commit Message'
+      );
+
+      await service.run(tempDir, { output: outputDir });
+
+      expect(mockUI.displaySuccess).toHaveBeenCalled();
+    });
+
     it('should display warning when no target files exist', async () => {
       // Create empty dirs
       await fs.ensureDir(path.join(outputDir, 'docs'));
@@ -210,6 +222,45 @@ describe('FillService', () => {
         'utf-8'
       );
       expect(content).toContain('# Updated Playbook');
+    });
+
+    it('should process skills before agents', async () => {
+      await fs.ensureDir(path.join(outputDir, 'docs'));
+      await fs.ensureDir(path.join(outputDir, 'skills'));
+      await fs.ensureDir(path.join(outputDir, 'agents'));
+
+      await fs.writeFile(
+        path.join(outputDir, 'docs', 'architecture.md'),
+        '# Architecture\n\nTODO: fill in'
+      );
+      await fs.writeFile(
+        path.join(outputDir, 'skills', 'commit-message.md'),
+        '# Commit Message\n\nTODO: fill in'
+      );
+      await fs.writeFile(
+        path.join(outputDir, 'agents', 'code-reviewer.md'),
+        '# Code Reviewer\n\nTODO: fill in'
+      );
+
+      await service.run(tempDir, { output: outputDir });
+
+      const { DocumentationAgent } = require('../ai/agents/documentationAgent');
+      const { PlaybookAgent } = require('../ai/agents/playbookAgent');
+      const documentationTargets = DocumentationAgent.mock.results.flatMap((result: any) =>
+        result.value.generateDocumentation.mock.calls.map((call: any[]) => call[0].targetFile)
+      );
+      expect(documentationTargets).toEqual([
+        path.join('docs', 'architecture.md'),
+        path.join('skills', 'commit-message.md')
+      ]);
+
+      const documentationCallOrders = DocumentationAgent.mock.results
+        .flatMap((result: any) => result.value.generateDocumentation.mock.invocationCallOrder);
+      const playbookCallOrders = PlaybookAgent.mock.results
+        .flatMap((result: any) => result.value.generatePlaybook.mock.invocationCallOrder);
+      const lastDocumentationCallOrder = Math.max(...documentationCallOrders);
+      const firstPlaybookCallOrder = Math.min(...playbookCallOrders);
+      expect(lastDocumentationCallOrder).toBeLessThan(firstPlaybookCallOrder);
     });
 
     it('should respect limit option', async () => {
