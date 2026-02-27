@@ -7,8 +7,10 @@ import {
   removeFrontMatter,
   parseFrontMatter,
   parseScaffoldFrontMatter,
+  addFrontMatter,
   getDocumentName,
   isScaffoldContent,
+  needsFill,
 } from '../../utils/frontMatter';
 
 import type { CLIInterface } from '../../utils/cliUI';
@@ -47,6 +49,8 @@ export interface FillCommandFlags {
   languages?: string | string[];
   /** Enable LSP for deeper semantic analysis (off by default for fill) */
   useLsp?: boolean;
+  /** Force re-fill of already filled files */
+  force?: boolean;
 }
 
 interface ResolvedFillOptions {
@@ -67,6 +71,7 @@ interface ResolvedFillOptions {
   useSemanticContext: boolean;
   languages: string[];
   useLSP: boolean;
+  force: boolean;
 }
 
 interface TargetFile {
@@ -157,7 +162,8 @@ export class FillService {
       useAgents: rawOptions.useAgents ?? true, // Enable agents by default
       useSemanticContext: rawOptions.semantic !== false, // Semantic mode enabled by default
       languages: parsedLanguages,
-      useLSP: Boolean(rawOptions.useLsp) // LSP off by default for fill
+      useLSP: Boolean(rawOptions.useLsp), // LSP off by default for fill
+      force: Boolean(rawOptions.force),
     };
 
     this.displayPromptSource(scaffoldPrompt.path, scaffoldPrompt.source);
@@ -239,9 +245,14 @@ export class FillService {
         return { file: target.relativePath, status: 'skipped', message: this.t('messages.fill.emptyResponse') };
       }
 
-      // Remove front matter from filled content (status: unfilled marker)
-      const cleanContent = removeFrontMatter(updatedContent);
-      await fs.writeFile(target.fullPath, this.ensureTrailingNewline(cleanContent));
+      // Preserve frontmatter with updated status instead of destroying it
+      const cleanBody = removeFrontMatter(updatedContent);
+      const { frontMatter: existingFm } = parseFrontMatter(target.content);
+      const updatedFm = existingFm
+        ? { ...existingFm, status: 'filled' as const }
+        : { status: 'filled' as const, generated: new Date().toISOString().split('T')[0] };
+      const finalContent = addFrontMatter(cleanBody, updatedFm);
+      await fs.writeFile(target.fullPath, this.ensureTrailingNewline(finalContent));
       this.ui.updateSpinner(this.t('spinner.fill.updated', { path: target.relativePath }), 'success');
       return { file: target.relativePath, status: 'updated' };
     } catch (error) {
@@ -305,9 +316,14 @@ export class FillService {
         return { file: target.relativePath, status: 'skipped', message: this.t('messages.fill.emptyResponse') };
       }
 
-      // Remove front matter from filled content (status: unfilled marker)
-      const cleanContent = removeFrontMatter(updatedContent);
-      await fs.writeFile(target.fullPath, this.ensureTrailingNewline(cleanContent));
+      // Preserve frontmatter with updated status instead of destroying it
+      const cleanBody = removeFrontMatter(updatedContent);
+      const { frontMatter: existingFm } = parseFrontMatter(target.content);
+      const updatedFm = existingFm
+        ? { ...existingFm, status: 'filled' as const }
+        : { status: 'filled' as const, generated: new Date().toISOString().split('T')[0] };
+      const finalContent = addFrontMatter(cleanBody, updatedFm);
+      await fs.writeFile(target.fullPath, this.ensureTrailingNewline(finalContent));
       console.log(''); // Spacing after agent output
       this.ui.displaySuccess(this.t('spinner.fill.updated', { path: target.relativePath }));
       return { file: target.relativePath, status: 'updated' };
@@ -358,6 +374,11 @@ export class FillService {
     const targets: TargetFile[] = [];
 
     for (const fullPath of candidates) {
+      // Skip already-filled files unless force is set
+      if (!options.force && !(await needsFill(fullPath))) {
+        continue;
+      }
+
       const content = await fs.readFile(fullPath, 'utf-8');
       const isAgent = fullPath.includes(`${path.sep}agents${path.sep}`);
       const relativePath = path.relative(options.outputDir, fullPath);

@@ -72,7 +72,7 @@ const localeLabelKeys: Record<Locale, TranslationKey> = {
 
 const program = new Command();
 const ui = new CLIInterface(t);
-const DEFAULT_MODEL = 'gemini-3-flash-preview';	
+const DEFAULT_MODEL = 'gemini-3-flash-preview';
 
 const initService = new InitService({
   ui,
@@ -134,7 +134,7 @@ function scheduleVersionCheck(force: boolean = false): Promise<void> {
       ui,
       t,
       force
-    }).catch(() => {});
+    }).catch(() => { });
   }
 
   return versionCheckPromise;
@@ -654,357 +654,10 @@ program
     }
   });
 
-// Skill Commands
-const skillCommand = program
-  .command('skill')
-  .description(t('commands.skill.description'));
-
-skillCommand
-  .command('init')
-  .description(t('commands.skill.init.description'))
-  .argument('[repo-path]', 'Repository path', process.cwd())
-  .option('-f, --force', 'Overwrite existing files')
-  .option('--skills <skills...>', 'Specific skills to scaffold')
-  .action(async (repoPath: string, options: any) => {
-    try {
-      const { createSkillGenerator } = await import('./generators/skills');
-      const generator = createSkillGenerator({ repoPath });
-      const result = await generator.generate({
-        skills: options.skills,
-        force: options.force,
-      });
-
-      ui.displaySuccess(`Skills initialized in ${result.skillsDir}`);
-      ui.displayInfo('Generated', result.generatedSkills.join(', ') || 'none');
-      if (result.skippedSkills.length > 0) {
-        ui.displayInfo('Skipped (already exist)', result.skippedSkills.join(', '));
-      }
-    } catch (error) {
-      ui.displayError('Failed to initialize skills', error as Error);
-      process.exit(1);
-    }
-  });
-
-skillCommand
-  .command('fill')
-  .description(t('commands.skill.fill.description'))
-  .argument('[repo-path]', 'Repository path', process.cwd())
-  .option('-o, --output <dir>', 'Output directory', '.context')
-  .option('-f, --force', 'Overwrite existing content')
-  .option('--skills <skills...>', 'Specific skills to fill')
-  .option('--model <model>', 'LLM model to use')
-  .option('--provider <provider>', 'LLM provider (anthropic, openai, google, openrouter)')
-  .option('--api-key <key>', 'API key for LLM provider')
-  .option('--base-url <url>', 'Base URL for custom LLM endpoint')
-  .option('--no-semantic', 'Disable semantic context mode')
-  .option('--use-lsp', 'Enable LSP for deeper analysis')
-  .option('-v, --verbose', 'Show detailed progress')
-  .option('--limit <number>', 'Limit number of skills to fill', parseInt)
-  .action(async (repoPath: string, options: any) => {
-    try {
-      const { SkillFillService } = await import('./services/fill/skillFillService');
-
-      const skillFillService = new SkillFillService({
-        ui,
-        t,
-        version: VERSION,
-        defaultModel: DEFAULT_MODEL,
-      });
-
-      const result = await skillFillService.run(repoPath, {
-        output: options.output,
-        skills: options.skills,
-        force: options.force,
-        model: options.model,
-        provider: options.provider,
-        apiKey: options.apiKey,
-        baseUrl: options.baseUrl,
-        semantic: options.semantic,
-        useLsp: options.useLsp,
-        verbose: options.verbose,
-        limit: options.limit,
-      });
-
-      if (result.filled.length > 0) {
-        ui.displaySuccess(t('success.skill.filled', { count: result.filled.length }));
-      }
-    } catch (error) {
-      ui.displayError(t('errors.skill.fillFailed'), error as Error);
-      process.exit(1);
-    }
-  });
-
-skillCommand
-  .command('list')
-  .description(t('commands.skill.list.description'))
-  .argument('[repo-path]', 'Repository path', process.cwd())
-  .option('--json', 'Output as JSON')
-  .action(async (repoPath: string, options: any) => {
-    try {
-      const { createSkillRegistry, BUILT_IN_SKILLS } = await import('./workflow/skills');
-      const registry = createSkillRegistry(repoPath);
-      const discovered = await registry.discoverAll();
-
-      if (options.json) {
-        console.log(JSON.stringify({
-          builtIn: discovered.builtIn.map(s => s.slug),
-          custom: discovered.custom.map(s => s.slug),
-          total: discovered.all.length,
-        }, null, 2));
-        return;
-      }
-
-      console.log('\nBuilt-in Skills:');
-      for (const skill of discovered.builtIn) {
-        const scaffolded = discovered.all.find(s => s.slug === skill.slug && s.path.includes('.context'));
-        const status = scaffolded ? '[scaffolded]' : '[available]';
-        console.log(`  ${skill.slug} ${status}`);
-        console.log(`    ${skill.metadata.description}`);
-      }
-
-      if (discovered.custom.length > 0) {
-        console.log('\nCustom Skills:');
-        for (const skill of discovered.custom) {
-          console.log(`  ${skill.slug}`);
-          console.log(`    ${skill.metadata.description}`);
-        }
-      }
-
-      console.log(`\nTotal: ${discovered.all.length} skills (${discovered.builtIn.length} built-in, ${discovered.custom.length} custom)`);
-    } catch (error) {
-      ui.displayError('Failed to list skills', error as Error);
-      process.exit(1);
-    }
-  });
-
-skillCommand
-  .command('export')
-  .description(t('commands.skill.export.description'))
-  .argument('[repo-path]', 'Repository path', process.cwd())
-  .option('-p, --preset <preset>', 'Export preset: claude, gemini, codex, all', 'all')
-  .option('-f, --force', 'Overwrite existing files')
-  .option('--include-builtin', 'Include built-in skills even if not scaffolded')
-  .option('--dry-run', 'Preview changes without writing')
-  .action(async (repoPath: string, options: any) => {
-    try {
-      const { SkillExportService } = await import('./services/export/skillExportService');
-      const exportService = new SkillExportService({
-        ui,
-        t,
-        version: VERSION,
-      });
-
-      const result = await exportService.run(repoPath, {
-        preset: options.preset,
-        force: options.force,
-        includeBuiltIn: options.includeBuiltin,
-        dryRun: options.dryRun,
-      });
-
-      if (options.dryRun) {
-        ui.displayInfo('Dry run', 'No files were written');
-      } else {
-        ui.displaySuccess(`Exported ${result.skillsExported.length} skills to ${result.targets.length} targets`);
-      }
-    } catch (error) {
-      ui.displayError('Failed to export skills', error as Error);
-      process.exit(1);
-    }
-  });
-
-skillCommand
-  .command('create <name>')
-  .description(t('commands.skill.create.description'))
-  .argument('[repo-path]', 'Repository path', process.cwd())
-  .option('-d, --description <text>', 'Skill description')
-  .option('--phases <phases...>', 'PREVC phases (P, R, E, V, C)')
-  .option('-f, --force', 'Overwrite if exists')
-  .action(async (name: string, repoPath: string, options: any) => {
-    try {
-      const { createSkillGenerator } = await import('./generators/skills');
-      const generator = createSkillGenerator({ repoPath });
-      const skillPath = await generator.generateCustomSkill({
-        name,
-        description: options.description || `TODO: Describe when to use ${name}`,
-        phases: options.phases,
-        force: options.force,
-      });
-
-      ui.displaySuccess(`Created skill: ${name}`);
-      ui.displayInfo('Path', skillPath);
-    } catch (error) {
-      ui.displayError('Failed to create skill', error as Error);
-      process.exit(1);
-    }
-  });
-
-// PREVC Workflow Commands
-const workflowCommand = program
-  .command('workflow')
-  .description('PREVC workflow management (Planning, Review, Execution, Validation, Confirmation)');
-
-// Helper to create workflow service dependencies
-const getWorkflowDeps = (): WorkflowServiceDependencies => ({
-  ui: {
-    displaySuccess: (msg: string) => ui.displaySuccess(msg),
-    displayError: (msg: string, err?: Error) => ui.displayError(msg, err),
-    displayInfo: (title: string, detail?: string) => ui.displayInfo(title, detail || '')
-  }
-});
-
-workflowCommand
-  .command('init <name>')
-  .description('Initialize a new PREVC workflow')
-  .option('-d, --description <text>', 'Project description for scale detection')
-  .option('-s, --scale <scale>', 'Project scale: QUICK, SMALL, MEDIUM, LARGE')
-  .option('-r, --repo-path <path>', 'Repository path', process.cwd())
-  .action(async (name: string, options: any) => {
-    try {
-      const workflowService = new WorkflowService(options.repoPath, getWorkflowDeps());
-      const status = await workflowService.init({
-        name,
-        description: options.description,
-        scale: options.scale
-      });
-
-      ui.displaySuccess(`Workflow PREVC initialized: ${name}`);
-      ui.displayInfo('Scale', getScaleName(status.project.scale as any));
-      ui.displayInfo('Current Phase', `${status.project.current_phase} - ${PHASE_NAMES_PT[status.project.current_phase]}`);
-    } catch (error) {
-      ui.displayError('Failed to initialize workflow', error as Error);
-      process.exit(1);
-    }
-  });
-
-workflowCommand
-  .command('status')
-  .description('Show current workflow status')
-  .option('-r, --repo-path <path>', 'Repository path', process.cwd())
-  .action(async (options: any) => {
-    try {
-      const workflowService = new WorkflowService(options.repoPath, getWorkflowDeps());
-
-      if (!await workflowService.hasWorkflow()) {
-        ui.displayError('No workflow found. Run "workflow init <name>" first.');
-        process.exit(1);
-      }
-
-      const formattedStatus = await workflowService.getFormattedStatus();
-      console.log(formattedStatus);
-
-      const actions = await workflowService.getRecommendedActions();
-      if (actions.length > 0) {
-        console.log('\nRecommended actions:');
-        actions.forEach((action, i) => console.log(`  ${i + 1}. ${action}`));
-      }
-    } catch (error) {
-      ui.displayError('Failed to get workflow status', error as Error);
-      process.exit(1);
-    }
-  });
-
-workflowCommand
-  .command('advance')
-  .description('Complete current phase and advance to next')
-  .option('-r, --repo-path <path>', 'Repository path', process.cwd())
-  .option('-o, --outputs <files...>', 'Output files generated in current phase')
-  .action(async (options: any) => {
-    try {
-      const workflowService = new WorkflowService(options.repoPath, getWorkflowDeps());
-
-      if (!await workflowService.hasWorkflow()) {
-        ui.displayError('No workflow found. Run "workflow init <name>" first.');
-        process.exit(1);
-      }
-
-      const nextPhase = await workflowService.advance(options.outputs);
-
-      if (nextPhase) {
-        ui.displaySuccess(`Advanced to phase: ${nextPhase} - ${PHASE_NAMES_PT[nextPhase]}`);
-      } else {
-        ui.displaySuccess('Workflow completed!');
-      }
-    } catch (error) {
-      ui.displayError('Failed to advance workflow', error as Error);
-      process.exit(1);
-    }
-  });
-
-workflowCommand
-  .command('handoff <from> <to>')
-  .description('Perform handoff between roles')
-  .option('-r, --repo-path <path>', 'Repository path', process.cwd())
-  .option('-a, --artifacts <files...>', 'Artifacts to hand off')
-  .action(async (from: string, to: string, options: any) => {
-    try {
-      const workflowService = new WorkflowService(options.repoPath, getWorkflowDeps());
-
-      if (!await workflowService.hasWorkflow()) {
-        ui.displayError('No workflow found. Run "workflow init <name>" first.');
-        process.exit(1);
-      }
-
-      await workflowService.handoff(from as PrevcRole, to as PrevcRole, options.artifacts || []);
-      ui.displaySuccess(`Handoff: ${ROLE_DISPLAY_NAMES[from as PrevcRole]} → ${ROLE_DISPLAY_NAMES[to as PrevcRole]}`);
-    } catch (error) {
-      ui.displayError('Failed to perform handoff', error as Error);
-      process.exit(1);
-    }
-  });
-
-workflowCommand
-  .command('collaborate <topic>')
-  .description('Start a collaboration session between roles')
-  .option('-r, --repo-path <path>', 'Repository path', process.cwd())
-  .option('-p, --participants <roles...>', 'Participating roles')
-  .action(async (topic: string, options: any) => {
-    try {
-      const workflowService = new WorkflowService(options.repoPath, getWorkflowDeps());
-
-      const session = await workflowService.startCollaboration(
-        topic,
-        options.participants as PrevcRole[]
-      );
-
-      ui.displaySuccess(`Collaboration started: ${topic}`);
-      ui.displayInfo('Session ID', session.getId());
-      ui.displayInfo('Participants', session.getParticipantNames().join(', '));
-      console.log('\nUse MCP tools to contribute and synthesize the collaboration.');
-    } catch (error) {
-      ui.displayError('Failed to start collaboration', error as Error);
-      process.exit(1);
-    }
-  });
-
-workflowCommand
-  .command('role <action> <role>')
-  .description('Manage role status (start/complete)')
-  .option('-r, --repo-path <path>', 'Repository path', process.cwd())
-  .option('-o, --outputs <files...>', 'Output files (for complete action)')
-  .action(async (action: string, role: string, options: any) => {
-    try {
-      const workflowService = new WorkflowService(options.repoPath, getWorkflowDeps());
-
-      if (!await workflowService.hasWorkflow()) {
-        ui.displayError('No workflow found. Run "workflow init <name>" first.');
-        process.exit(1);
-      }
-
-      if (action === 'start') {
-        await workflowService.startRole(role as PrevcRole);
-        ui.displaySuccess(`Started role: ${ROLE_DISPLAY_NAMES[role as PrevcRole]}`);
-      } else if (action === 'complete') {
-        await workflowService.completeRole(role as PrevcRole, options.outputs || []);
-        ui.displaySuccess(`Completed role: ${ROLE_DISPLAY_NAMES[role as PrevcRole]}`);
-      } else {
-        ui.displayError(`Unknown action: ${action}. Use 'start' or 'complete'.`);
-        process.exit(1);
-      }
-    } catch (error) {
-      ui.displayError('Failed to manage role', error as Error);
-      process.exit(1);
-    }
-  });
+// Skill and Workflow Commands - extracted to modular files
+import { registerSkillCommands, registerWorkflowCommands } from './cli/commands';
+registerSkillCommands({ program, ui, t, version: VERSION, defaultModel: DEFAULT_MODEL });
+registerWorkflowCommands({ program, ui, t, version: VERSION, defaultModel: DEFAULT_MODEL });
 
 export async function runInit(repoPath: string, type: string, rawOptions: any): Promise<void> {
   await initService.run(repoPath, type, rawOptions);
@@ -1984,7 +1637,14 @@ async function createNewWorkflow(workflowService: WorkflowService): Promise<bool
 
 async function runInteractiveWorkflow(): Promise<void> {
   const projectPath = process.cwd();
-  const workflowService = new WorkflowService(projectPath, getWorkflowDeps());
+  const workflowDeps: WorkflowServiceDependencies = {
+    ui: {
+      displaySuccess: (msg: string) => ui.displaySuccess(msg),
+      displayError: (msg: string, err?: Error) => ui.displayError(msg, err),
+      displayInfo: (title: string, detail?: string) => ui.displayInfo(title, detail || '')
+    }
+  };
+  const workflowService = new WorkflowService(projectPath, workflowDeps);
   const hasWorkflow = await workflowService.hasWorkflow();
 
   if (!hasWorkflow) {

@@ -54,10 +54,13 @@ const FRONT_MATTER_DELIMITER = '---';
 /**
  * Check if a file needs to be filled by reading only the first few lines.
  * Much faster than reading entire file content.
+ *
+ * Reads 15 lines to accommodate v2 scaffold frontmatter where `status:`
+ * appears after type, name, description, generated, category, scaffoldVersion, etc.
  */
 export async function needsFill(filePath: string): Promise<boolean> {
   try {
-    const firstLines = await readFirstLines(filePath, 3);
+    const firstLines = await readFirstLines(filePath, 15);
     return firstLines.some(line => line.includes('status: unfilled'));
   } catch {
     return false;
