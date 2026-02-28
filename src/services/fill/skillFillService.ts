@@ -12,6 +12,7 @@ import type { AgentEventCallbacks } from '../ai/agentEvents';
 import type { LLMConfig } from '../../types';
 import { resolveLlmConfig } from '../shared/llmConfig';
 import { createSkillRegistry } from '../../workflow/skills';
+import { parseFrontMatter, removeFrontMatter, addFrontMatter } from '../../utils/frontMatter';
 
 export interface SkillFillCommandFlags {
   output?: string;
@@ -267,6 +268,9 @@ export class SkillFillService {
     console.log(''); // Add spacing before agent output
 
     try {
+      // Preserve original frontmatter before calling the LLM
+      const { frontMatter: originalFrontMatter } = parseFrontMatter(existingContent);
+
       const skillAgent = new SkillAgent(llmConfig);
 
       const result = await skillAgent.generateSkill({
@@ -289,8 +293,16 @@ export class SkillFillService {
       // Ensure directory exists
       await fs.ensureDir(path.dirname(skillPath));
 
+      // Strip any frontmatter from LLM output, then rebuild with original
+      // metadata and status updated to 'filled'
+      const cleanBody = removeFrontMatter(result.text);
+      const updatedFrontMatter = originalFrontMatter
+        ? { ...originalFrontMatter, status: 'filled' as const }
+        : { status: 'filled' as const };
+      const finalContent = addFrontMatter(cleanBody, updatedFrontMatter);
+
       // Write the result
-      await fs.writeFile(skillPath, this.ensureTrailingNewline(result.text));
+      await fs.writeFile(skillPath, this.ensureTrailingNewline(finalContent));
 
       console.log('');
       this.ui.displaySuccess(this.t('spinner.skill.filled', { skill: skillSlug }));
