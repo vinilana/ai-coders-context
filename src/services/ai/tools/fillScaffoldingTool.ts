@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs-extra';
 import { z } from 'zod';
 import { SemanticContextBuilder } from '../../semantic/contextBuilder';
+import { needsFill } from '../../../utils/frontMatter';
 
 // Shared context builder instance for efficiency
 let sharedContextBuilder: SemanticContextBuilder | null = null;
@@ -86,11 +87,9 @@ Use this first to get the list, then call fillSingleFile for each file.`,
           const docFiles = await fs.readdir(docsDir);
           for (const file of docFiles) {
             if (!file.endsWith('.md')) continue;
-            files.push({
-              path: path.join(docsDir, file),
-              relativePath: `docs/${file}`,
-              type: 'doc'
-            });
+            const filePath = path.join(docsDir, file);
+            if (!await needsFill(filePath)) continue;
+            files.push({ path: filePath, relativePath: `docs/${file}`, type: 'doc' });
           }
         }
       }
@@ -102,11 +101,9 @@ Use this first to get the list, then call fillSingleFile for each file.`,
           const agentFiles = await fs.readdir(agentsDir);
           for (const file of agentFiles) {
             if (!file.endsWith('.md') || file.toLowerCase() === 'readme.md') continue;
-            files.push({
-              path: path.join(agentsDir, file),
-              relativePath: `agents/${file}`,
-              type: 'agent'
-            });
+            const filePath = path.join(agentsDir, file);
+            if (!await needsFill(filePath)) continue;
+            files.push({ path: filePath, relativePath: `agents/${file}`, type: 'agent' });
           }
         }
       }
@@ -118,11 +115,9 @@ Use this first to get the list, then call fillSingleFile for each file.`,
           const planFiles = await fs.readdir(plansDir);
           for (const file of planFiles) {
             if (!file.endsWith('.md') || file.toLowerCase() === 'readme.md') continue;
-            files.push({
-              path: path.join(plansDir, file),
-              relativePath: `plans/${file}`,
-              type: 'plan'
-            });
+            const filePath = path.join(plansDir, file);
+            if (!await needsFill(filePath)) continue;
+            files.push({ path: filePath, relativePath: `plans/${file}`, type: 'plan' });
           }
         }
       }
@@ -285,11 +280,9 @@ After calling this tool, write the suggestedContent to each file path.`,
           const docFiles = await fs.readdir(docsDir);
           for (const file of docFiles) {
             if (!file.endsWith('.md')) continue;
-            allFiles.push({
-              path: path.join(docsDir, file),
-              relativePath: path.relative(outputDir, path.join(docsDir, file)),
-              type: 'doc'
-            });
+            const filePath = path.join(docsDir, file);
+            if (!await needsFill(filePath)) continue;
+            allFiles.push({ path: filePath, relativePath: path.relative(outputDir, filePath), type: 'doc' });
           }
         }
       }
@@ -301,11 +294,9 @@ After calling this tool, write the suggestedContent to each file path.`,
           const agentFiles = await fs.readdir(agentsDir);
           for (const file of agentFiles) {
             if (!file.endsWith('.md') || file.toLowerCase() === 'readme.md') continue;
-            allFiles.push({
-              path: path.join(agentsDir, file),
-              relativePath: path.relative(outputDir, path.join(agentsDir, file)),
-              type: 'agent'
-            });
+            const filePath = path.join(agentsDir, file);
+            if (!await needsFill(filePath)) continue;
+            allFiles.push({ path: filePath, relativePath: path.relative(outputDir, filePath), type: 'agent' });
           }
         }
       }
@@ -317,11 +308,9 @@ After calling this tool, write the suggestedContent to each file path.`,
           const planFiles = await fs.readdir(plansDir);
           for (const file of planFiles) {
             if (!file.endsWith('.md') || file.toLowerCase() === 'readme.md') continue;
-            allFiles.push({
-              path: path.join(plansDir, file),
-              relativePath: path.relative(outputDir, path.join(plansDir, file)),
-              type: 'plan'
-            });
+            const filePath = path.join(plansDir, file);
+            if (!await needsFill(filePath)) continue;
+            allFiles.push({ path: filePath, relativePath: path.relative(outputDir, filePath), type: 'plan' });
           }
         }
       }

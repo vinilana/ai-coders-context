@@ -3,7 +3,7 @@ import * as fs from 'fs-extra';
 import { glob } from 'glob';
 
 import { colors, symbols, typography } from '../../utils/theme';
-import { removeFrontMatter } from '../../utils/frontMatter';
+import { removeFrontMatter, parseFrontMatter, addFrontMatter, needsFill } from '../../utils/frontMatter';
 
 import type { CLIInterface } from '../../utils/cliUI';
 import type { TranslateFn } from '../../utils/i18n';
@@ -224,9 +224,14 @@ export class FillService {
         return { file: target.relativePath, status: 'skipped', message: this.t('messages.fill.emptyResponse') };
       }
 
-      // Remove front matter from filled content (status: unfilled marker)
-      const cleanContent = removeFrontMatter(updatedContent);
-      await fs.writeFile(target.fullPath, this.ensureTrailingNewline(cleanContent));
+      // Preserve original frontmatter with status updated to 'filled'
+      const { frontMatter: originalFrontMatter } = parseFrontMatter(target.content);
+      const cleanBody = removeFrontMatter(updatedContent);
+      const updatedFrontMatter = originalFrontMatter
+        ? { ...originalFrontMatter, status: 'filled' as const }
+        : { status: 'filled' as const };
+      const finalContent = addFrontMatter(cleanBody, updatedFrontMatter);
+      await fs.writeFile(target.fullPath, this.ensureTrailingNewline(finalContent));
       this.ui.updateSpinner(this.t('spinner.fill.updated', { path: target.relativePath }), 'success');
       return { file: target.relativePath, status: 'updated' };
     } catch (error) {
@@ -283,9 +288,14 @@ export class FillService {
         return { file: target.relativePath, status: 'skipped', message: this.t('messages.fill.emptyResponse') };
       }
 
-      // Remove front matter from filled content (status: unfilled marker)
-      const cleanContent = removeFrontMatter(updatedContent);
-      await fs.writeFile(target.fullPath, this.ensureTrailingNewline(cleanContent));
+      // Preserve original frontmatter with status updated to 'filled'
+      const { frontMatter: originalFrontMatter } = parseFrontMatter(target.content);
+      const cleanBody = removeFrontMatter(updatedContent);
+      const updatedFrontMatter = originalFrontMatter
+        ? { ...originalFrontMatter, status: 'filled' as const }
+        : { status: 'filled' as const };
+      const finalContent = addFrontMatter(cleanBody, updatedFrontMatter);
+      await fs.writeFile(target.fullPath, this.ensureTrailingNewline(finalContent));
       console.log(''); // Spacing after agent output
       this.ui.displaySuccess(this.t('spinner.fill.updated', { path: target.relativePath }));
       return { file: target.relativePath, status: 'updated' };
@@ -336,6 +346,9 @@ export class FillService {
     const targets: TargetFile[] = [];
 
     for (const fullPath of candidates) {
+      const unfilled = await needsFill(fullPath);
+      if (!unfilled) continue;
+
       const content = await fs.readFile(fullPath, 'utf-8');
       const isAgent = fullPath.includes(`${path.sep}agents${path.sep}`);
       const relativePath = path.relative(options.outputDir, fullPath);

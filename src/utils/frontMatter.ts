@@ -22,7 +22,7 @@ const FRONT_MATTER_DELIMITER = '---';
  */
 export async function needsFill(filePath: string): Promise<boolean> {
   try {
-    const firstLines = await readFirstLines(filePath, 3);
+    const firstLines = await readFirstLines(filePath, 15);
     return firstLines.some(line => line.includes('status: unfilled'));
   } catch {
     return false;
