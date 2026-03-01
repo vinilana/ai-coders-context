@@ -28,6 +28,7 @@ import { ReportService } from './services/report';
 import { StackDetector } from './services/stack';
 import { QuickSyncService, QuickSyncOptions } from './services/quickSync';
 import { ReverseQuickSyncService, type MergeStrategy } from './services/reverseSync';
+import { ClaudeBootstrapService } from './services/claude';
 import { AutoAdvanceDetector } from './services/workflow/autoAdvance';
 import { getScaleName, PHASE_NAMES_PT, PHASE_NAMES_EN, ROLE_DISPLAY_NAMES, ROLE_DISPLAY_NAMES_EN, type PrevcRole, ProjectScale } from './workflow';
 import { DEFAULT_MODELS, getApiKeyFromEnv } from './services/ai/providerFactory';
@@ -538,6 +539,33 @@ program
       }
     } catch (error) {
       ui.displayError(t('errors.mcp.installFailed', { tool: tool || 'unknown' }), error as Error);
+      process.exit(1);
+    }
+  });
+
+// Claude Code Bootstrap Command (opt-in)
+program
+  .command('claude:bootstrap')
+  .description('Bootstrap Claude Code integration (opt-in): .mcp.json, .claude/settings.json, .claude/agents')
+  .argument('[repo-path]', 'Repository path', process.cwd())
+  .option('--force', 'Force-update managed ai-context MCP server config')
+  .option('--dry-run', 'Preview changes without writing')
+  .option('-v, --verbose', 'Verbose output')
+  .action(async (repoPath: string, options: any) => {
+    try {
+      const claudeBootstrapService = new ClaudeBootstrapService({
+        ui,
+        t,
+        version: VERSION,
+      });
+
+      await claudeBootstrapService.run(repoPath, {
+        force: options.force,
+        dryRun: options.dryRun,
+        verbose: options.verbose,
+      });
+    } catch (error) {
+      ui.displayError('Failed to bootstrap Claude Code integration', error as Error);
       process.exit(1);
     }
   });

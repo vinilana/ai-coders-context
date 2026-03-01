@@ -207,6 +207,28 @@ This interactive command:
 - Includes dry-run mode to preview changes
 - Works with Claude Code, Cursor, Windsurf, Cline, Continue.dev, and more
 
+### Claude Code Project Bootstrap (opt-in)
+
+Enable Claude Code integration per repository:
+
+```bash
+npx @ai-coders/context claude:bootstrap
+```
+
+Local development shortcut:
+
+```bash
+npm run claude:bootstrap
+```
+
+What it adds (safe merge, idempotent):
+- `.mcp.json` with `mcpServers.ai-context` (preserves existing servers/keys)
+- `.claude/settings.json` with conservative permissions + `PreToolUse` and `Stop` hooks
+- `.claude/agents/*.md` exported from `.context/agents/*.md` (updates only managed files)
+
+How to revert:
+- Remove `.claude/` and `.mcp.json`
+
 ### Manual Configuration
 
 Alternatively, manually configure for your preferred tool.
