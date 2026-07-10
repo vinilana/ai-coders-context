@@ -80,7 +80,9 @@ Falhas repetidas de append trace são registradas em `.context/runtime/hooks/tra
 O instalador grava entradas `hooks` em `.claude/settings.json` por padrão. Cada entrada chama:
 
 ```bash
-npx -y @dotcontext/cli@latest hook dispatch --source claude-code
+dotcontext hook dispatch --source claude-code
+# ou, quando não há binário global disponível:
+npx -y @dotcontext/cli@<versão instalada> hook dispatch --source claude-code
 ```
 
 Eventos configurados:
@@ -98,7 +100,9 @@ Depois de instalar, reinicie o Claude Code. Em um projeto com `.context/` inicia
 Hooks do Codex usam o mesmo dispatch com `--source codex`:
 
 ```bash
-npx -y @dotcontext/cli@latest hook dispatch --source codex
+dotcontext hook dispatch --source codex
+# ou, quando não há binário global disponível:
+npx -y @dotcontext/cli@<versão instalada> hook dispatch --source codex
 ```
 
 O instalador escreve uma destas configurações:

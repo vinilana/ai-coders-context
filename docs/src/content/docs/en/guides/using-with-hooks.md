@@ -90,11 +90,15 @@ Repeated trace append failures are recorded under `.context/runtime/hooks/trace-
 
 ## Claude Code
 
-The installer writes `hooks` entries to Claude Code settings. Each entry runs:
+The installer writes `hooks` entries to Claude Code settings. When a global `dotcontext` binary is on PATH, each entry runs it directly; otherwise the entry falls back to npx pinned to the installed CLI version:
 
 ```bash
-npx -y @dotcontext/cli@latest hook dispatch --source claude-code
+dotcontext hook dispatch --source claude-code
+# or, when no global binary is available:
+npx -y @dotcontext/cli@<installed version> hook dispatch --source claude-code
 ```
+
+Running the binary directly (or a pinned version) avoids re-resolving the npm `latest` tag on every SessionStart, PostToolUse, and Stop event.
 
 Wired events (v1):
 
@@ -119,7 +123,9 @@ Start a Claude Code session in a repository with `.context/` initialized and con
 Codex hooks use the same dispatch command with `--source codex`:
 
 ```bash
-npx -y @dotcontext/cli@latest hook dispatch --source codex
+dotcontext hook dispatch --source codex
+# or, when no global binary is available:
+npx -y @dotcontext/cli@<installed version> hook dispatch --source codex
 ```
 
 The installer writes either:

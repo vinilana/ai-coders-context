@@ -11,11 +11,14 @@ import {
   ensureHookHarnessSession,
   getHookHarnessSessionId,
 } from '../hookSessionStore';
+import { VERSION } from '../../../version';
 
 describe('hookDispatchCommands', () => {
-  it('uses npx for shell hook dispatch', () => {
-    expect(CLAUDE_CODE_HOOK_DISPATCH_COMMAND).toContain('npx -y @dotcontext/cli@latest');
-    expect(CODEX_HOOK_DISPATCH_COMMAND).toContain('npx -y @dotcontext/cli@latest');
+  it('pins the npx dispatch command to the installed CLI version', () => {
+    expect(CLAUDE_CODE_HOOK_DISPATCH_COMMAND).toContain(`npx -y @dotcontext/cli@${VERSION}`);
+    expect(CODEX_HOOK_DISPATCH_COMMAND).toContain(`npx -y @dotcontext/cli@${VERSION}`);
+    expect(CLAUDE_CODE_HOOK_DISPATCH_COMMAND).not.toContain('@latest');
+    expect(CODEX_HOOK_DISPATCH_COMMAND).not.toContain('@latest');
   });
 });
 

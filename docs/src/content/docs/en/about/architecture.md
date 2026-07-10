@@ -85,7 +85,7 @@ This is the surface an AI client (Claude Code, Cursor, Windsurf, and others) tal
 
 ### The integrations boundary
 
-**Integrations** connect host lifecycle events to the harness without going through MCP. Claude Code and Codex CLI use shell dispatch (`npx -y @dotcontext/cli@latest hook dispatch`); Pi loads the `@dotcontext/pi` npm extension in-process.
+**Integrations** connect host lifecycle events to the harness without going through MCP. Claude Code and Codex CLI use shell dispatch (`dotcontext hook dispatch`, with a version-pinned npx fallback when no global binary is on PATH); Pi loads the `@dotcontext/pi` npm extension in-process.
 
 Integrations call the harness only — they never import `cli` or `mcp`. See [using dotcontext with hooks](/guides/using-with-hooks/) and [using dotcontext with Pi](/guides/using-with-pi/).
 

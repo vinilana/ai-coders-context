@@ -24,12 +24,17 @@ Pi extension
   -> resposta in-process para Pi
 ```
 
-Para Claude Code e Codex CLI, o instalador escreve comandos shell que chamam:
+Para Claude Code e Codex CLI, o instalador escreve comandos shell que preferem o binário global `dotcontext` quando presente no PATH, com fallback para npx pinado na versão instalada:
 
 ```bash
-npx -y @dotcontext/cli@latest hook dispatch --source claude-code
-npx -y @dotcontext/cli@latest hook dispatch --source codex
+dotcontext hook dispatch --source claude-code
+dotcontext hook dispatch --source codex
+# ou, quando não há binário global disponível:
+npx -y @dotcontext/cli@<versão instalada> hook dispatch --source claude-code
+npx -y @dotcontext/cli@<versão instalada> hook dispatch --source codex
 ```
+
+Executar o binário direto (ou uma versão pinada) evita resolver a tag `latest` do npm a cada evento de SessionStart, PostToolUse e Stop.
 
 Por padrão, a instalação de hooks é no projeto atual:
 

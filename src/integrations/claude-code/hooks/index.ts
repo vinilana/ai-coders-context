@@ -19,5 +19,6 @@ export {
 export {
   CLAUDE_CODE_HOOK_TEMPLATES,
   CLAUDE_CODE_HOOK_DISPATCH_COMMAND,
+  buildClaudeCodeHookTemplates,
   buildClaudeCodeHooksFragment,
 } from './claudeCodeHookTemplates';
