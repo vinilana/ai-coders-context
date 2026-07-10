@@ -16,6 +16,7 @@ import {
   previewCodexHooks,
 } from '../codex';
 import {
+  buildHookDispatchCommand,
   normalizeToolEvent,
   resolveHarnessHookFromHostEvent,
 } from '../shared';
@@ -132,7 +133,7 @@ describe('hook install services', () => {
     const written = await fs.readFile(configPath, 'utf8');
     expect(written).toContain('[features]');
     expect(written).toContain('hooks = true');
-    expect(written).toContain('npx -y @dotcontext/cli@latest hook dispatch --source codex');
+    expect(written).toContain(buildHookDispatchCommand('codex'));
     expect(written).toContain('[mcp_servers.dotcontext]');
   });
 
@@ -192,9 +193,9 @@ describe('hook install services', () => {
     expect(result.action).toBe('skipped');
   });
 
-  it('upgrades legacy Claude Code hook commands to the current npx dispatch command', async () => {
+  it('upgrades legacy Claude Code hook commands to the current dispatch command', async () => {
     const configPath = path.join(tempDir, '.claude', 'settings.json');
-    const legacyCommand = 'dotcontext hook dispatch --source claude-code';
+    const legacyCommand = 'npx -y @dotcontext/cli@latest hook dispatch --source claude-code';
     await fs.outputJson(configPath, {
       hooks: {
         SessionStart: [{ hooks: [{ type: 'command', command: legacyCommand }] }],
@@ -211,19 +212,19 @@ describe('hook install services', () => {
     expect(result.action).toBe('updated');
 
     const written = await fs.readJson(configPath);
-    expect(written.hooks.SessionStart[0].hooks[0].command).toContain(
-      'npx -y @dotcontext/cli@latest hook dispatch --source claude-code'
+    expect(written.hooks.SessionStart[0].hooks[0].command).toBe(
+      buildHookDispatchCommand('claude-code')
     );
   });
 
-  it('upgrades legacy Codex TOML hook commands to the current npx dispatch command', async () => {
+  it('upgrades legacy Codex TOML hook commands to the current dispatch command', async () => {
     const configPath = path.join(tempDir, '.codex', 'config.toml');
     await fs.outputFile(
       configPath,
       [
         '[[hooks.SessionStart]]',
         'matcher = "*"',
-        'command = "dotcontext hook dispatch --source codex"',
+        'command = "npx -y @dotcontext/cli@latest hook dispatch --source codex"',
         '',
       ].join('\n')
     );
@@ -237,8 +238,8 @@ describe('hook install services', () => {
     expect(result.action).toBe('updated');
 
     const written = await fs.readFile(configPath, 'utf8');
-    expect(written).toContain('npx -y @dotcontext/cli@latest hook dispatch --source codex');
-    expect(written).not.toContain('command = "dotcontext hook dispatch --source codex"');
+    expect(written).toContain(buildHookDispatchCommand('codex'));
+    expect(written).not.toContain('@latest');
   });
 
   it('previews Codex TOML append output', async () => {

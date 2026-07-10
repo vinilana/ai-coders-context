@@ -90,11 +90,15 @@ Repeated trace append failures are recorded under `.context/runtime/hooks/trace-
 
 ## Claude Code
 
-The installer writes `hooks` entries to Claude Code settings. Each entry runs:
+The installer writes `hooks` entries to Claude Code settings. When a global `dotcontext` binary is on PATH, each entry runs it directly; otherwise the entry falls back to npx pinned to the installed CLI version:
 
 ```bash
-npx -y @dotcontext/cli@latest hook dispatch --source claude-code
+dotcontext hook dispatch --source claude-code
+# or, when no global binary is available:
+npx -y @dotcontext/cli@<installed version> hook dispatch --source claude-code
 ```
+
+Running the binary directly (or a pinned version) avoids re-resolving the npm `latest` tag on every SessionStart, PostToolUse, and Stop event.
 
 Wired events (v1):
 
@@ -103,6 +107,9 @@ Wired events (v1):
 | `SessionStart` | `*` |
 | `PostToolUse` | `^Write$\|^Edit$\|^Bash$` |
 | `Stop` | `*` |
+| `SessionEnd` | `*` |
+
+On `SessionEnd`, the dispatch completes the harness session bound to the host session and removes its binding, so `.context/runtime/sessions/` entries do not stay open forever. If completion fails transiently, the binding is kept so a later sweep can retry; it is only removed once completion succeeds or the harness session is confirmed missing. `SessionStart` also sweeps bindings untouched for 24 hours from host sessions that ended without a `SessionEnd` (crash, closed terminal). `PostToolUse` refreshes the binding, so long-lived sessions that keep emitting tool events are not treated as stale.
 
 After install, restart Claude Code. On the next session start in a repo with `.context/`, you should see a compact bootstrap message injected into context.
 
@@ -119,7 +126,9 @@ Start a Claude Code session in a repository with `.context/` initialized and con
 Codex hooks use the same dispatch command with `--source codex`:
 
 ```bash
-npx -y @dotcontext/cli@latest hook dispatch --source codex
+dotcontext hook dispatch --source codex
+# or, when no global binary is available:
+npx -y @dotcontext/cli@<installed version> hook dispatch --source codex
 ```
 
 The installer writes either:

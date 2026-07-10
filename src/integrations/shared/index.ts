@@ -35,18 +35,34 @@ export {
 } from './mapHostHookResponse';
 
 export {
+  HOOK_DISPATCH_BINARY_NAME,
   HOOK_DISPATCH_CLI,
+  HOOK_DISPATCH_LOCAL_CLI,
+  HOOK_DISPATCH_PINNED_CLI,
   CLAUDE_CODE_HOOK_DISPATCH_COMMAND,
   CODEX_HOOK_DISPATCH_COMMAND,
+  buildHookDispatchCommand,
+  getCanonicalHookDispatchCommands,
+  isDotcontextBinaryOnPath,
   isDotcontextHookDispatchCommand,
   isCurrentDotcontextHookDispatchCommand,
+  resolveHookDispatchCli,
+  type HookDispatchCommandSource,
+  type ResolveHookDispatchCommandOptions,
 } from './hookDispatchCommands';
 
 export {
+  completeHookHarnessSession,
   ensureHookHarnessSession,
   getHookHarnessSessionId,
+  listHookHarnessSessionBindings,
+  removeHookHarnessSession,
   saveHookHarnessSession,
+  STALE_HOOK_SESSION_MAX_AGE_MS,
+  sweepStaleHookHarnessSessions,
+  touchHookHarnessSession,
   type HookSessionAdapter,
+  type HookSessionAdapterParams,
   type HookSessionBinding,
   type ShellHookSource,
 } from './hookSessionStore';

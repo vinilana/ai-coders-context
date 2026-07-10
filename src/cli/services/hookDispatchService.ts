@@ -16,6 +16,7 @@ import type { ClaudeCodeHookInput } from '../../integrations/claude-code/hooks/m
 import { mapCodexResponse } from '../../integrations/codex/hooks/mapCodexResponse';
 import type { CodexHookInput } from '../../integrations/codex/hooks/mapCodexEvent';
 import {
+  completeHookHarnessSession,
   ensureHookHarnessSession,
   extractHarnessSessionId,
   finalizeHostHookOutput,
@@ -25,6 +26,8 @@ import {
   resolveHookRepoRoot,
   resolveHarnessHookFromHostEvent,
   saveHookHarnessSession,
+  sweepStaleHookHarnessSessions,
+  touchHookHarnessSession,
   type HostHookOutput,
 } from '../../integrations/shared';
 import { formatNavigationExcerpt } from '../../integrations/shared/formatNavigationExcerpt';
@@ -101,6 +104,9 @@ function canonicalizeHookEventName(hookEventName?: string): string | undefined {
     case 'subagentstop':
     case 'subagent_stop':
       return 'SubagentStop';
+    case 'sessionend':
+    case 'session_end':
+      return 'SessionEnd';
     default:
       return hookEventName;
   }
@@ -304,7 +310,10 @@ async function dispatchShellHookEvent(
     throw new Error('Hook dispatch requires hook_event_name');
   }
 
-  if ((hookEventName === 'Stop' || hookEventName === 'SubagentStop') && isSessionEndReentry(envelope)) {
+  if (
+    (hookEventName === 'Stop' || hookEventName === 'SubagentStop' || hookEventName === 'SessionEnd')
+    && isSessionEndReentry(envelope)
+  ) {
     return {
       response: {
         ok: true,
@@ -342,6 +351,16 @@ async function dispatchShellHookEvent(
         });
       }
 
+      try {
+        await sweepStaleHookHarnessSessions(adapter, {
+          repoPath,
+          source,
+          currentHostSessionId: normalizedEvent.sessionId,
+        });
+      } catch {
+        // Session hygiene must never make hook dispatch blocking.
+      }
+
       navigationResponse = await adapter.handle({
         tool: 'context',
         params: {
@@ -376,6 +395,20 @@ async function dispatchShellHookEvent(
         hostSessionId: normalizedEvent.sessionId,
       })
       : undefined;
+
+    if (harnessSessionId && normalizedEvent.sessionId) {
+      try {
+        // Keep the binding fresh so long-lived sessions that only emit tool
+        // events are not completed by the SessionStart stale sweep.
+        await touchHookHarnessSession({
+          repoPath,
+          source,
+          hostSessionId: normalizedEvent.sessionId,
+        });
+      } catch {
+        // Session hygiene must never make hook dispatch blocking.
+      }
+    }
 
     const mapped = resolveHarnessHookFromHostEvent(normalizedEvent, {
       repoPath,
@@ -452,6 +485,25 @@ async function dispatchShellHookEvent(
 
     return {
       response,
+      output: { continue: true },
+    };
+  }
+
+  if (hookEventName === 'SessionEnd') {
+    let completed = false;
+    if (normalizedEvent.sessionId) {
+      completed = await completeHookHarnessSession(adapter, {
+        repoPath,
+        source,
+        hostSessionId: normalizedEvent.sessionId,
+      });
+    }
+
+    return {
+      response: createHookDispatchSuccessResponse(source, {
+        handled: 'session_end',
+        completed,
+      }),
       output: { continue: true },
     };
   }

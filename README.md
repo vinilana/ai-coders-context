@@ -434,8 +434,8 @@ npx -y @dotcontext/cli@latest hook doctor codex --json
 
 | Host | Config | Dispatch |
 | --- | --- | --- |
-| `claude-code` | `.claude/settings.json` | `npx -y @dotcontext/cli@latest hook dispatch --source claude-code` |
-| `codex` | `.codex/hooks.json` or inline in `.codex/config.toml` | `npx -y @dotcontext/cli@latest hook dispatch --source codex` |
+| `claude-code` | `.claude/settings.json` | `dotcontext hook dispatch --source claude-code` (falls back to `npx -y @dotcontext/cli@<installed version> ...` when no global binary is on PATH) |
+| `codex` | `.codex/hooks.json` or inline in `.codex/config.toml` | `dotcontext hook dispatch --source codex` (same fallback) |
 | `pi` | `pi install npm:@dotcontext/pi` | In-process TypeScript extension |
 
 Codex-specific activation step:

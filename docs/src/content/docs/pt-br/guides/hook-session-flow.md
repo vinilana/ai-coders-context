@@ -24,12 +24,17 @@ Pi extension
   -> resposta in-process para Pi
 ```
 
-Para Claude Code e Codex CLI, o instalador escreve comandos shell que chamam:
+Para Claude Code e Codex CLI, o instalador escreve comandos shell que preferem o binário global `dotcontext` quando presente no PATH, com fallback para npx pinado na versão instalada:
 
 ```bash
-npx -y @dotcontext/cli@latest hook dispatch --source claude-code
-npx -y @dotcontext/cli@latest hook dispatch --source codex
+dotcontext hook dispatch --source claude-code
+dotcontext hook dispatch --source codex
+# ou, quando não há binário global disponível:
+npx -y @dotcontext/cli@<versão instalada> hook dispatch --source claude-code
+npx -y @dotcontext/cli@<versão instalada> hook dispatch --source codex
 ```
+
+Executar o binário direto (ou uma versão pinada) evita resolver a tag `latest` do npm a cada evento de SessionStart, PostToolUse e Stop.
 
 Por padrão, a instalação de hooks é no projeto atual:
 
@@ -47,8 +52,9 @@ Use `--global` somente quando quiser escrever a configuração no diretório hom
 | --- | --- | --- | --- |
 | Início da sessão | `SessionStart` | `context check` | Injeta readiness de `.context/`, ou uma dica de inicialização |
 | Início da sessão com contexto pronto | `SessionStart` | `harness createSession` + `context getMap` | Cria uma sessão durável e adiciona navegação compacta |
-| Depois de ferramenta | `PostToolUse` para `Write`, `Edit`, `Bash` | `harness appendTrace` | Registra `tool.use` em `trace.jsonl` |
-| Fim da sessão | `Stop` | `workflow-guide` | Mostra próximos passos PREVC somente se há workflow ativo |
+| Depois de ferramenta | `PostToolUse` para `Write`, `Edit`, `Bash` | `harness appendTrace` + touch no binding | Registra `tool.use` em `trace.jsonl` e mantém o binding fresco para a varredura de stale |
+| Fim da resposta | `Stop` | `workflow-guide` | Mostra próximos passos PREVC somente se há workflow ativo |
+| Fim da sessão | `SessionEnd` | `harness completeSession` + remoção do binding | Conclui a sessão durável do harness e limpa `host-sessions.json` |
 
 No fluxo padrão, hooks são não bloqueantes. Erro de trace, workflow ausente ou chamada reentrante de fim de sessão vira `{"continue": true}` para não quebrar a sessão do agente.
 

@@ -1,7 +1,9 @@
 import {
+  buildHookDispatchCommand,
   CODEX_HOOK_DISPATCH_COMMAND,
   isCurrentDotcontextHookDispatchCommand,
   isDotcontextHookDispatchCommand,
+  type ResolveHookDispatchCommandOptions,
 } from '../../shared/hookDispatchCommands';
 
 export { CODEX_HOOK_DISPATCH_COMMAND };
@@ -18,52 +20,67 @@ export interface CodexHookMatcherEntry {
 
 export type CodexHookTemplate = CodexHookMatcherEntry[];
 
-export const CODEX_HOOK_TEMPLATES: Record<
-  'SessionStart' | 'PostToolUse' | 'Stop',
-  CodexHookTemplate
-> = {
-  SessionStart: [
-    {
-      matcher: '*',
-      hooks: [{ type: 'command', command: CODEX_HOOK_DISPATCH_COMMAND }],
-    },
-  ],
-  PostToolUse: [
-    {
-      matcher: '^Write$|^Edit$|^Bash$',
-      hooks: [{ type: 'command', command: CODEX_HOOK_DISPATCH_COMMAND }],
-    },
-  ],
-  Stop: [
-    {
-      matcher: '*',
-      hooks: [{ type: 'command', command: CODEX_HOOK_DISPATCH_COMMAND }],
-    },
-  ],
-};
-
-export function buildCodexHooksFragment(): Record<string, CodexHookTemplate> {
+export function buildCodexHookTemplates(
+  command: string = buildHookDispatchCommand('codex')
+): Record<'SessionStart' | 'PostToolUse' | 'Stop', CodexHookTemplate> {
   return {
-    SessionStart: CODEX_HOOK_TEMPLATES.SessionStart,
-    PostToolUse: CODEX_HOOK_TEMPLATES.PostToolUse,
-    Stop: CODEX_HOOK_TEMPLATES.Stop,
+    SessionStart: [
+      {
+        matcher: '*',
+        hooks: [{ type: 'command', command }],
+      },
+    ],
+    PostToolUse: [
+      {
+        matcher: '^Write$|^Edit$|^Bash$',
+        hooks: [{ type: 'command', command }],
+      },
+    ],
+    Stop: [
+      {
+        matcher: '*',
+        hooks: [{ type: 'command', command }],
+      },
+    ],
   };
 }
 
-export function buildCodexHooksDocument(): { hooks: Record<string, CodexHookTemplate> } {
-  return { hooks: buildCodexHooksFragment() };
+/**
+ * Static template shape built with the pinned npx command. Prefer
+ * buildCodexHookTemplates() when writing configs so the command can resolve
+ * to the local dotcontext binary when it is available.
+ */
+export const CODEX_HOOK_TEMPLATES: Record<
+  'SessionStart' | 'PostToolUse' | 'Stop',
+  CodexHookTemplate
+> = buildCodexHookTemplates(CODEX_HOOK_DISPATCH_COMMAND);
+
+export function buildCodexHooksFragment(
+  options?: ResolveHookDispatchCommandOptions
+): Record<string, CodexHookTemplate> {
+  return buildCodexHookTemplates(buildHookDispatchCommand('codex', options));
+}
+
+export function buildCodexHooksDocument(
+  options?: ResolveHookDispatchCommandOptions
+): { hooks: Record<string, CodexHookTemplate> } {
+  return { hooks: buildCodexHooksFragment(options) };
 }
 
 export function isDotcontextCodexHookCommand(command: unknown): boolean {
   return isDotcontextHookDispatchCommand(command, 'codex');
 }
 
-export function isCurrentCodexHookCommand(command: unknown): boolean {
-  return isCurrentDotcontextHookDispatchCommand(command, 'codex');
+export function isCurrentCodexHookCommand(
+  command: unknown,
+  options?: ResolveHookDispatchCommandOptions
+): boolean {
+  return isCurrentDotcontextHookDispatchCommand(command, 'codex', options);
 }
 
 export interface BuildCodexTomlHookBlocksOptions {
   includeFeatures?: boolean;
+  resolveOptions?: ResolveHookDispatchCommandOptions;
 }
 
 export function buildCodexTomlHookBlocks(
@@ -75,7 +92,11 @@ export function buildCodexTomlHookBlocks(
     lines.push('[features]', 'hooks = true', '');
   }
 
-  for (const [eventName, entries] of Object.entries(CODEX_HOOK_TEMPLATES)) {
+  const templates = buildCodexHookTemplates(
+    buildHookDispatchCommand('codex', options.resolveOptions)
+  );
+
+  for (const [eventName, entries] of Object.entries(templates)) {
     for (const entry of entries) {
       lines.push(`[[hooks.${eventName}]]`);
       if (entry.matcher) {

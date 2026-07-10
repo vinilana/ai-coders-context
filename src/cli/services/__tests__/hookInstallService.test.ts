@@ -7,6 +7,7 @@ import {
   resolveHookInstallHostSelection,
 } from '../hookInstallService';
 import { CODEX_HOOK_TRUST_REMINDER } from '../../../integrations/codex';
+import { buildHookDispatchCommand } from '../../../integrations/shared';
 import type { CLIInterface } from '../../../utils/cliUI';
 
 const createMockUI = (): CLIInterface => ({
@@ -138,7 +139,7 @@ describe('HookInstallService', () => {
 
       const command = config.hooks.SessionStart[0].hooks[0];
       expect(command.type).toBe('command');
-      expect(command.command).toContain('npx -y @dotcontext/cli@latest hook dispatch --source claude-code');
+      expect(command.command).toBe(buildHookDispatchCommand('claude-code'));
     });
 
     it('supports dry-run mode for Claude Code', async () => {
@@ -214,7 +215,7 @@ describe('HookInstallService', () => {
       expect(config).toContain('[features]');
       expect(config).toContain('hooks = true');
       expect(config).toContain('[[hooks.SessionStart]]');
-      expect(config).toContain('npx -y @dotcontext/cli@latest hook dispatch --source codex');
+      expect(config).toContain(buildHookDispatchCommand('codex'));
     });
 
     it('prints Pi instructions and writes .mcp.json snippet', async () => {

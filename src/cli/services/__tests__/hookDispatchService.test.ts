@@ -6,6 +6,7 @@ import { PassThrough } from 'stream';
 import { runHookDispatch } from '../hookDispatchService';
 import {
   getHookHarnessSessionId,
+  listHookHarnessSessionBindings,
   saveHookHarnessSession,
 } from '../../../integrations/shared/hookSessionStore';
 import { WorkflowService } from '../../../harness';
@@ -682,5 +683,241 @@ describe('HookDispatchService session lifecycle', () => {
 
     expect(stopResult.exitCode).toBe(0);
     expect(stopResult.output).toEqual({ continue: true });
+  });
+
+  it('completes the bound harness session on SessionEnd and removes the binding', async () => {
+    await createReadyContext();
+    const sessionId = 'host-session-end';
+
+    const startStdin = PassThrough.from([
+      JSON.stringify({
+        session_id: sessionId,
+        cwd: tempDir,
+        hook_event_name: 'SessionStart',
+      }),
+    ]);
+    const startStdout = new PassThrough();
+    startStdout.on('data', () => {});
+    await runHookDispatch({
+      source: 'claude-code',
+      repoPath: tempDir,
+      stdin: startStdin,
+      stdout: startStdout,
+    });
+
+    const harnessSessionId = await getHookHarnessSessionId({
+      repoPath: tempDir,
+      source: 'claude-code',
+      hostSessionId: sessionId,
+    });
+    expect(harnessSessionId).toBeDefined();
+
+    const endStdin = PassThrough.from([
+      JSON.stringify({
+        session_id: sessionId,
+        cwd: tempDir,
+        hook_event_name: 'SessionEnd',
+        reason: 'exit',
+      }),
+    ]);
+    const endStdout = new PassThrough();
+    endStdout.on('data', () => {});
+
+    const endResult = await runHookDispatch({
+      source: 'claude-code',
+      repoPath: tempDir,
+      stdin: endStdin,
+      stdout: endStdout,
+    });
+
+    expect(endResult.exitCode).toBe(0);
+    expect(endResult.output).toEqual({ continue: true });
+
+    const session = await fs.readJson(path.join(
+      tempDir, '.context', 'runtime', 'sessions', harnessSessionId!, 'session.json'
+    ));
+    expect(session.status).toBe('completed');
+
+    expect(await getHookHarnessSessionId({
+      repoPath: tempDir,
+      source: 'claude-code',
+      hostSessionId: sessionId,
+    })).toBeUndefined();
+  });
+
+  it('keeps SessionEnd non-blocking when no binding exists', async () => {
+    const endStdin = PassThrough.from([
+      JSON.stringify({
+        session_id: 'host-session-end-unbound',
+        cwd: tempDir,
+        hook_event_name: 'SessionEnd',
+      }),
+    ]);
+    const endStdout = new PassThrough();
+    endStdout.on('data', () => {});
+
+    const endResult = await runHookDispatch({
+      source: 'claude-code',
+      repoPath: tempDir,
+      stdin: endStdin,
+      stdout: endStdout,
+    });
+
+    expect(endResult.exitCode).toBe(0);
+    expect(endResult.output).toEqual({ continue: true });
+  });
+
+  it('does not complete the session during SessionEnd reentry', async () => {
+    await createReadyContext();
+    const sessionId = 'host-session-end-reentry';
+
+    const startStdin = PassThrough.from([
+      JSON.stringify({
+        session_id: sessionId,
+        cwd: tempDir,
+        hook_event_name: 'SessionStart',
+      }),
+    ]);
+    const startStdout = new PassThrough();
+    startStdout.on('data', () => {});
+    await runHookDispatch({
+      source: 'claude-code',
+      repoPath: tempDir,
+      stdin: startStdin,
+      stdout: startStdout,
+    });
+
+    const endStdin = PassThrough.from([
+      JSON.stringify({
+        session_id: sessionId,
+        cwd: tempDir,
+        hook_event_name: 'SessionEnd',
+        session_end_active: true,
+      }),
+    ]);
+    const endStdout = new PassThrough();
+    endStdout.on('data', () => {});
+
+    const endResult = await runHookDispatch({
+      source: 'claude-code',
+      repoPath: tempDir,
+      stdin: endStdin,
+      stdout: endStdout,
+    });
+
+    expect(endResult.exitCode).toBe(0);
+    expect(await getHookHarnessSessionId({
+      repoPath: tempDir,
+      source: 'claude-code',
+      hostSessionId: sessionId,
+    })).toBeDefined();
+  });
+
+  it('sweeps stale bindings from previous host sessions on SessionStart', async () => {
+    await createReadyContext();
+
+    const staleStdin = PassThrough.from([
+      JSON.stringify({
+        session_id: 'host-session-stale',
+        cwd: tempDir,
+        hook_event_name: 'SessionStart',
+      }),
+    ]);
+    const staleStdout = new PassThrough();
+    staleStdout.on('data', () => {});
+    await runHookDispatch({
+      source: 'claude-code',
+      repoPath: tempDir,
+      stdin: staleStdin,
+      stdout: staleStdout,
+    });
+
+    const staleHarnessSessionId = await getHookHarnessSessionId({
+      repoPath: tempDir,
+      source: 'claude-code',
+      hostSessionId: 'host-session-stale',
+    });
+
+    const [staleBinding] = await listHookHarnessSessionBindings(tempDir, 'claude-code');
+    await saveHookHarnessSession({
+      ...staleBinding,
+      updatedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+    });
+
+    const startStdin = PassThrough.from([
+      JSON.stringify({
+        session_id: 'host-session-new',
+        cwd: tempDir,
+        hook_event_name: 'SessionStart',
+      }),
+    ]);
+    const startStdout = new PassThrough();
+    startStdout.on('data', () => {});
+    await runHookDispatch({
+      source: 'claude-code',
+      repoPath: tempDir,
+      stdin: startStdin,
+      stdout: startStdout,
+    });
+
+    expect(await getHookHarnessSessionId({
+      repoPath: tempDir,
+      source: 'claude-code',
+      hostSessionId: 'host-session-stale',
+    })).toBeUndefined();
+
+    const staleSession = await fs.readJson(path.join(
+      tempDir, '.context', 'runtime', 'sessions', staleHarnessSessionId!, 'session.json'
+    ));
+    expect(staleSession.status).toBe('completed');
+  });
+
+  it('touches the binding on PostToolUse so active sessions are not swept as stale', async () => {
+    await createReadyContext();
+    const sessionId = 'host-session-long-lived';
+
+    const startStdin = PassThrough.from([
+      JSON.stringify({
+        session_id: sessionId,
+        cwd: tempDir,
+        hook_event_name: 'SessionStart',
+      }),
+    ]);
+    const startStdout = new PassThrough();
+    startStdout.on('data', () => {});
+    await runHookDispatch({
+      source: 'claude-code',
+      repoPath: tempDir,
+      stdin: startStdin,
+      stdout: startStdout,
+    });
+
+    const staleTimestamp = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+    const [binding] = await listHookHarnessSessionBindings(tempDir, 'claude-code');
+    await saveHookHarnessSession({ ...binding, updatedAt: staleTimestamp });
+
+    const postStdin = PassThrough.from([
+      JSON.stringify({
+        session_id: sessionId,
+        cwd: tempDir,
+        hook_event_name: 'PostToolUse',
+        tool_name: 'Write',
+        tool_input: { file_path: 'README.md' },
+      }),
+    ]);
+    const postStdout = new PassThrough();
+    postStdout.on('data', () => {});
+
+    const postResult = await runHookDispatch({
+      source: 'claude-code',
+      repoPath: tempDir,
+      stdin: postStdin,
+      stdout: postStdout,
+    });
+
+    expect(postResult.exitCode).toBe(0);
+
+    const [touched] = await listHookHarnessSessionBindings(tempDir, 'claude-code');
+    expect(Date.parse(touched.updatedAt)).toBeGreaterThan(Date.parse(staleTimestamp));
   });
 });

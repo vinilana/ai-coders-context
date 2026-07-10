@@ -80,7 +80,9 @@ Falhas repetidas de append trace são registradas em `.context/runtime/hooks/tra
 O instalador grava entradas `hooks` em `.claude/settings.json` por padrão. Cada entrada chama:
 
 ```bash
-npx -y @dotcontext/cli@latest hook dispatch --source claude-code
+dotcontext hook dispatch --source claude-code
+# ou, quando não há binário global disponível:
+npx -y @dotcontext/cli@<versão instalada> hook dispatch --source claude-code
 ```
 
 Eventos configurados:
@@ -90,6 +92,9 @@ Eventos configurados:
 | `SessionStart` | `*` |
 | `PostToolUse` | `^Write$\|^Edit$\|^Bash$` |
 | `Stop` | `*` |
+| `SessionEnd` | `*` |
+
+No `SessionEnd`, o dispatch conclui a sessão do harness vinculada à sessão do host e remove o binding, para que entradas em `.context/runtime/sessions/` não fiquem abertas para sempre. Se a conclusão falhar de forma transitória, o binding é mantido para que uma varredura futura tente de novo; ele só é removido quando a conclusão tem sucesso ou a sessão do harness comprovadamente não existe mais. O `SessionStart` também varre bindings sem atividade há mais de 24 horas de sessões que terminaram sem `SessionEnd` (crash, terminal fechado). O `PostToolUse` atualiza o binding, então sessões longas que continuam emitindo eventos de ferramenta não são tratadas como obsoletas.
 
 Depois de instalar, reinicie o Claude Code. Em um projeto com `.context/` inicializado, o próximo `SessionStart` deve injetar um resumo compacto de contexto.
 
@@ -98,7 +103,9 @@ Depois de instalar, reinicie o Claude Code. Em um projeto com `.context/` inicia
 Hooks do Codex usam o mesmo dispatch com `--source codex`:
 
 ```bash
-npx -y @dotcontext/cli@latest hook dispatch --source codex
+dotcontext hook dispatch --source codex
+# ou, quando não há binário global disponível:
+npx -y @dotcontext/cli@<versão instalada> hook dispatch --source codex
 ```
 
 O instalador escreve uma destas configurações:
